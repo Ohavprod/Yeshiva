@@ -4,7 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מערכת ניהול — ישיבה תיכונית עפולה</title>
-<link rel="icon" href="assets/img/logo.gif">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16223d">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="עפולה">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -15,7 +21,7 @@
     <div class="brand-row">
       <img src="assets/img/logo.gif" alt="">
       <div>
-        <div style="font-family:'Frank Ruhl Libre',serif; font-weight:700;">ישיבה תיכונית עפולה</div>
+        <div style="font-family:'Rubik',sans-serif; font-weight:700;">ישיבה תיכונית עפולה</div>
         <div style="font-size:.8rem; color:var(--ink-soft);">מערכת לצוות החינוכי</div>
       </div>
     </div>
@@ -45,7 +51,7 @@
   <div class="login-card">
     <div class="brand-row">
       <img src="assets/img/logo.gif" alt="">
-      <div><div style="font-family:'Frank Ruhl Libre',serif; font-weight:700;">ישיבה תיכונית עפולה</div></div>
+      <div><div style="font-family:'Rubik',sans-serif; font-weight:700;">ישיבה תיכונית עפולה</div></div>
     </div>
     <h2>הגדרת סיסמה</h2>
     <p class="sub">זוהי הכניסה הראשונה שלך — יש להגדיר סיסמה אישית.</p>
@@ -65,7 +71,7 @@
   <div class="login-card">
     <div class="brand-row">
       <img src="assets/img/logo.gif" alt="">
-      <div><div style="font-family:'Frank Ruhl Libre',serif; font-weight:700;">ישיבה תיכונית עפולה</div></div>
+      <div><div style="font-family:'Rubik',sans-serif; font-weight:700;">ישיבה תיכונית עפולה</div></div>
     </div>
     <h2>החשבון ממתין לאישור</h2>
     <div class="pending-note">החשבון שלך נוצר אך טרם שויך לתפקיד על ידי מנהל המערכת. אנא פנה למנהל המערכת.</div>
@@ -200,9 +206,9 @@ function buildSideNav(){
     { id:'myclass', label:'הכיתה שלי', icon:'🎓', roles:['teacher'] },
     { id:'trips', label:'טיולים ואישורים', icon:'🧭', roles:['teacher','principal','admin'] },
     { id:'announcements', label:'עדכונים באתר', icon:'📣', roles:['principal','admin'] },
-    { id:'classes', label:'ניהול כיתות', icon:'🏫', roles:['admin'] },
+    { id:'classes', label:'ניהול כיתות', icon:'🏫', roles:['admin','principal'] },
     { id:'users', label:'ניהול משתמשים', icon:'👤', roles:['admin'] },
-    { id:'triptypes', label:'סוגי טיולים', icon:'🗂', roles:['admin'] },
+    { id:'triptypes', label:'סוגי טיולים', icon:'🗂', roles:['admin','principal'] },
   ];
   nav.innerHTML = items.filter(i=>i.roles.includes(myProfile.role)).map(i=>
     `<a href="#" class="side-link" data-view="${i.id}">${i.icon} ${i.label}</a>`
@@ -293,10 +299,13 @@ async function renderMyClass(body){
         <tbody id="studentsTbody">
           ${(students||[]).map(s=>`
             <tr data-id="${s.id}">
-              <td>${esc(s.full_name)}</td>
-              <td>${esc(s.parent_name||'—')}</td>
-              <td>${esc(s.parent_phone||'—')}</td>
-              <td><button class="btn btn-outline btn-sm del-student">מחיקה</button></td>
+              <td class="c-name">${esc(s.full_name)}</td>
+              <td class="c-parent">${esc(s.parent_name||'—')}</td>
+              <td class="c-phone">${esc(s.parent_phone||'—')}</td>
+              <td style="display:flex; gap:6px;">
+                <button class="btn btn-outline btn-sm edit-student" title="עריכה">✏️</button>
+                <button class="btn btn-outline btn-sm del-student" title="מחיקה">🗑</button>
+              </td>
             </tr>`).join('') || '<tr><td colspan="4" style="color:var(--ink-soft);">אין עדיין תלמידים בכיתה</td></tr>'}
         </tbody>
       </table>
@@ -318,6 +327,30 @@ async function renderMyClass(body){
       const { error } = await sb.from('students').delete().eq('id', tr.dataset.id);
       if (error){ toast('שגיאה: '+error.message); return; }
       tr.remove();
+    });
+  });
+  body.querySelectorAll('.edit-student').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      if (tr.dataset.editing) return;
+      tr.dataset.editing = '1';
+      const name = tr.querySelector('.c-name').textContent.trim();
+      const parent = tr.querySelector('.c-parent').textContent.trim().replace('—','');
+      const phone = tr.querySelector('.c-phone').textContent.trim().replace('—','');
+      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(name)}" style="width:100%;">`;
+      tr.querySelector('.c-parent').innerHTML = `<input class="ei-parent" value="${esc(parent)}" style="width:100%;">`;
+      tr.querySelector('.c-phone').innerHTML = `<input class="ei-phone" value="${esc(phone)}" style="width:100%;">`;
+      const actionsTd = tr.children[3];
+      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-student">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-student">ביטול</button>`;
+      actionsTd.querySelector('.save-student').addEventListener('click', async ()=>{
+        const full_name = tr.querySelector('.ei-name').value.trim();
+        const parent_name = tr.querySelector('.ei-parent').value.trim();
+        const parent_phone = tr.querySelector('.ei-phone').value.trim();
+        const { error } = await sb.from('students').update({ full_name, parent_name, parent_phone }).eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        toast('נשמר'); goto('myclass');
+      });
+      actionsTd.querySelector('.cancel-student').addEventListener('click', ()=> goto('myclass'));
     });
   });
 }
@@ -391,23 +424,28 @@ async function renderTrips(body){
 }
 
 function renderTripsList(container, trips){
+  const canEditInfo = myProfile.role === 'admin' || myProfile.role === 'principal';
   if (trips.length === 0){
     container.innerHTML = `<div class="card card-pad" style="color:var(--ink-soft);">אין עדיין טיולים רשומים.</div>`;
     return;
   }
   container.innerHTML = trips.map(t => `
-    <div class="card card-pad" style="margin-bottom:18px;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+    <div class="card card-pad" style="margin-bottom:18px;" data-trip-id="${t.id}">
+      <div class="trip-summary" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
         <div>
-          <h3 style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(t.classes?.name||'')}</span></h3>
-          <div style="font-size:.85rem; color:var(--ink-soft);">
+          <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(t.classes?.name||'')}</span></h3>
+          <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
             ${t.trip_types?.name ? esc(t.trip_types.name)+' · ' : ''}
             ${t.trip_date ? new Date(t.trip_date).toLocaleDateString('he-IL')+' · ' : ''}
             ${esc(t.location||'')}
           </div>
         </div>
-        <button class="btn btn-outline btn-sm toggle-trip" data-id="${t.id}">ניהול אישורים ⌄</button>
+        <div style="display:flex; gap:8px;">
+          ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">✏️</button>` : ''}
+          <button class="btn btn-outline btn-sm toggle-trip" data-id="${t.id}">ניהול אישורים ⌄</button>
+        </div>
       </div>
+      <div class="trip-edit-box" id="trip-edit-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="trip-detail" id="trip-detail-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
     </div>
   `).join('');
@@ -422,6 +460,50 @@ function renderTripsList(container, trips){
         panel.dataset.loaded = '1';
         await renderTripDetail(panel, trips.find(t=>t.id===id));
       }
+    });
+  });
+
+  container.querySelectorAll('.edit-trip').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.dataset.id;
+      const trip = trips.find(t=>t.id===id);
+      const box = document.getElementById('trip-edit-'+id);
+      const opening = box.style.display === 'none';
+      box.style.display = opening ? '' : 'none';
+      if (!opening) return;
+      box.innerHTML = `
+        <div class="form-grid">
+          <div class="field"><label>סוג טיול</label>
+            <select id="et_type_${id}">
+              <option value="">— ללא —</option>
+              ${tripTypesCache.map(tt=>`<option value="${tt.id}" ${tt.id===trip.trip_type_id?'selected':''}>${esc(tt.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>כותרת</label><input id="et_title_${id}" value="${esc(trip.title)}"></div>
+          <div class="field"><label>יעד / מיקום</label><input id="et_location_${id}" value="${esc(trip.location||'')}"></div>
+          <div class="field"><label>תאריך</label><input type="date" id="et_date_${id}" value="${trip.trip_date||''}"></div>
+          <div class="field"><label>שעת יציאה</label><input id="et_depart_${id}" value="${esc(trip.departure_time||'')}"></div>
+          <div class="field"><label>שעת חזרה</label><input id="et_return_${id}" value="${esc(trip.return_time||'')}"></div>
+          <div class="field"><label>עלות</label><input id="et_cost_${id}" value="${esc(trip.cost||'')}"></div>
+          <div class="field" style="grid-column:1/-1;"><label>הערות</label><textarea id="et_notes_${id}">${esc(trip.notes||'')}</textarea></div>
+        </div>
+        <button class="btn btn-primary btn-sm save-trip-edit" data-id="${id}">💾 שמירת שינויים</button>
+      `;
+      box.querySelector('.save-trip-edit').addEventListener('click', async ()=>{
+        const payload = {
+          trip_type_id: document.getElementById(`et_type_${id}`).value || null,
+          title: document.getElementById(`et_title_${id}`).value.trim(),
+          location: document.getElementById(`et_location_${id}`).value.trim(),
+          trip_date: document.getElementById(`et_date_${id}`).value || null,
+          departure_time: document.getElementById(`et_depart_${id}`).value.trim(),
+          return_time: document.getElementById(`et_return_${id}`).value.trim(),
+          cost: document.getElementById(`et_cost_${id}`).value.trim(),
+          notes: document.getElementById(`et_notes_${id}`).value.trim(),
+        };
+        const { error } = await sb.from('trips').update(payload).eq('id', id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        toast('הטיול עודכן'); goto('trips');
+      });
     });
   });
 }
@@ -547,11 +629,12 @@ async function renderAnnouncements(body){
         <tbody>
           ${(data||[]).map(a=>`
             <tr data-id="${a.id}">
-              <td>${esc(a.body)}</td>
+              <td class="c-body">${esc(a.body)}</td>
               <td>${a.is_active ? '<span class="badge badge-ok">פעיל</span>' : '<span class="badge badge-wait">מוסתר</span>'}</td>
               <td style="display:flex; gap:8px;">
+                <button class="btn btn-outline btn-sm edit-ann" title="עריכה">✏️</button>
                 <button class="btn btn-outline btn-sm toggle-ann">${a.is_active?'הסתרה':'הפעלה'}</button>
-                <button class="btn btn-outline btn-sm del-ann">מחיקה</button>
+                <button class="btn btn-outline btn-sm del-ann" title="מחיקה">🗑</button>
               </td>
             </tr>`).join('') || '<tr><td colspan="3" style="color:var(--ink-soft);">אין עדכונים</td></tr>'}
         </tbody>
@@ -583,49 +666,92 @@ async function renderAnnouncements(body){
       goto('announcements');
     });
   });
+  body.querySelectorAll('.edit-ann').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      if (tr.dataset.editing) return;
+      tr.dataset.editing = '1';
+      const val = tr.querySelector('.c-body').textContent.trim();
+      tr.querySelector('.c-body').innerHTML = `<input class="ei-body" value="${esc(val)}" style="width:100%;">`;
+      const actionsTd = tr.children[2];
+      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-ann">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-ann">ביטול</button>`;
+      actionsTd.querySelector('.save-ann').addEventListener('click', async ()=>{
+        const val2 = tr.querySelector('.ei-body').value.trim();
+        const { error } = await sb.from('announcements').update({ body: val2 }).eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        toast('נשמר'); goto('announcements');
+      });
+      actionsTd.querySelector('.cancel-ann').addEventListener('click', ()=> goto('announcements'));
+    });
+  });
 }
 
 /* ============================================================
    CLASSES (admin)
    ============================================================ */
 async function renderClasses(body){
+  const isAdmin = myProfile.role === 'admin';
   const { data: classes } = await sb.from('classes').select('*, profiles!classes_homeroom_teacher_id_fkey(full_name)').order('name');
   body.innerHTML = `
+    ${isAdmin ? `
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">כיתה חדשה</h3>
       <form id="newClassForm" style="display:flex; gap:10px;">
         <input id="cls_name" required placeholder="שם הכיתה, לדוגמה י״א 1" style="flex:1; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px;">
         <button class="btn btn-primary" type="submit">יצירה</button>
       </form>
-    </div>
+    </div>` : ''}
     <div class="card card-pad">
       <table class="data">
         <thead><tr><th>שם הכיתה</th><th>מחנך/ת</th><th></th></tr></thead>
         <tbody>
           ${(classes||[]).map(c=>`
             <tr data-id="${c.id}">
-              <td>${esc(c.name)}</td>
+              <td class="c-name">${esc(c.name)}</td>
               <td>${esc(c.profiles?.full_name || '— לא שויך —')}</td>
-              <td><button class="btn btn-outline btn-sm del-class">מחיקה</button></td>
+              <td style="display:flex; gap:6px;">
+                <button class="btn btn-outline btn-sm edit-class" title="עריכה">✏️</button>
+                ${isAdmin ? '<button class="btn btn-outline btn-sm del-class" title="מחיקה">🗑</button>' : ''}
+              </td>
             </tr>`).join('') || '<tr><td colspan="3" style="color:var(--ink-soft);">אין עדיין כיתות</td></tr>'}
         </tbody>
       </table>
     </div>`;
 
-  document.getElementById('newClassForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const name = document.getElementById('cls_name').value.trim();
-    const { error } = await sb.from('classes').insert({ name });
-    if (error){ toast('שגיאה: '+error.message); return; }
-    goto('classes');
-  });
-  body.querySelectorAll('.del-class').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      if (!confirm('מחיקת כיתה תמחק גם את התלמידים והטיולים המשויכים אליה. להמשיך?')) return;
-      const tr = btn.closest('tr');
-      const { error } = await sb.from('classes').delete().eq('id', tr.dataset.id);
+  if (isAdmin){
+    document.getElementById('newClassForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const name = document.getElementById('cls_name').value.trim();
+      const { error } = await sb.from('classes').insert({ name });
       if (error){ toast('שגיאה: '+error.message); return; }
       goto('classes');
+    });
+    body.querySelectorAll('.del-class').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if (!confirm('מחיקת כיתה תמחק גם את התלמידים והטיולים המשויכים אליה. להמשיך?')) return;
+        const tr = btn.closest('tr');
+        const { error } = await sb.from('classes').delete().eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        goto('classes');
+      });
+    });
+  }
+  body.querySelectorAll('.edit-class').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      if (tr.dataset.editing) return;
+      tr.dataset.editing = '1';
+      const name = tr.querySelector('.c-name').textContent.trim();
+      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(name)}" style="width:100%;">`;
+      const actionsTd = tr.children[2];
+      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-class">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-class">ביטול</button>`;
+      actionsTd.querySelector('.save-class').addEventListener('click', async ()=>{
+        const name = tr.querySelector('.ei-name').value.trim();
+        const { error } = await sb.from('classes').update({ name }).eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        toast('נשמר'); goto('classes');
+      });
+      actionsTd.querySelector('.cancel-class').addEventListener('click', ()=> goto('classes'));
     });
   });
 }
@@ -663,10 +789,15 @@ async function renderUsers(body){
     </div>
     <div class="card card-pad">
       <table class="data">
-        <thead><tr><th>שם</th><th>תפקיד</th><th>כיתה</th></tr></thead>
+        <thead><tr><th>שם</th><th>תפקיד</th><th>כיתה</th><th></th></tr></thead>
         <tbody>
           ${(profiles||[]).map(p=>`
-            <tr><td>${esc(p.full_name)}</td><td>${roleLabel(p.role)}</td><td>${esc(p.classes?.name||'—')}</td></tr>
+            <tr data-id="${p.id}">
+              <td class="c-name">${esc(p.full_name)}</td>
+              <td class="c-role">${roleLabel(p.role)}</td>
+              <td class="c-class">${esc(p.classes?.name||'—')}</td>
+              <td><button class="btn btn-outline btn-sm edit-user" title="עריכה">✏️</button></td>
+            </tr>
           `).join('')}
         </tbody>
       </table>
@@ -692,15 +823,57 @@ async function renderUsers(body){
       });
       const json = await res.json();
       if (!res.ok){ resultEl.innerHTML = `<div class="login-msg err">${esc(json.error||'שגיאה לא ידועה')}</div>`; return; }
-      resultEl.innerHTML = `<div class="login-msg ok">נוצר בהצלחה! יש לשלוח את קישור ההגדרה הבא ל־${esc(payload.full_name)}:</div>
-        <div style="display:flex; gap:8px;">
-          <input readonly value="${esc(json.invite_link)}" style="flex:1; padding:10px; border:1.5px solid var(--line); border-radius:8px; font-size:.8rem;">
-          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(json.invite_link)}'); toast('הועתק');">העתקה</button>
-        </div>`;
+      const link = json.invite_link;
+      const waText = encodeURIComponent(`שלום ${payload.full_name},\nנוצר עבורך חשבון במערכת ישיבה תיכונית עפולה.\nלהגדרת סיסמה אישית והתחברות: ${link}`);
+      const waHref = payload.phone ? `https://wa.me/${payload.phone.replace(/\D/g,'')}?text=${waText}` : null;
+      resultEl.innerHTML = `
+        <div class="login-msg ok">
+          נוצר בהצלחה! שימו לב — המערכת <b>לא</b> שולחת מייל אוטומטית, יש להעביר את קישור ההגדרה
+          ל־${esc(payload.full_name)} ידנית (וואטסאפ / מייל / כל דרך אחרת):
+        </div>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <input readonly value="${esc(link)}" style="flex:1; padding:10px; border:1.5px solid var(--line); border-radius:8px; font-size:.8rem;">
+          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(link)}'); toast('הועתק');">העתקה</button>
+        </div>
+        ${waHref ? `<a class="wa-link" target="_blank" href="${waHref}">📨 שליחה בוואטסאפ ↗</a>` : `<span style="font-size:.8rem; color:var(--ink-soft);">לא הוזן טלפון — לא ניתן לשלוח קישור וואטסאפ מהיר</span>`}`;
       goto('users');
     }catch(err){
       resultEl.innerHTML = `<div class="login-msg err">שגיאת רשת: ${esc(err.message)}</div>`;
     }
+  });
+
+  body.querySelectorAll('.edit-user').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      if (tr.dataset.editing) return;
+      tr.dataset.editing = '1';
+      const currentName = tr.querySelector('.c-name').textContent.trim();
+      const p = (profiles||[]).find(x=>x.id===tr.dataset.id);
+      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(currentName)}" style="width:100%;">`;
+      tr.querySelector('.c-role').innerHTML = `
+        <select class="ei-role">
+          <option value="teacher" ${p.role==='teacher'?'selected':''}>מחנך/ת</option>
+          <option value="principal" ${p.role==='principal'?'selected':''}>מנהל/ת</option>
+          <option value="admin" ${p.role==='admin'?'selected':''}>מנהל מערכת</option>
+          <option value="pending" ${p.role==='pending'?'selected':''}>ממתין</option>
+        </select>`;
+      tr.querySelector('.c-class').innerHTML = `
+        <select class="ei-class">
+          <option value="">— ללא —</option>
+          ${classesCache.map(c=>`<option value="${c.id}" ${c.id===p.class_id?'selected':''}>${esc(c.name)}</option>`).join('')}
+        </select>`;
+      const actionsTd = tr.children[3];
+      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-user">💾</button> <button class="btn btn-outline btn-sm cancel-user">ביטול</button>`;
+      actionsTd.querySelector('.save-user').addEventListener('click', async ()=>{
+        const full_name = tr.querySelector('.ei-name').value.trim();
+        const role = tr.querySelector('.ei-role').value;
+        const class_id = tr.querySelector('.ei-class').value || null;
+        const { error } = await sb.from('profiles').update({ full_name, role, class_id }).eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        toast('נשמר'); goto('users');
+      });
+      actionsTd.querySelector('.cancel-user').addEventListener('click', ()=> goto('users'));
+    });
   });
 }
 
@@ -708,8 +881,10 @@ async function renderUsers(body){
    TRIP TYPES (admin)
    ============================================================ */
 async function renderTripTypes(body){
+  const isAdmin = myProfile.role === 'admin';
   const { data: types } = await sb.from('trip_types').select('*').order('name');
   body.innerHTML = `
+    ${isAdmin ? `
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">סוג טיול חדש</h3>
       <form id="newTypeForm" style="display:flex; gap:10px;">
@@ -717,38 +892,65 @@ async function renderTripTypes(body){
         <input id="tt_desc" placeholder="תיאור (רשות)" style="flex:2; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px;">
         <button class="btn btn-primary" type="submit">הוספה</button>
       </form>
-    </div>
+    </div>` : ''}
     <div class="card card-pad">
       <table class="data">
         <thead><tr><th>שם</th><th>תיאור</th><th></th></tr></thead>
         <tbody>
           ${(types||[]).map(t=>`
-            <tr data-id="${t.id}"><td>${esc(t.name)}</td><td>${esc(t.description||'')}</td>
-            <td><button class="btn btn-outline btn-sm del-type">מחיקה</button></td></tr>`).join('')}
+            <tr data-id="${t.id}"><td class="c-name">${esc(t.name)}</td><td class="c-desc">${esc(t.description||'')}</td>
+            <td style="display:flex; gap:6px;">
+              <button class="btn btn-outline btn-sm edit-type" title="עריכה">✏️</button>
+              ${isAdmin ? '<button class="btn btn-outline btn-sm del-type" title="מחיקה">🗑</button>' : ''}
+            </td></tr>`).join('')}
         </tbody>
       </table>
     </div>`;
 
-  document.getElementById('newTypeForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const name = document.getElementById('tt_name').value.trim();
-    const description = document.getElementById('tt_desc').value.trim();
-    const { error } = await sb.from('trip_types').insert({ name, description });
-    if (error){ toast('שגיאה: '+error.message); return; }
-    goto('triptypes');
-  });
-  body.querySelectorAll('.del-type').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      if (!confirm('למחוק סוג טיול זה?')) return;
-      const tr = btn.closest('tr');
-      const { error } = await sb.from('trip_types').delete().eq('id', tr.dataset.id);
+  if (isAdmin){
+    document.getElementById('newTypeForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const name = document.getElementById('tt_name').value.trim();
+      const description = document.getElementById('tt_desc').value.trim();
+      const { error } = await sb.from('trip_types').insert({ name, description });
       if (error){ toast('שגיאה: '+error.message); return; }
       goto('triptypes');
+    });
+    body.querySelectorAll('.del-type').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if (!confirm('למחוק סוג טיול זה?')) return;
+        const tr = btn.closest('tr');
+        const { error } = await sb.from('trip_types').delete().eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        goto('triptypes');
+      });
+    });
+  }
+  body.querySelectorAll('.edit-type').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      if (tr.dataset.editing) return;
+      tr.dataset.editing = '1';
+      const name = tr.querySelector('.c-name').textContent.trim();
+      const desc = tr.querySelector('.c-desc').textContent.trim();
+      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(name)}" style="width:100%;">`;
+      tr.querySelector('.c-desc').innerHTML = `<input class="ei-desc" value="${esc(desc)}" style="width:100%;">`;
+      const actionsTd = tr.children[2];
+      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-type">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-type">ביטול</button>`;
+      actionsTd.querySelector('.save-type').addEventListener('click', async ()=>{
+        const name = tr.querySelector('.ei-name').value.trim();
+        const description = tr.querySelector('.ei-desc').value.trim();
+        const { error } = await sb.from('trip_types').update({ name, description }).eq('id', tr.dataset.id);
+        if (error){ toast('שגיאה: '+error.message); return; }
+        toast('נשמר'); goto('triptypes');
+      });
+      actionsTd.querySelector('.cancel-type').addEventListener('click', ()=> goto('triptypes'));
     });
   });
 }
 
 init();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
 </html>
