@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="style.css">
 <style>
   body{ background:var(--paper); }
-  .basd-line{ text-align:center; padding:10px 0 0; font-size:.8rem; color:var(--ink-soft); font-weight:600; }
+  .basd-line{ text-align:right; max-width:640px; margin:0 auto; padding:10px 24px 0; font-size:.8rem; color:var(--ink-soft); font-weight:600; }
   .notice-wrap{ max-width:640px; margin:0 auto; padding:0 0 60px; }
   .notice-header{
     position:relative; overflow:hidden;
@@ -17,7 +17,7 @@
   }
   .notice-header .ring{ position:absolute; inset:0; pointer-events:none; opacity:.5; }
   .notice-header .logo-badge{
-    position:relative; z-index:1; height:82px; width:82px; border-radius:50%; margin:0 auto 14px;
+    position:relative; z-index:1; height:92px; width:92px; border-radius:50%; margin:0 auto 14px;
     background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 28px -8px rgba(0,0,0,.45);
     overflow:hidden; border:3px solid rgba(255,255,255,.5);
   }
@@ -97,7 +97,7 @@
         <circle cx="360" cy="10" r="100" fill="none" stroke="rgba(79,163,220,.15)" stroke-width="1.5" stroke-dasharray="4 9"/>
       </svg>
     </div>
-    <div class="logo-badge"><img src="assets/img/logo.gif" alt=""></div>
+    <div class="logo-badge"><img src="assets/img/logo.png" alt=""></div>
     <div class="school">ישיבה תיכונית עפולה</div>
     <div class="tag">ישיבה שהיא משפחה</div>
   </div>
@@ -231,9 +231,10 @@ async function load(){
 
   if (trip.head_name || trip.coordinator_name){
     mainHtml += `
+    <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:6px;">בברכה,</div>
     <div class="signatures-row">
-      <div class="signature-col">${trip.head_name ? `בברכה,<br><b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
-      <div class="signature-col">${trip.coordinator_name ? `בברכה,<br><b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+      <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
+      <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
     </div>`;
   }
 
