@@ -151,6 +151,20 @@ function siteBaseUrl(){
   return location.origin + cut;
 }
 
+/* --- מיון כיתות לפי גימטריה (א,ב,ג...ט,י,יא,יב...) במקום מיון אלפביתי רגיל,
+   כדי ש"י" לא תיפול אחרי "יא" רק כי זה מה שיוצא במיון מחרוזות פשוט --- */
+function hebrewGradeValue(name){
+  const letterValues = {'א':1,'ב':2,'ג':3,'ד':4,'ה':5,'ו':6,'ז':7,'ח':8,'ט':9,'י':10,'כ':20,'ל':30,'מ':40};
+  const match = (name||'').match(/^[א-ת]+/);
+  if (!match) return 999;
+  let value = 0;
+  for (const ch of match[0]) value += (letterValues[ch] || 0);
+  return value || 999;
+}
+function sortClassesByGrade(list){
+  return list.slice().sort((a,b)=> hebrewGradeValue(a.name) - hebrewGradeValue(b.name) || (a.name||'').localeCompare(b.name||'','he'));
+}
+
 /* --- חלון אישור מעוצב, במקום confirm() המכוער של הדפדפן --- */
 function confirmDialog(message, opts={}){
   const { title='אישור פעולה', confirmText='כן, למחוק', cancelText='ביטול', danger=true } = opts;
@@ -333,11 +347,14 @@ function buildSideNav(){
     { id:'announcements', label:'עדכונים באתר', icon:'📣', show: !!p.manage_announcements },
     { id:'classes', label:'ניהול כיתות', icon:'🏫', show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:'👤', show: !!p.manage_users },
+    { id:'smartschool', label:'סמארט סקול', icon:'🖥️', show:true, external:'https://www.smartschool.co.il/login.aspx?s=31.08.2026-02:06&mode=&auto=0' },
   ];
   nav.innerHTML = items.filter(i=>i.show).map(i=>
-    `<a href="#" class="side-link" data-view="${i.id}">${i.icon} ${i.label}</a>`
+    i.external
+      ? `<a href="${esc(i.external)}" target="_blank" rel="noopener" class="side-link">${i.icon} ${i.label} ↗</a>`
+      : `<a href="#" class="side-link" data-view="${i.id}">${i.icon} ${i.label}</a>`
   ).join('');
-  nav.querySelectorAll('.side-link').forEach(a=>{
+  nav.querySelectorAll('.side-link[data-view]').forEach(a=>{
     a.addEventListener('click', (e)=>{
       e.preventDefault();
       goto(a.dataset.view);
@@ -647,7 +664,7 @@ async function removeStudentFromAllTripApprovals(studentId, classId){
    ============================================================ */
 async function renderTrips(body){
   const p = myProfile.permissions || {};
-  classesCache = (await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() }));
+  classesCache = sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
 
   const myClassIdsForFilter = myProfile.class_id ? [myProfile.class_id] : [];
   let trips = [];
@@ -662,6 +679,7 @@ async function renderTrips(body){
   // בחירת כיתות ליצירת טיול: מנהל/ראש ישיבה בוחר כמה כיתות שרוצה (טיול משותף); מחנך רגיל — רק הכיתה שלו, קבועה.
   const classPickerHtml = p.view_all_classes
     ? `<div class="field" style="grid-column:1/-1;"><label>כיתות (ניתן לבחור כמה — לטיול משותף)</label>
+        <div style="margin-bottom:8px;"><button type="button" class="btn btn-outline btn-sm" id="selectAllClassesBtn">בחירת כל הכיתות</button></div>
         <div class="checkgroup" id="t_classes_picker">
           ${classesCache.map(c=>`<label class="chip-check"><input type="checkbox" value="${c.id}"> ${esc(c.name)}</label>`).join('')}
         </div>
@@ -692,7 +710,8 @@ async function renderTrips(body){
         </div>
 
         <div class="field" style="grid-column:1/-1;"><label>הערות נוספות</label><textarea id="t_notes"></textarea></div>
-        <div class="field" style="grid-column:1/-1;"><label>סיום/חתימה (רשות — לדוגמה "בברכה, הרב חן חניה — ראש הישיבה")</label><textarea id="t_closing"></textarea></div>
+        <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="t_head_name" placeholder="הרב חן חניה"></div>
+        <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="t_coordinator_name" placeholder="אביב ויצמן"></div>
         <div class="field"><button class="btn btn-primary" type="submit">יצירת טיול</button></div>
       </form>
     </div>` : ''}
@@ -702,6 +721,12 @@ async function renderTrips(body){
   if (p.view_all_classes){
     document.getElementById('t_classes_picker').querySelectorAll('.chip-check').forEach(chip=>{
       chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
+    });
+    document.getElementById('selectAllClassesBtn').addEventListener('click', ()=>{
+      document.querySelectorAll('#t_classes_picker input').forEach(i=>{
+        i.checked = true;
+        i.closest('.chip-check').classList.add('checked');
+      });
     });
   }
 
@@ -745,7 +770,8 @@ async function renderTrips(body){
         cost: document.getElementById('t_cost').value.trim(),
         itinerary,
         notes: document.getElementById('t_notes').value.trim(),
-        closing_signature: document.getElementById('t_closing').value.trim(),
+        head_name: document.getElementById('t_head_name').value.trim(),
+        coordinator_name: document.getElementById('t_coordinator_name').value.trim(),
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
       };
@@ -846,9 +872,9 @@ function renderTripsList(container, trips){
       (byClass[key] = byClass[key] || []).push(t);
     });
     const groupKeys = Object.keys(byClass).filter(k=>k!=='_multi').sort((a,b)=>{
-      const an = classesCache.find(c=>c.id===a)?.name || 'זזז';
-      const bn = classesCache.find(c=>c.id===b)?.name || 'זזז';
-      return an.localeCompare(bn, 'he');
+      const an = classesCache.find(c=>c.id===a)?.name || '';
+      const bn = classesCache.find(c=>c.id===b)?.name || '';
+      return hebrewGradeValue(an) - hebrewGradeValue(bn) || an.localeCompare(bn, 'he');
     });
     if (byClass['_multi']) groupKeys.unshift('_multi');
     container.innerHTML = groupKeys.map(key => {
@@ -951,7 +977,8 @@ function renderTripsList(container, trips){
             <button type="button" class="btn btn-outline btn-sm" id="et_add_row_${id}" style="margin-top:6px;">➕ הוספת שורה</button>
           </div>
           <div class="field" style="grid-column:1/-1;"><label>הערות</label><textarea id="et_notes_${id}">${esc(trip.notes||'')}</textarea></div>
-          <div class="field" style="grid-column:1/-1;"><label>סיום/חתימה</label><textarea id="et_closing_${id}">${esc(trip.closing_signature||'')}</textarea></div>
+          <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="et_head_${id}" value="${esc(trip.head_name||'')}"></div>
+          <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="et_coordinator_${id}" value="${esc(trip.coordinator_name||'')}"></div>
         </div>
         <button class="btn btn-primary btn-sm save-trip-edit" data-id="${id}">💾 שמירת שינויים</button>
       `;
@@ -986,7 +1013,8 @@ function renderTripsList(container, trips){
           cost: document.getElementById(`et_cost_${id}`).value.trim(),
           itinerary,
           notes: document.getElementById(`et_notes_${id}`).value.trim(),
-          closing_signature: document.getElementById(`et_closing_${id}`).value.trim(),
+          head_name: document.getElementById(`et_head_${id}`).value.trim(),
+          coordinator_name: document.getElementById(`et_coordinator_${id}`).value.trim(),
         };
         try{ await db.collection('trips').doc(id).update(payload); toast('הטיול עודכן'); goto('trips'); }
         catch(err){ toast('שגיאה: '+err.message); }
@@ -1179,9 +1207,9 @@ async function renderTripDetail(panel, trip){
     const byClass = {};
     students.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
     const classIdsSorted = Object.keys(byClass).sort((a,b)=>{
-      const an = classesCache.find(c=>c.id===a)?.name || 'זזז';
-      const bn = classesCache.find(c=>c.id===b)?.name || 'זזז';
-      return an.localeCompare(bn, 'he');
+      const an = classesCache.find(c=>c.id===a)?.name || '';
+      const bn = classesCache.find(c=>c.id===b)?.name || '';
+      return hebrewGradeValue(an) - hebrewGradeValue(bn) || an.localeCompare(bn, 'he');
     });
     rowsEl.innerHTML = classIdsSorted.map(cid=>{
       const name = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
@@ -1314,7 +1342,7 @@ async function renderClassSettings(body){
 
   let classesForPicker = [];
   if (isAdmin){
-    classesForPicker = (await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() }));
+    classesForPicker = sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
   }
   const initialClassId = isAdmin ? (classesForPicker[0]?.id || null) : myProfile.class_id;
 
@@ -1361,7 +1389,7 @@ async function renderClassSettings(body){
 async function renderClasses(body){
   const p = myProfile.permissions || {};
   const snap = await db.collection('classes').orderBy('name').get();
-  const classes = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const classes = sortClassesByGrade(snap.docs.map(d=>({ id:d.id, ...d.data() })));
   const usersSnap = await db.collection('users').get().catch(()=>({docs:[]}));
   const teacherNameFor = (classId) => {
     const t = usersSnap.docs?.find?.(d=>d.data().class_id===classId);
@@ -1378,17 +1406,18 @@ async function renderClasses(body){
     </div>` : ''}
     <div class="card card-pad">
       <table class="data">
-        <thead><tr><th>שם הכיתה</th><th>מחנך/ת</th><th></th></tr></thead>
+        <thead><tr><th>שם הכיתה</th><th>מחנך/ת</th><th>קבוצת וואטסאפ</th><th></th></tr></thead>
         <tbody>
           ${classes.map(c=>`
             <tr data-id="${c.id}">
               <td class="c-name">${esc(c.name)}</td>
               <td>${esc(teacherNameFor(c.id) || '— לא שויך —')}</td>
+              <td>${c.whatsapp_group_link ? `<a href="${esc(c.whatsapp_group_link)}" target="_blank" class="wa-link">🔗 פתיחה</a>` : '<span style="color:var(--ink-soft);">לא הוגדר</span>'}</td>
               <td style="display:flex; gap:6px;">
                 <button class="btn btn-outline btn-sm edit-class" title="עריכה">✏️</button>
                 ${p.delete_classes ? '<button class="btn btn-outline btn-sm del-class" title="מחיקה">🗑</button>' : ''}
               </td>
-            </tr>`).join('') || '<tr><td colspan="3" style="color:var(--ink-soft);">אין עדיין כיתות</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="4" style="color:var(--ink-soft);">אין עדיין כיתות</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -1439,7 +1468,7 @@ async function renderUsers(body){
     db.collection('classes').orderBy('name').get(),
   ]);
   const profiles = usersSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-  classesCache = classesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  classesCache = sortClassesByGrade(classesSnap.docs.map(d=>({ id:d.id, ...d.data() })));
 
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
