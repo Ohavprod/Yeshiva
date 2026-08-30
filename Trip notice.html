@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>חוזר טיול — ישיבה תיכונית עפולה</title>
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="style.css">
+<style>
+  body{ background:var(--paper); }
+  .notice-wrap{ max-width:640px; margin:0 auto; padding:0 0 60px; }
+  .notice-header{
+    background:radial-gradient(1100px 400px at 15% -20%, #1f3563 0%, var(--navy) 60%, var(--navy) 100%);
+    color:#fff; text-align:center; padding:44px 24px 36px;
+  }
+  .notice-header img{ height:64px; width:64px; border-radius:50%; margin:0 auto 14px; background:#fff; }
+  .notice-header .school{ font-family:'Rubik',sans-serif; font-weight:700; font-size:1.1rem; }
+  .notice-header .tag{ font-size:.8rem; color:#a9c6ee; margin-top:2px; }
+  .notice-body{ padding:28px 24px 0; }
+  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:26px; box-shadow:var(--shadow-sm); margin-bottom:22px; }
+  .trip-meta{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:18px 0; font-size:.95rem; }
+  .trip-meta div span{ display:block; color:var(--ink-soft); font-size:.78rem; }
+  .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
+  .approved-card{ text-align:center; padding:40px 24px; }
+  .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
+  .consent-check{
+    display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:14px 16px;
+    border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
+  }
+  .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
+  @media (max-width:480px){ .trip-meta{ grid-template-columns:1fr; } .trip-card{ padding:20px; } .notice-body{ padding:20px 14px 0; } }
+</style>
+</head>
+<body>
+<div class="notice-wrap">
+  <div class="notice-header">
+    <img src="assets/img/logo.gif" alt="">
+    <div class="school">ישיבה תיכונית עפולה</div>
+    <div class="tag">חוזר טיול — לעיון ולאישור ההורים</div>
+  </div>
+  <div class="notice-body" id="content"><p class="center-msg">טוען פרטי טיול…</p></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="firebaseClient.js"></script>
+<script>
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+const params = new URLSearchParams(location.search);
+const tripId = params.get('t');
+
+/* --- לוח חתימה פשוט (עכבר + מגע) --- */
+function setupSignaturePad(canvas){
+  const ctx = canvas.getContext('2d');
+  function resize(){
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio;
+    canvas.height = 160 * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#16203a';
+  }
+  resize();
+  let drawing = false, last = null;
+  function pos(e){
+    const rect = canvas.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+  }
+  function start(e){ e.preventDefault(); drawing = true; last = pos(e); }
+  function move(e){
+    if (!drawing) return;
+    e.preventDefault();
+    const p = pos(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    last = p;
+  }
+  function end(){ drawing = false; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive:false });
+  canvas.addEventListener('touchmove', move, { passive:false });
+  canvas.addEventListener('touchend', end);
+  return {
+    clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); },
+    isEmpty(){
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width; blank.height = canvas.height;
+      return canvas.toDataURL() === blank.toDataURL();
+    },
+    dataUrl(){ return canvas.toDataURL('image/png'); },
+  };
+}
+
+async function load(){
+  const content = document.getElementById('content');
+  if (!tripId){
+    content.innerHTML = '<p class="center-msg">קישור לא תקין.</p>';
+    return;
+  }
+  const tripRef = db.collection('trips').doc(tripId);
+  const tripSnap = await tripRef.get();
+  if (!tripSnap.exists){
+    content.innerHTML = '<p class="center-msg">הטיול לא נמצא.</p>';
+    return;
+  }
+  const trip = tripSnap.data();
+  const roster = trip.roster_snapshot || [];
+
+  const tripDetailsHtml = `
+    <div class="trip-card">
+      <h2 style="margin-top:0;">${esc(trip.title)}</h2>
+      <div class="trip-meta">
+        ${trip.trip_date ? `<div><span>תאריך</span>${new Date(trip.trip_date).toLocaleDateString('he-IL')}</div>` : ''}
+        ${trip.location ? `<div><span>יעד</span>${esc(trip.location)}</div>` : ''}
+        ${trip.departure_time ? `<div><span>שעת יציאה</span>${esc(trip.departure_time)}</div>` : ''}
+        ${trip.return_time ? `<div><span>שעת חזרה</span>${esc(trip.return_time)}</div>` : ''}
+        ${trip.cost ? `<div><span>עלות</span>${esc(trip.cost)}</div>` : ''}
+      </div>
+      ${trip.notes ? `<p style="color:var(--ink-soft); border-top:1px solid var(--line); padding-top:16px;">${esc(trip.notes)}</p>` : ''}
+    </div>`;
+
+  if (roster.length === 0){
+    content.innerHTML = tripDetailsHtml + `<p class="center-msg">לא ניתן לטעון רשימת תלמידים לטיול זה. יש לפנות למחנך/ת לקבלת קישור אישור אישי.</p>`;
+    return;
+  }
+
+  content.innerHTML = tripDetailsHtml + `
+    <div class="trip-card">
+      <h3 style="margin-top:0;">אישור יציאה והשתתפות</h3>
+      <div class="field">
+        <label>בחר/י את שם בנך מהרשימה</label>
+        <select id="studentSelect">
+          <option value="">— בחר/י —</option>
+          ${roster.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name,'he')).map(r=>`<option value="${r.id}">${esc(r.full_name)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="statusArea"></div>
+      <div id="formArea" style="display:none;">
+        <div class="field">
+          <label>שם ההורה/ת המאשר/ת</label>
+          <input placeholder="שם מלא" id="approverName">
+        </div>
+        <div class="field">
+          <label class="consent-check">
+            <input type="checkbox" id="consentCheck">
+            <span>אני מאשר לבני לצאת ולהשתתף בטיול</span>
+          </label>
+        </div>
+        <div class="field">
+          <label>חתימה</label>
+          <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+          <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" id="submitApproval">✓ שליחת אישור</button>
+      </div>
+    </div>`;
+
+  let pad = null;
+  const select = document.getElementById('studentSelect');
+  const statusArea = document.getElementById('statusArea');
+  const formArea = document.getElementById('formArea');
+
+  select.addEventListener('change', async ()=>{
+    const studentId = select.value;
+    formArea.style.display = 'none';
+    statusArea.innerHTML = '';
+    if (!studentId) return;
+
+    statusArea.innerHTML = '<p style="color:var(--ink-soft); font-size:.9rem;">בודק סטטוס…</p>';
+    const approvalRef = tripRef.collection('approvals').doc(studentId);
+    const approvalSnap = await approvalRef.get();
+
+    if (!approvalSnap.exists){
+      statusArea.innerHTML = '<p class="center-msg">לא נמצא רישום אישור עבור תלמיד זה. יש לפנות למחנך/ת.</p>';
+      return;
+    }
+    const approval = approvalSnap.data();
+    if (approval.status === 'approved'){
+      statusArea.innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="color:var(--ink-soft); margin:0;">כבר אושר על ידי ${esc(approval.approved_by_name||'')}, תודה!</p></div>`;
+      return;
+    }
+
+    statusArea.innerHTML = '';
+    formArea.style.display = '';
+    if (!pad){
+      pad = setupSignaturePad(document.getElementById('sigCanvas'));
+      document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
+    } else {
+      pad.clear();
+    }
+
+    document.getElementById('submitApproval').onclick = async ()=>{
+      const name = document.getElementById('approverName').value.trim();
+      if (!name){ toast('יש להזין שם'); return; }
+      if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
+      if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
+      const btn = document.getElementById('submitApproval');
+      btn.disabled = true; btn.textContent = 'שולח…';
+      try{
+        await approvalRef.update({
+          status: 'approved',
+          approved_by_name: name,
+          consent: true,
+          signature: pad.dataUrl(),
+          approved_at: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        formArea.style.display = 'none';
+        statusArea.innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="margin:0;">האישור נקלט, תודה!</p></div>`;
+      }catch(err){
+        toast('אירעה שגיאה, נסו שוב');
+        btn.disabled = false; btn.textContent = '✓ שליחת אישור';
+      }
+    };
+  });
+}
+load();
+</script>
+</body>
+</html>
