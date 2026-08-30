@@ -291,25 +291,47 @@ table.data tr:last-child td{ border-bottom:none; }
 .wa-link{ color:var(--ok); font-weight:600; text-decoration:none; font-size:.85rem; }
 .wa-link:hover{ text-decoration:underline; }
 
+/* ---------- mobile drawer nav ---------- */
+.mobile-menu-btn{
+  display:none; width:40px; height:40px; border-radius:10px; border:1.5px solid var(--line);
+  background:#fff; font-size:1.2rem; align-items:center; justify-content:center; flex:none;
+}
+.side-backdrop{
+  display:none; position:fixed; inset:0; background:rgba(16,22,40,.5); z-index:140;
+}
+.side-backdrop.show{ display:block; }
+
+/* ---------- roster: table (desktop) vs cards (mobile) ---------- */
+.roster-cards{ display:none; }
+.roster-card{
+  background:#fff; border:1px solid var(--line); border-radius:var(--radius-sm);
+  padding:14px 16px; margin-bottom:10px;
+}
+.roster-card .rc-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.roster-card .rc-row{ display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-size:.9rem; border-top:1px dashed var(--line); }
+.roster-card .rc-row:first-of-type{ border-top:none; }
+.roster-card .rc-row span:first-child{ color:var(--ink-soft); flex:none; }
+.roster-card .contact-row{ align-items:center; }
+
 @media (max-width:900px){
   html{ font-size:16.5px; }
   .app-shell{ flex-direction:column; min-height:auto; }
+
+  .mobile-menu-btn{ display:inline-flex; }
+
   .app-side{
-    width:100%; flex-direction:row; overflow-x:auto; overflow-y:visible;
-    position:static; height:auto; align-items:center; padding:10px 10px; gap:8px;
+    position:fixed; top:0; right:0; height:100vh; width:250px; max-width:80vw;
+    transform:translateX(100%); transition:transform .25s ease; z-index:150;
+    overflow-y:auto; align-items:stretch;
   }
-  .app-side .brand{ margin-bottom:0; flex:none; }
-  .app-side .brand img{ height:30px !important; width:30px !important; }
-  .app-side .brand .t1{ display:none; } /* חוסך מקום בשורה האופקית */
-  .app-side .role-pill{ margin:0; flex:none; white-space:nowrap; font-size:.65rem; padding:3px 8px; }
-  .app-side nav#sideNav{ display:flex; gap:3px; flex:none; }
-  .side-link{ white-space:nowrap; padding:7px 10px; font-size:.78rem; }
-  .app-side > div[style*="flex:1"]{ display:none; } /* spacer מיותר בפריסה אופקית */
-  #signOutBtn{ flex:none; width:auto !important; white-space:nowrap; font-size:.72rem !important; }
+  .app-side.open{ transform:translateX(0); }
+  .app-side nav#sideNav{ display:flex; flex-direction:column; gap:4px; }
+  .side-link{ white-space:normal; }
+
   .app-main{ padding:14px; max-width:100%; }
-  .app-topbar{ flex-direction:column; align-items:flex-start; gap:6px; margin-bottom:16px; }
-  .app-topbar h1{ font-size:1.15rem; }
-  #userTag{ font-size:.85rem !important; }
+  .app-topbar{ display:flex; flex-direction:row; align-items:center; gap:10px; margin-bottom:16px; }
+  .app-topbar h1{ font-size:1.15rem; flex:1; }
+  #userTag{ font-size:.8rem !important; display:none; } /* אין מקום בשורה העליונה הצרה — מוצג בתוך המגירה */
 
   .stat-row{ grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:18px; }
   .stat{ padding:12px; }
@@ -324,7 +346,11 @@ table.data tr:last-child td{ border-bottom:none; }
   .btn{ padding:10px 20px; font-size:.88rem; }
   .btn-sm{ padding:7px 14px; font-size:.8rem; }
 
-  /* טבלאות רחבות — גלילה אופקית במקום שבירה מכוערת */
+  /* טבלת תלמידים רגילה מוסתרת במובייל — מוחלפת בכרטיסים (roster-cards) */
+  .roster-table-wrap{ display:none; }
+  .roster-cards{ display:block; }
+
+  /* שאר הטבלאות (משתמשים/כיתות/סוגי טיולים) — גלילה אופקית במקום שבירה מכוערת */
   table.data{ display:block; overflow-x:auto; white-space:nowrap; font-size:.85rem; }
   table.data thead, table.data tbody, table.data tr{ display:table; width:100%; table-layout:fixed; }
 
