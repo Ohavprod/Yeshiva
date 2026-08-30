@@ -12,13 +12,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="עפולה">
 <link rel="stylesheet" href="style.css">
-<style>
-  /* הגדלת פונטים זמנית - עד שנעדכן את style.css עצמו */
-  body{ font-size:1.08rem; }
-  .side-link, .btn, input, select, textarea, table.data{ font-size:1.02rem; }
-  .btn-sm{ font-size:.92rem; }
-  #userTag{ font-size:1rem !important; line-height:1.5; }
-</style>
 </head>
 <body>
 
@@ -98,7 +91,7 @@
     <span class="role-pill" id="rolePill"></span>
     <nav id="sideNav"></nav>
     <div style="flex:1;"></div>
-    <button class="side-link" id="signOutBtn" style="border:none; background:none; width:100%; text-align:right;">🚪 התנתקות</button>
+    <button id="signOutBtn" style="border:none; background:none; width:100%; text-align:right; color:#8a99b8; font-size:.8rem; padding:8px 14px; opacity:.8;">🚪 התנתקות</button>
   </aside>
 
   <main class="app-main">
@@ -115,6 +108,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
 /* ============================================================
@@ -254,6 +248,26 @@ async function enterApp(){
   buildSideNav();
   show('appShell');
   goto('home');
+  setupPushNotifications();
+}
+
+/* --- פוש-נוטיפיקציה: בקשת הרשאה ושמירת ה-FCM token על המשתמש --- */
+async function setupPushNotifications(){
+  try{
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    const registration = await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({
+      vapidKey: 'PASTE_YOUR_VAPID_KEY_HERE',
+      serviceWorkerRegistration: registration,
+    });
+    if (token && token !== myProfile.fcm_token){
+      await db.collection('users').doc(myProfile.id).update({ fcm_token: token });
+      myProfile.fcm_token = token;
+    }
+  }catch(err){ console.warn('push setup failed:', err); }
 }
 
 /* ============================================================
@@ -309,24 +323,32 @@ async function goto(view){
    ============================================================ */
 async function renderHome(body){
   const p = myProfile.permissions || {};
-  const [classSnap, studentSnap, tripSnap] = await Promise.all([
-    db.collection('classes').get(),
-    db.collection('students').get(),
-    db.collection('trips').get(),
-  ]);
-  let pendingCount = 0;
-  const batchesSnap = await db.collection('trip_batches').get();
-  for (const b of batchesSnap.docs){
-    const studentsSnap = await b.ref.collection('students').where('status','==','pending').get();
-    pendingCount += studentsSnap.size;
-  }
-  body.innerHTML = `
+  const isAdminLevel = !!(p.view_all_classes || p.manage_users || p.manage_classes);
+
+  let statsHtml = '';
+  if (isAdminLevel){
+    const [classSnap, studentSnap, tripSnap] = await Promise.all([
+      db.collection('classes').get(),
+      db.collection('students').get(),
+      db.collection('trips').get(),
+    ]);
+    let pendingCount = 0;
+    const batchesSnap = await db.collection('trip_batches').get();
+    for (const b of batchesSnap.docs){
+      const studentsSnap = await b.ref.collection('students').where('status','==','pending').get();
+      pendingCount += studentsSnap.size;
+    }
+    statsHtml = `
     <div class="stat-row">
       <div class="stat"><div class="num">${classSnap.size}</div><div class="lbl">כיתות</div></div>
       <div class="stat"><div class="num">${studentSnap.size}</div><div class="lbl">תלמידים</div></div>
       <div class="stat"><div class="num">${tripSnap.size}</div><div class="lbl">טיולים</div></div>
       <div class="stat"><div class="num">${pendingCount}</div><div class="lbl">אישורים ממתינים</div></div>
-    </div>
+    </div>`;
+  }
+
+  body.innerHTML = `
+    ${statsHtml}
     <div class="card card-pad">
       <h3 style="margin-top:0;">שלום, ${esc(myProfile.full_name)} 👋</h3>
       <p style="color:var(--ink-soft); margin:0;">
@@ -643,7 +665,7 @@ async function renderTripDetail(panel, trip){
           const batch = db.batch();
           ids.forEach(sid=>{
             const s = students.find(x=>x.id===sid);
-            batch.set(batchRef.collection('students').doc(sid), { student_name: s.full_name, status: 'pending' });
+            batch.set(batchRef.collection('students').doc(sid), { student_name: s.full_name, status: 'pending', notified: false });
           });
           await batch.commit();
           toast('הקישור נשלח — ניתן להעתיק ולשתף בוואטסאפ');
@@ -931,7 +953,8 @@ async function renderUsers(body){
           <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(email)} / ${esc(tempPassword)}'); toast('הועתק');">העתקה</button>
         </div>
         ${waHref ? `<a class="wa-link" target="_blank" href="${waHref}">📨 שליחה בוואטסאפ ↗</a>` : `<span style="font-size:.8rem; color:var(--ink-soft);">לא הוזן טלפון — לא ניתן לשלוח קישור וואטסאפ מהיר</span>`}`;
-      goto('users');
+      // רענון הרשימה נדחה בכוונה — כדי שתספיקו להעתיק/לשלוח את הפרטים לפני שהמסך מתאפס
+      setTimeout(()=> goto('users'), 8000);
     }catch(err){
       resultEl.innerHTML = `<div class="login-msg err">שגיאה: ${esc(err.message)}</div>`;
     }
