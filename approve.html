@@ -129,7 +129,7 @@ async function load(){
     content.innerHTML = `
       <div class="trip-card approved-card">
         <div class="big-check">✅</div>
-        <h2 style="margin:0 0 6px;">האישור כבר נקלט, תודה!</h2>
+        <h2 style="margin:0 0 6px;">האישור נקלט, תודה!</h2>
         <p style="color:var(--ink-soft); margin:0;">
           ${esc(studentName)} אושר/ה לטיול "${esc(trip.title)}"<br>
           ע״י ${esc(approval.approved_by_name||'')} ${approvedDate ? '· ' + approvedDate.toLocaleDateString('he-IL') : ''}
