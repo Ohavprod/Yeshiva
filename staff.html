@@ -81,7 +81,8 @@
 
 <!-- ===================== APP SHELL ===================== -->
 <div id="appShell" class="app-shell" style="display:none;">
-  <aside class="app-side">
+  <div class="side-backdrop" id="sideBackdrop"></div>
+  <aside class="app-side" id="appSide">
     <a class="brand" href="index.html">
       <img src="assets/img/logo.gif" alt="" style="height:38px;width:38px;">
       <div>
@@ -96,6 +97,7 @@
 
   <main class="app-main">
     <div class="app-topbar">
+      <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="תפריט">☰</button>
       <h1 id="viewTitle">לוח בקרה</h1>
       <div id="userTag" style="color:var(--ink-soft); font-size:.9rem;"></div>
     </div>
@@ -118,6 +120,7 @@ let me = null;        // firebase auth user
 let myProfile = null; // users/{uid} document data
 let classesCache = [];
 let tripTypesCache = [];
+let pendingOpenTripId = null; // טיול שצריך לפתוח אוטומטית אחרי מעבר ל"טיולים ואישורים" (מלוח הבקרה)
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -332,9 +335,25 @@ function buildSideNav(){
     `<a href="#" class="side-link" data-view="${i.id}">${i.icon} ${i.label}</a>`
   ).join('');
   nav.querySelectorAll('.side-link').forEach(a=>{
-    a.addEventListener('click', (e)=>{ e.preventDefault(); goto(a.dataset.view); });
+    a.addEventListener('click', (e)=>{
+      e.preventDefault();
+      goto(a.dataset.view);
+      closeMobileDrawer();
+    });
   });
 }
+
+/* --- תפריט צד נגלל למובייל (Drawer) --- */
+function openMobileDrawer(){
+  document.getElementById('appSide').classList.add('open');
+  document.getElementById('sideBackdrop').classList.add('show');
+}
+function closeMobileDrawer(){
+  document.getElementById('appSide').classList.remove('open');
+  document.getElementById('sideBackdrop').classList.remove('show');
+}
+document.getElementById('mobileMenuBtn').addEventListener('click', openMobileDrawer);
+document.getElementById('sideBackdrop').addEventListener('click', closeMobileDrawer);
 
 function setActiveNav(id){
   document.querySelectorAll('#sideNav .side-link').forEach(a=>{
@@ -418,7 +437,7 @@ async function renderHome(body){
       <div class="card card-pad" style="margin-top:20px;">
         <h3 style="margin-top:0;">טיולים קרובים</h3>
         ${summaries.slice(0,6).map(s=>`
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line);">
+          <div class="dash-trip-row" data-trip-id="${s.trip.id}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); cursor:pointer;">
             <div>
               <b>${esc(s.trip.title)}</b>
               <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? new Date(s.trip.trip_date).toLocaleDateString('he-IL') : 'ללא תאריך'}</div>
@@ -445,6 +464,13 @@ async function renderHome(body){
       </p>
     </div>
     ${teacherTripsHtml}`;
+
+  body.querySelectorAll('.dash-trip-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      pendingOpenTripId = row.dataset.tripId;
+      goto('trips');
+    });
+  });
 }
 
 /* ============================================================
@@ -460,83 +486,134 @@ async function renderMyClass(body){
   const studentsSnap = await db.collection('students').where('class_id','==', myProfile.class_id).orderBy('full_name').get();
   const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
+  const studentFormFieldsHtml = (prefix, s={}) => `
+    <div class="field" style="grid-column:1/-1;"><label>שם התלמיד</label><input required id="${prefix}_name" value="${esc(s.full_name||'')}"></div>
+    <div class="field"><label>שם ההורה</label><input id="${prefix}_parent_name" value="${esc(s.parent_name||'')}"></div>
+    <div class="field"><label>ת.ז הורה</label><input id="${prefix}_parent_id" value="${esc(s.parent_id||'')}"></div>
+    <div class="field"><label>טלפון אמא (לוואטסאפ)</label><input id="${prefix}_mother_phone" value="${esc(s.mother_phone||'')}" placeholder="05XXXXXXXX"></div>
+    <div class="field"><label>טלפון אבא (לוואטסאפ)</label><input id="${prefix}_father_phone" value="${esc(s.father_phone||'')}" placeholder="05XXXXXXXX"></div>`;
+
+  const readStudentForm = (prefix) => ({
+    full_name: document.getElementById(`${prefix}_name`).value.trim(),
+    parent_name: document.getElementById(`${prefix}_parent_name`).value.trim(),
+    parent_id: document.getElementById(`${prefix}_parent_id`).value.trim(),
+    mother_phone: document.getElementById(`${prefix}_mother_phone`).value.trim(),
+    father_phone: document.getElementById(`${prefix}_father_phone`).value.trim(),
+  });
+
+  const contactIcons = (s) => `
+    ${s.mother_phone ? `
+      <a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${s.mother_phone.replace(/\D/g,'')}" target="_blank" title="וואטסאפ לאמא">${WA_ICON_SVG}</a>
+      <a class="icon-btn call" style="width:34px;height:34px;" href="tel:${s.mother_phone.replace(/\D/g,'')}" title="חיוג לאמא">${PHONE_ICON_SVG}</a>` : ''}
+    ${s.father_phone ? `
+      <a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${s.father_phone.replace(/\D/g,'')}" target="_blank" title="וואטסאפ לאבא">${WA_ICON_SVG}</a>
+      <a class="icon-btn call" style="width:34px;height:34px;" href="tel:${s.father_phone.replace(/\D/g,'')}" title="חיוג לאבא">${PHONE_ICON_SVG}</a>` : ''}
+    ${!s.mother_phone && !s.father_phone ? '<span style="color:var(--ink-soft); font-size:.85rem;">אין טלפון</span>' : ''}`;
+
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
-      <h3 style="margin-top:0;">כיתה: ${esc(cls.name || '')}</h3>
-      <form id="addStudentForm" class="form-grid">
-        <div class="field"><label>שם התלמיד/ה</label><input required id="s_name"></div>
-        <div class="field"><label>שם ההורה</label><input id="s_parent_name"></div>
-        <div class="field"><label>טלפון הורה (לוואטסאפ)</label><input id="s_phone" placeholder="05XXXXXXXX"></div>
-        <div class="field" style="align-self:flex-end;">
-          <button class="btn btn-primary" type="submit">➕ הוספת תלמיד</button>
-        </div>
-      </form>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <h3 style="margin:0;">כיתה: ${esc(cls.name || '')}</h3>
+        <button class="btn btn-outline btn-sm" id="toggleAddStudentBtn">➕ הוספת תלמיד</button>
+      </div>
+      <div id="addStudentWrap" style="display:none; margin-top:20px; border-top:1px solid var(--line); padding-top:20px;">
+        <form id="addStudentForm" class="form-grid">
+          ${studentFormFieldsHtml('new')}
+          <div class="field" style="grid-column:1/-1;"><button class="btn btn-primary" type="submit">➕ הוספת תלמיד</button></div>
+        </form>
+      </div>
     </div>
-    <div class="card card-pad">
+
+    <!-- תצוגת טבלה (דסקטופ) -->
+    <div class="card card-pad roster-table-wrap">
       <table class="data">
-        <thead><tr><th>שם התלמיד/ה</th><th>הורה</th><th>טלפון</th><th></th></tr></thead>
+        <thead><tr><th>שם התלמיד</th><th>הורה</th><th>ת.ז הורה</th><th>יצירת קשר</th><th></th></tr></thead>
         <tbody id="studentsTbody">
           ${students.map(s=>`
             <tr data-id="${s.id}">
-              <td class="c-name">${esc(s.full_name)}</td>
-              <td class="c-parent">${esc(s.parent_name||'—')}</td>
-              <td class="c-phone">${esc(s.parent_phone||'—')}</td>
+              <td>${esc(s.full_name)}</td>
+              <td>${esc(s.parent_name||'—')}</td>
+              <td>${esc(s.parent_id||'—')}</td>
+              <td style="display:flex; gap:4px; flex-wrap:wrap;">${contactIcons(s)}</td>
               <td style="display:flex; gap:6px;">
                 <button class="btn btn-outline btn-sm edit-student" title="עריכה">✏️</button>
                 <button class="btn btn-outline btn-sm del-student" title="מחיקה">🗑</button>
               </td>
-            </tr>`).join('') || '<tr><td colspan="4" style="color:var(--ink-soft);">אין עדיין תלמידים בכיתה</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="5" style="color:var(--ink-soft);">אין עדיין תלמידים בכיתה</td></tr>'}
         </tbody>
       </table>
-    </div>`;
+    </div>
+
+    <!-- תצוגת כרטיסים (מובייל) — בלי גלילה אופקית -->
+    <div class="roster-cards">
+      ${students.map(s=>`
+        <div class="roster-card" data-id="${s.id}">
+          <div class="rc-head">
+            <strong>${esc(s.full_name)}</strong>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-outline btn-sm edit-student" title="עריכה">✏️</button>
+              <button class="btn btn-outline btn-sm del-student" title="מחיקה">🗑</button>
+            </div>
+          </div>
+          <div class="rc-row"><span>הורה</span>${esc(s.parent_name||'—')}</div>
+          <div class="rc-row"><span>ת.ז הורה</span>${esc(s.parent_id||'—')}</div>
+          <div class="rc-row contact-row"><span>יצירת קשר</span><div style="display:flex; gap:6px; flex-wrap:wrap;">${contactIcons(s)}</div></div>
+        </div>`).join('') || '<div class="card card-pad" style="color:var(--ink-soft);">אין עדיין תלמידים בכיתה</div>'}
+    </div>
+    <div id="studentEditBox"></div>`;
+
+  document.getElementById('toggleAddStudentBtn').addEventListener('click', ()=>{
+    const wrap = document.getElementById('addStudentWrap');
+    wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+  });
 
   document.getElementById('addStudentForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const full_name = document.getElementById('s_name').value.trim();
-    const parent_name = document.getElementById('s_parent_name').value.trim();
-    const parent_phone = document.getElementById('s_phone').value.trim();
+    const data = readStudentForm('new');
     try{
-      await db.collection('students').add({ class_id: myProfile.class_id, full_name, parent_name, parent_phone });
+      await db.collection('students').add({ class_id: myProfile.class_id, ...data });
       toast('התלמיד נוסף'); goto('myclass');
     }catch(err){ toast('שגיאה: '+err.message); }
   });
-  body.querySelectorAll('.del-student').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const tr = btn.closest('tr');
-      const studentName = tr.querySelector('.c-name').textContent.trim();
-      if (!(await confirmDialog(`למחוק את ${studentName} מהכיתה? הפעולה תמחק גם את כל אישורי הטיולים שלו/ה.`))) return;
+
+  const wireDelete = (rootEl, studentId, studentName) => {
+    rootEl.querySelector('.del-student').addEventListener('click', async ()=>{
+      if (!(await confirmDialog(`למחוק את ${studentName} מהכיתה? הפעולה תמחק גם את כל אישורי הטיולים שלו.`))) return;
       try{
-        const studentId = tr.dataset.id;
         await db.collection('students').doc(studentId).delete();
         await removeStudentFromAllTripApprovals(studentId, myProfile.class_id);
-        tr.remove();
-      }
-      catch(err){ toast('שגיאה: '+err.message); }
+        goto('myclass');
+      }catch(err){ toast('שגיאה: '+err.message); }
     });
-  });
-  body.querySelectorAll('.edit-student').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tr = btn.closest('tr');
-      if (tr.dataset.editing) return;
-      tr.dataset.editing = '1';
-      const name = tr.querySelector('.c-name').textContent.trim();
-      const parent = tr.querySelector('.c-parent').textContent.trim().replace('—','');
-      const phone = tr.querySelector('.c-phone').textContent.trim().replace('—','');
-      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(name)}" style="width:100%;">`;
-      tr.querySelector('.c-parent').innerHTML = `<input class="ei-parent" value="${esc(parent)}" style="width:100%;">`;
-      tr.querySelector('.c-phone').innerHTML = `<input class="ei-phone" value="${esc(phone)}" style="width:100%;">`;
-      const actionsTd = tr.children[3];
-      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-student">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-student">ביטול</button>`;
-      actionsTd.querySelector('.save-student').addEventListener('click', async ()=>{
-        const full_name = tr.querySelector('.ei-name').value.trim();
-        const parent_name = tr.querySelector('.ei-parent').value.trim();
-        const parent_phone = tr.querySelector('.ei-phone').value.trim();
+  };
+  const wireEdit = (rootEl, student) => {
+    rootEl.querySelector('.edit-student').addEventListener('click', ()=>{
+      const box = document.getElementById('studentEditBox');
+      box.innerHTML = `
+        <div class="card card-pad" style="margin-top:18px;">
+          <h3 style="margin-top:0;">עריכת ${esc(student.full_name)}</h3>
+          <div class="form-grid">${studentFormFieldsHtml('edit', student)}</div>
+          <div style="display:flex; gap:10px; margin-top:10px;">
+            <button class="btn btn-primary btn-sm" id="saveStudentBtn">💾 שמירה</button>
+            <button class="btn btn-outline btn-sm" id="cancelStudentBtn">ביטול</button>
+          </div>
+        </div>`;
+      box.scrollIntoView({ behavior:'smooth', block:'center' });
+      box.querySelector('#saveStudentBtn').addEventListener('click', async ()=>{
+        const data = readStudentForm('edit');
         try{
-          await db.collection('students').doc(tr.dataset.id).update({ full_name, parent_name, parent_phone });
-          toast('נשמר'); goto('myclass');
+          await db.collection('students').doc(student.id).update(data);
+          toast('נשמר'); box.innerHTML=''; goto('myclass');
         }catch(err){ toast('שגיאה: '+err.message); }
       });
-      actionsTd.querySelector('.cancel-student').addEventListener('click', ()=> goto('myclass'));
+      box.querySelector('#cancelStudentBtn').addEventListener('click', ()=>{ box.innerHTML=''; });
+    });
+  };
+
+  students.forEach(s=>{
+    body.querySelectorAll(`[data-id="${s.id}"]`).forEach(rootEl=>{
+      wireDelete(rootEl, s.id, s.full_name);
+      wireEdit(rootEl, s);
     });
   });
 }
@@ -619,7 +696,24 @@ async function renderTrips(body){
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
       };
-      try{ await db.collection('trips').add(payload); toast('הטיול נוצר'); goto('trips'); }
+      try{
+        const tripRef = await db.collection('trips').add(payload);
+        // יוצר מיד מסמך אישור (ממתין) לכל תלמידי הכיתה, ושומר "תמונת מצב" של שמות בלבד
+        // (בלי טלפון/ת.ז) ישירות על הטיול — כדי ש-trip-notice.html הציבורי יוכל להציג
+        // רשימת בחירה בטוחה, בלי לחשוף שום מידע רגיש.
+        const rosterSnap = await db.collection('students').where('class_id','==', class_id).get();
+        const roster_snapshot = rosterSnap.docs.map(d=>({ id: d.id, full_name: d.data().full_name }));
+        const batch = db.batch();
+        rosterSnap.docs.forEach(d=>{
+          batch.set(tripRef.collection('approvals').doc(d.id), {
+            student_name: d.data().full_name, status: 'pending', notified: false,
+            created_at: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+        });
+        batch.update(tripRef, { roster_snapshot });
+        await batch.commit();
+        toast('הטיול נוצר'); goto('trips');
+      }
       catch(err){ toast('שגיאה: '+err.message); }
     });
   }
@@ -646,8 +740,9 @@ function renderTripsList(container, trips){
             ${esc(t.location||'')}
           </div>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">✏️</button>` : ''}
+          ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">📣 שליחת חוזר</button>` : ''}
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>ניהול אישורים</span><span class="chev">⌄</span></button>
         </div>
       </div>
@@ -670,6 +765,25 @@ function renderTripsList(container, trips){
     }).join('');
   } else {
     container.innerHTML = trips.map(tripCardHtml).join('');
+  }
+
+  container.querySelectorAll('.send-notice').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const trip = trips.find(t=>t.id===btn.dataset.id);
+      const link = `${siteBaseUrl()}trip-notice.html?t=${trip.id}`;
+      const text = encodeURIComponent(`חוזר טיול — ${trip.title}\nכל הפרטים לצפייה כאן:\n${link}`);
+      // אין אפשרות טכנית לפתוח קבוצת וואטסאפ ספציפית בלחיצה אחת ללא WhatsApp Business API —
+      // wa.me/?text פותח את בורר הצ'אטים של וואטסאפ, ומשם בוחרים את קבוצת ההורים בלחיצה אחת.
+      window.open(`https://wa.me/?text=${text}`, '_blank');
+    });
+  });
+
+  // פתיחה אוטומטית של טיול שנבחר מלוח הבקרה (ראו renderHome)
+  if (typeof pendingOpenTripId !== 'undefined' && pendingOpenTripId){
+    const id = pendingOpenTripId;
+    pendingOpenTripId = null;
+    const btn = container.querySelector(`.toggle-trip[data-id="${id}"]`);
+    if (btn){ btn.click(); setTimeout(()=> btn.scrollIntoView({ behavior:'smooth', block:'center' }), 150); }
   }
 
   container.querySelectorAll('.toggle-trip').forEach(btn=>{
@@ -805,6 +919,59 @@ function openApprovalPrintView(trip, studentName, className, approval){
   w.document.close();
 }
 
+/* חלון "שליחה לכל הממתינים" — לא באמת אוטומטי (וואטסאפ מחייב אישור שליחה ידני בכל הודעה),
+   אבל מרכז את כל מי שממתין במקום אחד כדי לעבור עליהם אחד-אחד בלי לחפש בתפריט */
+function showBulkSendModal(trip, students, approvalsById){
+  const pending = students.filter(s=>{
+    const a = approvalsById[s.id];
+    return !(a && a.status === 'approved');
+  }).filter(s=> s.mother_phone || s.father_phone);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:460px;">
+      <h3>שליחה לכל הממתינים (${pending.length})</h3>
+      <p>לחיצה על כל אייקון פותחת הודעת וואטסאפ מוכנה לשליחה — יש לעבור אחד-אחד.</p>
+      <div id="bulkList" style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-primary btn-sm bulk-close">סגירה</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const listEl = overlay.querySelector('#bulkList');
+  listEl.innerHTML = pending.map(s=>{
+    const parents = [];
+    if (s.mother_phone) parents.push({ label:'אמא', phone:s.mother_phone });
+    if (s.father_phone) parents.push({ label:'אבא', phone:s.father_phone });
+    return `<div class="approval-row" style="margin-bottom:0;">
+      <strong>${esc(s.full_name)}</strong>
+      <div class="a-actions">
+        ${parents.map(pr=>`<button class="icon-btn wa bulk-send" data-id="${s.id}" data-phone="${pr.phone}" title="שליחה ל${pr.label}">${WA_ICON_SVG}</button>`).join('')}
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:var(--ink-soft);">אין תלמידים ממתינים עם מספר טלפון רשום.</p>';
+
+  listEl.querySelectorAll('.bulk-send').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const student = students.find(x=>x.id===btn.dataset.id);
+      const phone = btn.dataset.phone;
+      const winRef = window.open('', '_blank');
+      try{
+        await ensureApprovalDoc(trip.id, student);
+        const link = `${siteBaseUrl()}approve.html?t=${trip.id}&s=${student.id}`;
+        const text = encodeURIComponent(`שלום, זהו אישור טיול "${trip.title}" עבור ${student.full_name}.\nלצפייה בכל פרטי הטיול ולחתימה על האישור: ${link}`);
+        const waUrl = `https://wa.me/${phone.replace(/\D/g,'')}?text=${text}`;
+        if (winRef) winRef.location.href = waUrl; else window.open(waUrl, '_blank');
+        btn.disabled = true;
+        btn.style.opacity = '.35';
+      }catch(err){ if (winRef) winRef.close(); toast('שגיאה: '+err.message); }
+    });
+  });
+  overlay.querySelector('.bulk-close').addEventListener('click', ()=> overlay.remove());
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) overlay.remove(); });
+}
+
 async function renderTripDetail(panel, trip){
   const p = myProfile.permissions || {};
   const canManage = p.view_all_classes || (p.manage_class_roster && trip.class_id === myProfile.class_id);
@@ -823,12 +990,17 @@ async function renderTripDetail(panel, trip){
     return;
   }
 
-  panel.innerHTML = `<div id="approvalRows"></div>`;
+  panel.innerHTML = `
+    ${canManage ? `<div style="margin-bottom:16px;"><button class="btn btn-outline btn-sm" id="bulkSendBtn">📨 שליחה לכל הממתינים</button></div>` : ''}
+    <div id="approvalRows"></div>`;
   const rowsEl = panel.querySelector('#approvalRows');
 
   rowsEl.innerHTML = students.map(s=>{
     const appr = approvalsById[s.id];
     const isApproved = appr?.status === 'approved';
+    const parents = [];
+    if (s.mother_phone) parents.push({ label:'אמא', phone:s.mother_phone });
+    if (s.father_phone) parents.push({ label:'אבא', phone:s.father_phone });
     return `
       <div class="approval-row" data-student="${s.id}">
         <div>
@@ -836,8 +1008,8 @@ async function renderTripDetail(panel, trip){
           <div style="margin-top:4px;">${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}</div>
         </div>
         <div class="a-actions">
-          ${canManage && !isApproved ? `<button class="icon-btn wa send-wa" data-id="${s.id}" title="שליחת בקשת אישור בוואטסאפ">${WA_ICON_SVG}</button>` : ''}
-          ${s.parent_phone ? `<a class="icon-btn call" href="tel:${s.parent_phone.replace(/\D/g,'')}" title="שיחה ישירה עם ההורה">${PHONE_ICON_SVG}</a>` : ''}
+          ${canManage && !isApproved ? parents.map(pr=>`<button class="icon-btn wa send-wa" data-id="${s.id}" data-phone="${pr.phone}" title="שליחת בקשת אישור ל${pr.label} בוואטסאפ">${WA_ICON_SVG}</button>`).join('') : ''}
+          ${parents.map(pr=>`<a class="icon-btn call" href="tel:${pr.phone.replace(/\D/g,'')}" title="חיוג ל${pr.label}">${PHONE_ICON_SVG}</a>`).join('')}
           ${isApproved ? `<button class="icon-btn view view-approval" data-id="${s.id}" title="צפייה באישור">👁</button>` : ''}
           ${isApproved && canManage ? `<button class="icon-btn pdf print-approval" data-id="${s.id}" title="הדפסה / שמירה כ-PDF">${PDF_ICON_SVG}</button>` : ''}
         </div>
@@ -847,17 +1019,20 @@ async function renderTripDetail(panel, trip){
   rowsEl.querySelectorAll('.send-wa').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const student = students.find(x=>x.id===btn.dataset.id);
-      if (!student?.parent_phone){ toast('לא הוזן טלפון הורה לתלמיד/ה זה/זו'); return; }
+      const phone = btn.dataset.phone;
+      if (!phone){ toast('לא נמצא מספר טלפון'); return; }
       const winRef = window.open('', '_blank'); // נפתח מיד כדי לא להיחסם ע"י חוסם חלונות קופצים
       try{
         await ensureApprovalDoc(trip.id, student);
         const link = `${siteBaseUrl()}approve.html?t=${trip.id}&s=${student.id}`;
         const text = encodeURIComponent(`שלום, זהו אישור טיול "${trip.title}" עבור ${student.full_name}.\nלצפייה בכל פרטי הטיול ולחתימה על האישור: ${link}`);
-        const waUrl = `https://wa.me/${student.parent_phone.replace(/\D/g,'')}?text=${text}`;
+        const waUrl = `https://wa.me/${phone.replace(/\D/g,'')}?text=${text}`;
         if (winRef) winRef.location.href = waUrl; else window.open(waUrl, '_blank');
       }catch(err){ if (winRef) winRef.close(); toast('שגיאה: '+err.message); }
     });
   });
+
+  panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=> showBulkSendModal(trip, students, approvalsById));
 
   rowsEl.querySelectorAll('.view-approval').forEach(btn=>{
     btn.addEventListener('click', ()=>{
