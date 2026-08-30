@@ -422,6 +422,10 @@ table.data tr:last-child td{ border-bottom:none; }
 }
 .parent-label{ font-size:.78rem; color:var(--ink-soft); font-weight:600; white-space:nowrap; }
 .parent-icons{ display:flex; gap:4px; }
+.itinerary-row{ display:flex; gap:8px; margin-bottom:8px; }
+.itinerary-row input{
+  padding:10px 12px; border:1.5px solid var(--line); border-radius:var(--radius-sm); font-size:.92rem; background:#fbfcfe;
+}
 .icon-btn{
   width:46px; height:46px; border-radius:50%; border:1.5px solid var(--line); background:#fff;
   display:inline-flex; align-items:center; justify-content:center; font-size:1.2rem; text-decoration:none;
