@@ -16,7 +16,7 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.firestore();
+const db = firebase.firestore(users);
 
 // --- הגדרת ברירת המחדל של כל ההרשאות האפשריות במערכת ---
 // כל תפקיד הוא בסך הכל שם חופשי + מפה של ההרשאות האלו שסומנו לו ב-checkboxes.
