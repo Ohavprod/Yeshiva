@@ -17,11 +17,9 @@
   .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:26px; box-shadow:var(--shadow-sm); margin-bottom:22px; }
   .trip-meta{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:18px 0; font-size:.92rem; }
   .trip-meta div span{ display:block; color:var(--ink-soft); font-size:.78rem; }
-  .student-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; border:1.5px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
-  .student-row.approved{ border-color:var(--ok); background:var(--ok-bg); }
-  .sign-box{ margin-top:10px; display:none; }
-  .sign-box.open{ display:block; }
   .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
+  .approved-card{ text-align:center; padding:40px 24px; }
+  .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
 </style>
 </head>
 <body>
@@ -51,31 +49,94 @@ function toast(msg){
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 const params = new URLSearchParams(location.search);
-const token = params.get('t');
-const focusStudent = params.get('s');
+const tripId = params.get('t');
+const studentId = params.get('s');
+
+/* --- לוח חתימה פשוט (עכבר + מגע) --- */
+function setupSignaturePad(canvas){
+  const ctx = canvas.getContext('2d');
+  function resize(){
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio;
+    canvas.height = 160 * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#16203a';
+  }
+  resize();
+  let drawing = false;
+  let last = null;
+  function pos(e){
+    const rect = canvas.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+  }
+  function start(e){ e.preventDefault(); drawing = true; last = pos(e); }
+  function move(e){
+    if (!drawing) return;
+    e.preventDefault();
+    const p = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+  }
+  function end(){ drawing = false; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive:false });
+  canvas.addEventListener('touchmove', move, { passive:false });
+  canvas.addEventListener('touchend', end);
+  return {
+    clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); },
+    isEmpty(){
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width; blank.height = canvas.height;
+      return canvas.toDataURL() === blank.toDataURL();
+    },
+    dataUrl(){ return canvas.toDataURL('image/png'); },
+  };
+}
 
 async function load(){
   const content = document.getElementById('content');
-  if (!token){
+  if (!tripId || !studentId){
     content.innerHTML = '<p class="center-msg">קישור לא תקין. יש לוודא שהקישור המלא שהתקבל הועתק במלואו.</p>';
     return;
   }
-  const batchRef = db.collection('trip_batches').doc(token);
-  const batchSnap = await batchRef.get();
-  if (!batchSnap.exists){
-    content.innerHTML = '<p class="center-msg">לא נמצא טיול התואם לקישור זה. ייתכן שהקישור אינו תקין.</p>';
-    return;
-  }
-  const batch = batchSnap.data();
-  const tripSnap = await db.collection('trips').doc(batch.trip_id).get();
+  const tripRef = db.collection('trips').doc(tripId);
+  const approvalRef = tripRef.collection('approvals').doc(studentId);
+
+  const [tripSnap, approvalSnap] = await Promise.all([tripRef.get(), approvalRef.get()]);
   if (!tripSnap.exists){
     content.innerHTML = '<p class="center-msg">הטיול המשויך לקישור זה לא נמצא.</p>';
     return;
   }
+  if (!approvalSnap.exists){
+    content.innerHTML = '<p class="center-msg">לא נמצא אישור התואם לקישור זה. יש לפנות למחנך/ת הכיתה.</p>';
+    return;
+  }
   const trip = tripSnap.data();
-  const studentsSnap = await batchRef.collection('students').get();
-  let rows = studentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  if (focusStudent) rows = rows.filter(r => r.id === focusStudent);
+  const approval = approvalSnap.data();
+  const studentName = approval.student_name || '';
+
+  if (approval.status === 'approved'){
+    const approvedDate = approval.approved_at?.toDate ? approval.approved_at.toDate() : null;
+    content.innerHTML = `
+      <div class="trip-card approved-card">
+        <div class="big-check">✅</div>
+        <h2 style="margin:0 0 6px;">האישור כבר נקלט, תודה!</h2>
+        <p style="color:var(--ink-soft); margin:0;">
+          ${esc(studentName)} אושר/ה לטיול "${esc(trip.title)}"<br>
+          ע״י ${esc(approval.approved_by_name||'')} ${approvedDate ? '· ' + approvedDate.toLocaleDateString('he-IL') : ''}
+        </p>
+      </div>`;
+    return;
+  }
 
   content.innerHTML = `
     <div class="trip-card">
@@ -89,57 +150,42 @@ async function load(){
       </div>
       ${trip.notes ? `<p style="color:var(--ink-soft); font-size:.9rem; border-top:1px solid var(--line); padding-top:14px;">${esc(trip.notes)}</p>` : ''}
     </div>
-    <h3 style="font-size:1.05rem;">${rows.length>1 ? 'אישור עבור התלמידים הבאים' : 'אישור השתתפות'}</h3>
-    <div id="studentRows"></div>
+    <div class="trip-card">
+      <h3 style="margin-top:0;">אישור השתתפות עבור ${esc(studentName)}</h3>
+      <div class="field">
+        <label>שם ההורה/ת המאשר/ת</label>
+        <input placeholder="שם מלא" id="approverName">
+      </div>
+      <div class="field">
+        <label>חתימה</label>
+        <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+        <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
+      </div>
+      <button class="btn btn-primary" style="width:100%;" id="submitApproval">✓ שליחת אישור</button>
+    </div>
   `;
 
-  const wrap = document.getElementById('studentRows');
-  wrap.innerHTML = rows.map(r => `
-    <div class="student-row ${r.status==='approved' ? 'approved':''}" data-student="${r.id}">
-      <div style="width:100%;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <strong>${esc(r.student_name)}</strong>
-          ${r.status==='approved'
-            ? `<span class="badge badge-ok">✓ אושר ע״י ${esc(r.approved_by_name||'')}</span>`
-            : `<button class="btn btn-primary btn-sm open-sign">אישור והשתתפות</button>`}
-        </div>
-        <div class="sign-box" id="sign-${r.id}">
-          <div class="field" style="margin-top:12px;">
-            <label>שם ההורה/ת המאשר/ת</label>
-            <input placeholder="שם מלא" id="name-${r.id}">
-          </div>
-          <button class="btn btn-primary btn-sm confirm-sign" data-student="${r.id}">✓ אני מאשר/ת השתתפות</button>
-        </div>
-      </div>
-    </div>
-  `).join('');
+  const pad = setupSignaturePad(document.getElementById('sigCanvas'));
+  document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
 
-  wrap.querySelectorAll('.open-sign').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const row = btn.closest('.student-row');
-      row.querySelector('.sign-box').classList.add('open');
-      btn.style.display = 'none';
-    });
-  });
-  wrap.querySelectorAll('.confirm-sign').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const sid = btn.dataset.student;
-      const name = document.getElementById('name-'+sid).value.trim();
-      if (!name){ toast('יש להזין שם'); return; }
-      btn.disabled = true;
-      try{
-        await batchRef.collection('students').doc(sid).update({
-          status: 'approved',
-          approved_by_name: name,
-          approved_at: firebase.firestore.FieldValue.serverTimestamp(),
-        });
-        toast('האישור נקלט, תודה!');
-        load();
-      }catch(err){
-        toast('אירעה שגיאה, נסו שוב');
-        btn.disabled = false;
-      }
-    });
+  document.getElementById('submitApproval').addEventListener('click', async ()=>{
+    const name = document.getElementById('approverName').value.trim();
+    if (!name){ toast('יש להזין שם'); return; }
+    if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
+    const btn = document.getElementById('submitApproval');
+    btn.disabled = true; btn.textContent = 'שולח…';
+    try{
+      await approvalRef.update({
+        status: 'approved',
+        approved_by_name: name,
+        signature: pad.dataUrl(),
+        approved_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      load();
+    }catch(err){
+      toast('אירעה שגיאה, נסו שוב');
+      btn.disabled = false; btn.textContent = '✓ שליחת אישור';
+    }
   });
 }
 load();
