@@ -105,14 +105,16 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/js/supabaseClient.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="assets/js/firebaseClient.js"></script>
 <script>
 /* ============================================================
    STATE
    ============================================================ */
-let me = null;        // auth user
-let myProfile = null; // profiles row
+let me = null;        // firebase auth user
+let myProfile = null; // users/{uid} document data
 let classesCache = [];
 let tripTypesCache = [];
 
@@ -128,20 +130,33 @@ function show(id){
   });
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function permissionsCheckboxesHtml(idPrefix, currentPerms){
+  currentPerms = currentPerms || {};
+  return `<div class="checkgroup">${ALL_PERMISSIONS.map(p => `
+    <label class="chip-check ${currentPerms[p.key] ? 'checked':''}">
+      <input type="checkbox" id="${idPrefix}_${p.key}" data-perm="${p.key}" ${currentPerms[p.key] ? 'checked':''}> ${esc(p.label)}
+    </label>`).join('')}</div>`;
+}
+function wirePermissionChips(container){
+  container.querySelectorAll('.chip-check').forEach(chip=>{
+    chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
+  });
+}
+function collectPermissions(container, idPrefix){
+  const perms = {};
+  ALL_PERMISSIONS.forEach(p=>{
+    perms[p.key] = !!container.querySelector(`#${idPrefix}_${p.key}`)?.checked;
+  });
+  return perms;
+}
 
 /* ============================================================
    AUTH BOOTSTRAP
    ============================================================ */
-async function init(){
-  // Supabase puts recovery/invite tokens in the URL hash
-  if (location.hash.includes('type=invite') || location.hash.includes('type=recovery')) {
-    const { data } = await sb.auth.getSession();
-    if (data?.session) { show('setPasswordView'); return; }
-  }
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) await onSignedIn(session);
-  else show('loginView');
-}
+auth.onAuthStateChanged(async (user)=>{
+  if (user) await onSignedIn(user);
+  else { me = null; myProfile = null; show('loginView'); }
+});
 
 document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -149,68 +164,67 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   const password = document.getElementById('loginPassword').value;
   const msgEl = document.getElementById('loginMsg');
   msgEl.innerHTML = '';
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error){
+  try{
+    await auth.signInWithEmailAndPassword(email, password);
+  }catch(err){
     msgEl.innerHTML = `<div class="login-msg err">שגיאה בהתחברות: פרטים שגויים או שהחשבון אינו קיים.</div>`;
-    return;
   }
-  await onSignedIn(data.session);
 });
 
 document.getElementById('setPwForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const newPassword = document.getElementById('newPassword').value;
-  const { error } = await sb.auth.updateUser({ password: newPassword });
   const msgEl = document.getElementById('setPwMsg');
-  if (error){
-    msgEl.innerHTML = `<div class="login-msg err">${esc(error.message)}</div>`;
-    return;
+  try{
+    await auth.currentUser.updatePassword(newPassword);
+    await db.collection('users').doc(me.uid).update({ needs_password_change: false });
+    myProfile.needs_password_change = false;
+    await enterApp();
+  }catch(err){
+    msgEl.innerHTML = `<div class="login-msg err">${esc(err.message)}</div>`;
   }
-  const { data: { session } } = await sb.auth.getSession();
-  await onSignedIn(session);
 });
 
 document.getElementById('pendingSignOut').addEventListener('click', async ()=>{
-  await sb.auth.signOut(); location.reload();
+  await auth.signOut(); location.reload();
 });
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
-  await sb.auth.signOut(); location.reload();
+  await auth.signOut(); location.reload();
 });
 
-async function onSignedIn(session){
-  me = session.user;
-  const { data: profile, error } = await sb.from('profiles').select('*').eq('id', me.id).single();
-  if (error || !profile){ show('loginView'); return; }
-  myProfile = profile;
+async function onSignedIn(user){
+  me = user;
+  const snap = await db.collection('users').doc(me.uid).get();
+  if (!snap.exists){ show('pendingView'); return; }
+  myProfile = { id: snap.id, ...snap.data() };
+  if (myProfile.needs_password_change){ show('setPasswordView'); return; }
+  await enterApp();
+}
 
-  if (myProfile.role === 'pending'){ show('pendingView'); return; }
-
-  document.getElementById('userTag').textContent = `${myProfile.full_name} · ${roleLabel(myProfile.role)}`;
-  document.getElementById('rolePill').textContent = roleLabel(myProfile.role);
+async function enterApp(){
+  document.getElementById('userTag').textContent = `${myProfile.full_name} · ${esc(myProfile.role||'')}`;
+  document.getElementById('rolePill').textContent = myProfile.role || '';
   buildSideNav();
   show('appShell');
   goto('home');
 }
 
-function roleLabel(r){
-  return { teacher:'מחנך/ת', principal:'מנהל/ת', admin:'מנהל מערכת', pending:'ממתין' }[r] || r;
-}
-
 /* ============================================================
-   NAV / ROUTING
+   NAV / ROUTING — visibility driven by permission checkboxes, not fixed roles
    ============================================================ */
 function buildSideNav(){
+  const p = myProfile.permissions || {};
   const nav = document.getElementById('sideNav');
   const items = [
-    { id:'home', label:'לוח בקרה', icon:'🏠', roles:['teacher','principal','admin'] },
-    { id:'myclass', label:'הכיתה שלי', icon:'🎓', roles:['teacher'] },
-    { id:'trips', label:'טיולים ואישורים', icon:'🧭', roles:['teacher','principal','admin'] },
-    { id:'announcements', label:'עדכונים באתר', icon:'📣', roles:['principal','admin'] },
-    { id:'classes', label:'ניהול כיתות', icon:'🏫', roles:['admin','principal'] },
-    { id:'users', label:'ניהול משתמשים', icon:'👤', roles:['admin'] },
-    { id:'triptypes', label:'סוגי טיולים', icon:'🗂', roles:['admin','principal'] },
+    { id:'home', label:'לוח בקרה', icon:'🏠', show:true },
+    { id:'myclass', label:'הכיתה שלי', icon:'🎓', show: !!myProfile.class_id && !!p.manage_class_roster },
+    { id:'trips', label:'טיולים ואישורים', icon:'🧭', show:true },
+    { id:'announcements', label:'עדכונים באתר', icon:'📣', show: !!p.manage_announcements },
+    { id:'classes', label:'ניהול כיתות', icon:'🏫', show: !!p.manage_classes },
+    { id:'users', label:'ניהול משתמשים', icon:'👤', show: !!p.manage_users },
+    { id:'triptypes', label:'סוגי טיולים', icon:'🗂', show: !!p.manage_trip_types },
   ];
-  nav.innerHTML = items.filter(i=>i.roles.includes(myProfile.role)).map(i=>
+  nav.innerHTML = items.filter(i=>i.show).map(i=>
     `<a href="#" class="side-link" data-view="${i.id}">${i.icon} ${i.label}</a>`
   ).join('');
   nav.querySelectorAll('.side-link').forEach(a=>{
@@ -247,43 +261,53 @@ async function goto(view){
    HOME
    ============================================================ */
 async function renderHome(body){
-  const [{ count: classCount }, { count: studentCount }, { count: tripCount }, { count: pendingCount }] = await Promise.all([
-    sb.from('classes').select('*', { count:'exact', head:true }),
-    sb.from('students').select('*', { count:'exact', head:true }),
-    sb.from('trips').select('*', { count:'exact', head:true }),
-    sb.from('trip_batch_students').select('*', { count:'exact', head:true }).eq('status','pending'),
+  const p = myProfile.permissions || {};
+  const [classSnap, studentSnap, tripSnap] = await Promise.all([
+    db.collection('classes').get(),
+    db.collection('students').get(),
+    db.collection('trips').get(),
   ]);
+  // "אישורים ממתינים" נספר דרך כל ה-batches הפעילים (יעיל מספיק בקנה מידה של ישיבה אחת)
+  let pendingCount = 0;
+  const batchesSnap = await db.collection('trip_batches').get();
+  for (const b of batchesSnap.docs){
+    const studentsSnap = await b.ref.collection('students').where('status','==','pending').get();
+    pendingCount += studentsSnap.size;
+  }
   body.innerHTML = `
     <div class="stat-row">
-      <div class="stat"><div class="num">${classCount ?? 0}</div><div class="lbl">כיתות</div></div>
-      <div class="stat"><div class="num">${studentCount ?? 0}</div><div class="lbl">תלמידים</div></div>
-      <div class="stat"><div class="num">${tripCount ?? 0}</div><div class="lbl">טיולים</div></div>
-      <div class="stat"><div class="num">${pendingCount ?? 0}</div><div class="lbl">אישורים ממתינים</div></div>
+      <div class="stat"><div class="num">${classSnap.size}</div><div class="lbl">כיתות</div></div>
+      <div class="stat"><div class="num">${studentSnap.size}</div><div class="lbl">תלמידים</div></div>
+      <div class="stat"><div class="num">${tripSnap.size}</div><div class="lbl">טיולים</div></div>
+      <div class="stat"><div class="num">${pendingCount}</div><div class="lbl">אישורים ממתינים</div></div>
     </div>
     <div class="card card-pad">
       <h3 style="margin-top:0;">שלום, ${esc(myProfile.full_name)} 👋</h3>
       <p style="color:var(--ink-soft); margin:0;">
-        ${myProfile.role==='teacher' ? 'ניתן לנהל את רשימת הכיתה שלך וליצור אישורי טיולים חדשים דרך התפריט בצד.' : ''}
-        ${myProfile.role==='principal' ? 'תצוגה זו מציגה מבט-על על כלל הכיתות והטיולים בישיבה.' : ''}
-        ${myProfile.role==='admin' ? 'כמנהל מערכת ניתן ליצור משתמשים, כיתות וסוגי טיולים, ולערוך כל רשומה במערכת.' : ''}
+        התפקיד שלך במערכת: <b>${esc(myProfile.role||'')}</b>.
+        ${p.manage_users ? 'יש לך גישת ניהול מלאה — ניתן ליצור משתמשים ולקבוע לכל אחד את ההרשאות שלו.' : ''}
+        ${!p.manage_users && p.view_all_classes ? 'יש לך תצוגה על כלל הכיתות והטיולים בישיבה.' : ''}
+        ${!p.view_all_classes && p.manage_class_roster ? 'ניתן לנהל את רשימת הכיתה שלך וליצור אישורי טיולים חדשים דרך התפריט בצד.' : ''}
       </p>
     </div>`;
 }
 
 /* ============================================================
-   MY CLASS (teacher: manage students)
+   MY CLASS (teacher-like: manage own class roster)
    ============================================================ */
 async function renderMyClass(body){
   if (!myProfile.class_id){
     body.innerHTML = `<div class="card card-pad">עדיין לא שויכת לכיתה. יש לפנות למנהל המערכת לשיוך כיתה לחשבונך.</div>`;
     return;
   }
-  const { data: cls } = await sb.from('classes').select('*').eq('id', myProfile.class_id).single();
-  const { data: students } = await sb.from('students').select('*').eq('class_id', myProfile.class_id).order('full_name');
+  const clsSnap = await db.collection('classes').doc(myProfile.class_id).get();
+  const cls = clsSnap.exists ? clsSnap.data() : {};
+  const studentsSnap = await db.collection('students').where('class_id','==', myProfile.class_id).orderBy('full_name').get();
+  const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
-      <h3 style="margin-top:0;">כיתה: ${esc(cls?.name || '')}</h3>
+      <h3 style="margin-top:0;">כיתה: ${esc(cls.name || '')}</h3>
       <form id="addStudentForm" class="form-grid">
         <div class="field"><label>שם התלמיד/ה</label><input required id="s_name"></div>
         <div class="field"><label>שם ההורה</label><input id="s_parent_name"></div>
@@ -297,7 +321,7 @@ async function renderMyClass(body){
       <table class="data">
         <thead><tr><th>שם התלמיד/ה</th><th>הורה</th><th>טלפון</th><th></th></tr></thead>
         <tbody id="studentsTbody">
-          ${(students||[]).map(s=>`
+          ${students.map(s=>`
             <tr data-id="${s.id}">
               <td class="c-name">${esc(s.full_name)}</td>
               <td class="c-parent">${esc(s.parent_name||'—')}</td>
@@ -316,17 +340,17 @@ async function renderMyClass(body){
     const full_name = document.getElementById('s_name').value.trim();
     const parent_name = document.getElementById('s_parent_name').value.trim();
     const parent_phone = document.getElementById('s_phone').value.trim();
-    const { error } = await sb.from('students').insert({ class_id: myProfile.class_id, full_name, parent_name, parent_phone });
-    if (error){ toast('שגיאה: '+error.message); return; }
-    toast('התלמיד נוסף'); goto('myclass');
+    try{
+      await db.collection('students').add({ class_id: myProfile.class_id, full_name, parent_name, parent_phone });
+      toast('התלמיד נוסף'); goto('myclass');
+    }catch(err){ toast('שגיאה: '+err.message); }
   });
   body.querySelectorAll('.del-student').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const tr = btn.closest('tr');
       if (!confirm('למחוק תלמיד זה מהכיתה?')) return;
-      const { error } = await sb.from('students').delete().eq('id', tr.dataset.id);
-      if (error){ toast('שגיאה: '+error.message); return; }
-      tr.remove();
+      try{ await db.collection('students').doc(tr.dataset.id).delete(); tr.remove(); }
+      catch(err){ toast('שגיאה: '+err.message); }
     });
   });
   body.querySelectorAll('.edit-student').forEach(btn=>{
@@ -346,9 +370,10 @@ async function renderMyClass(body){
         const full_name = tr.querySelector('.ei-name').value.trim();
         const parent_name = tr.querySelector('.ei-parent').value.trim();
         const parent_phone = tr.querySelector('.ei-phone').value.trim();
-        const { error } = await sb.from('students').update({ full_name, parent_name, parent_phone }).eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        toast('נשמר'); goto('myclass');
+        try{
+          await db.collection('students').doc(tr.dataset.id).update({ full_name, parent_name, parent_phone });
+          toast('נשמר'); goto('myclass');
+        }catch(err){ toast('שגיאה: '+err.message); }
       });
       actionsTd.querySelector('.cancel-student').addEventListener('click', ()=> goto('myclass'));
     });
@@ -356,19 +381,27 @@ async function renderMyClass(body){
 }
 
 /* ============================================================
-   TRIPS + APPROVALS  (shared across teacher / principal / admin — RLS scopes the data)
+   TRIPS + APPROVALS
    ============================================================ */
 async function renderTrips(body){
-  const [{ data: trips }, { data: classes }, { data: types }] = await Promise.all([
-    sb.from('trips').select('*, classes(name), trip_types(name)').order('created_at', { ascending:false }),
-    sb.from('classes').select('*').order('name'),
-    sb.from('trip_types').select('*').order('name'),
+  const p = myProfile.permissions || {};
+  const [classesSnap, typesSnap] = await Promise.all([
+    db.collection('classes').orderBy('name').get(),
+    db.collection('trip_types').orderBy('name').get(),
   ]);
-  classesCache = classes || [];
-  tripTypesCache = types || [];
+  classesCache = classesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  tripTypesCache = typesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
-  const canCreate = myProfile.role === 'teacher' || myProfile.role === 'admin';
-  const classOptionsForCreate = myProfile.role === 'admin'
+  let tripsQuery = db.collection('trips').orderBy('created_at','desc');
+  if (!p.view_all_classes){
+    tripsQuery = myProfile.class_id
+      ? db.collection('trips').where('class_id','==', myProfile.class_id).orderBy('created_at','desc')
+      : null;
+  }
+  const trips = tripsQuery ? (await tripsQuery.get()).docs.map(d=>({ id:d.id, ...d.data() })) : [];
+
+  const canCreate = !!p.create_trips;
+  const classOptionsForCreate = p.view_all_classes
     ? classesCache.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')
     : `<option value="${myProfile.class_id||''}">${esc(classesCache.find(c=>c.id===myProfile.class_id)?.name || '(אין כיתה משויכת)')}</option>`;
 
@@ -383,7 +416,7 @@ async function renderTrips(body){
             ${tripTypesCache.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}
           </select>
         </div>
-        ${myProfile.role==='admin' ? `<div class="field"><label>כיתה</label><select id="t_class">${classOptionsForCreate}</select></div>` : `<input type="hidden" id="t_class" value="${myProfile.class_id||''}">`}
+        ${p.view_all_classes ? `<div class="field"><label>כיתה</label><select id="t_class">${classOptionsForCreate}</select></div>` : `<input type="hidden" id="t_class" value="${myProfile.class_id||''}">`}
         <div class="field"><label>כותרת הטיול</label><input required id="t_title" placeholder="לדוגמה: טיול שנתי לצפון"></div>
         <div class="field"><label>יעד / מיקום</label><input id="t_location"></div>
         <div class="field"><label>תאריך</label><input type="date" id="t_date"></div>
@@ -413,18 +446,19 @@ async function renderTrips(body){
         cost: document.getElementById('t_cost').value.trim(),
         notes: document.getElementById('t_notes').value.trim(),
         created_by: myProfile.id,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
       };
-      const { error } = await sb.from('trips').insert(payload);
-      if (error){ toast('שגיאה: '+error.message); return; }
-      toast('הטיול נוצר'); goto('trips');
+      try{ await db.collection('trips').add(payload); toast('הטיול נוצר'); goto('trips'); }
+      catch(err){ toast('שגיאה: '+err.message); }
     });
   }
 
-  renderTripsList(document.getElementById('tripsList'), trips || []);
+  renderTripsList(document.getElementById('tripsList'), trips);
 }
 
 function renderTripsList(container, trips){
-  const canEditInfo = myProfile.role === 'admin' || myProfile.role === 'principal';
+  const p = myProfile.permissions || {};
+  const canEditInfo = !!p.edit_trip_details;
   if (trips.length === 0){
     container.innerHTML = `<div class="card card-pad" style="color:var(--ink-soft);">אין עדיין טיולים רשומים.</div>`;
     return;
@@ -433,9 +467,9 @@ function renderTripsList(container, trips){
     <div class="card card-pad" style="margin-bottom:18px;" data-trip-id="${t.id}">
       <div class="trip-summary" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
         <div>
-          <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(t.classes?.name||'')}</span></h3>
+          <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classesCache.find(c=>c.id===t.class_id)?.name||'')}</span></h3>
           <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
-            ${t.trip_types?.name ? esc(t.trip_types.name)+' · ' : ''}
+            ${tripTypesCache.find(tt=>tt.id===t.trip_type_id)?.name ? esc(tripTypesCache.find(tt=>tt.id===t.trip_type_id).name)+' · ' : ''}
             ${t.trip_date ? new Date(t.trip_date).toLocaleDateString('he-IL')+' · ' : ''}
             ${esc(t.location||'')}
           </div>
@@ -500,25 +534,29 @@ function renderTripsList(container, trips){
           cost: document.getElementById(`et_cost_${id}`).value.trim(),
           notes: document.getElementById(`et_notes_${id}`).value.trim(),
         };
-        const { error } = await sb.from('trips').update(payload).eq('id', id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        toast('הטיול עודכן'); goto('trips');
+        try{ await db.collection('trips').doc(id).update(payload); toast('הטיול עודכן'); goto('trips'); }
+        catch(err){ toast('שגיאה: '+err.message); }
       });
     });
   });
 }
 
 async function renderTripDetail(panel, trip){
-  const canManage = myProfile.role === 'admin' || (myProfile.role === 'teacher' && trip.class_id === myProfile.class_id);
-  const { data: students } = await sb.from('students').select('*').eq('class_id', trip.class_id).order('full_name');
-  const { data: batches } = await sb.from('trip_batches').select('*').eq('trip_id', trip.id).order('created_at');
-  let batchStudents = [];
-  if (batches && batches.length){
-    const { data } = await sb.from('trip_batch_students').select('*, students(full_name, parent_phone)').in('batch_id', batches.map(b=>b.id));
-    batchStudents = data || [];
+  const p = myProfile.permissions || {};
+  const canManage = p.view_all_classes || (p.manage_class_roster && trip.class_id === myProfile.class_id);
+  const studentsSnap = await db.collection('students').where('class_id','==', trip.class_id).orderBy('full_name').get();
+  const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+
+  const batchesSnap = await db.collection('trip_batches').where('trip_id','==', trip.id).get();
+  const batches = batchesSnap.docs.map(d=>({ token: d.id, ...d.data() }));
+  let batchStudentsByToken = {};
+  const includedIds = new Set();
+  for (const b of batches){
+    const sSnap = await db.collection('trip_batches').doc(b.token).collection('students').get();
+    batchStudentsByToken[b.token] = sSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+    batchStudentsByToken[b.token].forEach(r=>includedIds.add(r.id));
   }
-  const includedIds = new Set(batchStudents.map(bs=>bs.student_id));
-  const notYetSent = (students||[]).filter(s=>!includedIds.has(s.id));
+  const notYetSent = students.filter(s=>!includedIds.has(s.id));
 
   panel.innerHTML = `
     ${canManage ? `
@@ -552,48 +590,56 @@ async function renderTripDetail(panel, trip){
       panel.querySelector('#sendBatchBtn')?.addEventListener('click', async ()=>{
         const ids = Array.from(picker.querySelectorAll('input:checked')).map(i=>i.value);
         if (ids.length === 0){ toast('יש לבחור לפחות תלמיד אחד'); return; }
-        const { data: batch, error: bErr } = await sb.from('trip_batches')
-          .insert({ trip_id: trip.id, created_by: myProfile.id }).select().single();
-        if (bErr){ toast('שגיאה: '+bErr.message); return; }
-        const rows = ids.map(sid => ({ batch_id: batch.id, student_id: sid }));
-        const { error: tErr } = await sb.from('trip_batch_students').insert(rows);
-        if (tErr){ toast('שגיאה: '+tErr.message); return; }
-        toast('הקישור נשלח — ניתן להעתיק ולשתף בוואטסאפ');
-        panel.dataset.loaded = '';
-        await renderTripDetail(panel, trip);
+        try{
+          const token = genToken();
+          const batchRef = db.collection('trip_batches').doc(token);
+          await batchRef.set({ trip_id: trip.id, created_by: myProfile.id, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+          const batch = db.batch();
+          ids.forEach(sid=>{
+            const s = students.find(x=>x.id===sid);
+            batch.set(batchRef.collection('students').doc(sid), { student_name: s.full_name, status: 'pending' });
+          });
+          await batch.commit();
+          toast('הקישור נשלח — ניתן להעתיק ולשתף בוואטסאפ');
+          panel.dataset.loaded = '';
+          await renderTripDetail(panel, trip);
+        }catch(err){ toast('שגיאה: '+err.message); }
       });
     }
   }
 
   const batchesArea = panel.querySelector('#batchesArea');
-  if (!batches || batches.length === 0){
+  if (batches.length === 0){
     batchesArea.innerHTML = `<p style="color:var(--ink-soft); font-size:.9rem;">טרם נשלחו אישורים עבור טיול זה.</p>`;
     return;
   }
   batchesArea.innerHTML = batches.map(b=>{
-    const rows = batchStudents.filter(bs=>bs.batch_id === b.id);
+    const rows = batchStudentsByToken[b.token] || [];
     const groupLink = `${location.origin}${location.pathname.replace('staff.html','')}approve.html?t=${b.token}`;
     const approvedCount = rows.filter(r=>r.status==='approved').length;
+    const createdDate = b.created_at?.toDate ? b.created_at.toDate() : new Date();
     return `
       <div style="border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-          <div style="font-size:.85rem; color:var(--ink-soft);">שליחה מ־${new Date(b.created_at).toLocaleDateString('he-IL')} · ${approvedCount}/${rows.length} אישרו</div>
+          <div style="font-size:.85rem; color:var(--ink-soft);">שליחה מ־${createdDate.toLocaleDateString('he-IL')} · ${approvedCount}/${rows.length} אישרו</div>
           <button class="btn btn-outline btn-sm copy-link" data-link="${esc(groupLink)}">🔗 העתקת קישור קבוצתי</button>
         </div>
         <table class="data">
           <thead><tr><th>תלמיד/ה</th><th>סטטוס</th><th>נחתם ע״י</th><th></th></tr></thead>
           <tbody>
             ${rows.map(r=>{
-              const personalLink = `${groupLink}&s=${r.student_id}`;
+              const studentFull = students.find(s=>s.id===r.id);
+              const personalLink = `${groupLink}&s=${r.id}`;
               const waText = encodeURIComponent(
-                `שלום, זהו אישור טיול "${trip.title}" עבור ${r.students?.full_name || ''}.\nלאישור ההשתתפות: ${personalLink}`
+                `שלום, זהו אישור טיול "${trip.title}" עבור ${r.student_name || ''}.\nלאישור ההשתתפות: ${personalLink}`
               );
-              const waHref = r.students?.parent_phone ? `https://wa.me/${r.students.parent_phone.replace(/\D/g,'')}?text=${waText}` : null;
+              const waHref = studentFull?.parent_phone ? `https://wa.me/${studentFull.parent_phone.replace(/\D/g,'')}?text=${waText}` : null;
+              const approvedDate = r.approved_at?.toDate ? r.approved_at.toDate() : null;
               return `
               <tr>
-                <td>${esc(r.students?.full_name||'')}</td>
+                <td>${esc(r.student_name||'')}</td>
                 <td>${r.status==='approved' ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין</span>'}</td>
-                <td>${r.status==='approved' ? `${esc(r.approved_by_name||'')}<br><span style="font-size:.75rem;color:var(--ink-soft);">${new Date(r.approved_at).toLocaleString('he-IL')}</span>` : '—'}</td>
+                <td>${r.status==='approved' ? `${esc(r.approved_by_name||'')}<br><span style="font-size:.75rem;color:var(--ink-soft);">${approvedDate ? approvedDate.toLocaleString('he-IL') : ''}</span>` : '—'}</td>
                 <td>${waHref ? `<a class="wa-link" target="_blank" href="${waHref}">${r.status==='approved'?'שליחה חוזרת':'שליחת וואטסאפ'} ↗</a>` : ''}</td>
               </tr>`;
             }).join('')}
@@ -611,10 +657,11 @@ async function renderTripDetail(panel, trip){
 }
 
 /* ============================================================
-   ANNOUNCEMENTS (principal/admin)
+   ANNOUNCEMENTS
    ============================================================ */
 async function renderAnnouncements(body){
-  const { data } = await sb.from('announcements').select('*').order('created_at', { ascending:false });
+  const snap = await db.collection('announcements').orderBy('created_at','desc').get();
+  const data = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">עדכון חדש</h3>
@@ -627,7 +674,7 @@ async function renderAnnouncements(body){
       <table class="data">
         <thead><tr><th>טקסט</th><th>פעיל</th><th></th></tr></thead>
         <tbody>
-          ${(data||[]).map(a=>`
+          ${data.map(a=>`
             <tr data-id="${a.id}">
               <td class="c-body">${esc(a.body)}</td>
               <td>${a.is_active ? '<span class="badge badge-ok">פעיל</span>' : '<span class="badge badge-wait">מוסתר</span>'}</td>
@@ -644,26 +691,25 @@ async function renderAnnouncements(body){
   document.getElementById('newAnnForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const val = document.getElementById('ann_body').value.trim();
-    const { error } = await sb.from('announcements').insert({ body: val, created_by: myProfile.id });
-    if (error){ toast('שגיאה: '+error.message); return; }
-    goto('announcements');
+    try{
+      await db.collection('announcements').add({ body: val, is_active: true, created_by: myProfile.id, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+      goto('announcements');
+    }catch(err){ toast('שגיאה: '+err.message); }
   });
   body.querySelectorAll('.toggle-ann').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const tr = btn.closest('tr');
       const row = data.find(a=>a.id===tr.dataset.id);
-      const { error } = await sb.from('announcements').update({ is_active: !row.is_active }).eq('id', row.id);
-      if (error){ toast('שגיאה: '+error.message); return; }
-      goto('announcements');
+      try{ await db.collection('announcements').doc(row.id).update({ is_active: !row.is_active }); goto('announcements'); }
+      catch(err){ toast('שגיאה: '+err.message); }
     });
   });
   body.querySelectorAll('.del-ann').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       if (!confirm('למחוק עדכון זה?')) return;
       const tr = btn.closest('tr');
-      const { error } = await sb.from('announcements').delete().eq('id', tr.dataset.id);
-      if (error){ toast('שגיאה: '+error.message); return; }
-      goto('announcements');
+      try{ await db.collection('announcements').doc(tr.dataset.id).delete(); goto('announcements'); }
+      catch(err){ toast('שגיאה: '+err.message); }
     });
   });
   body.querySelectorAll('.edit-ann').forEach(btn=>{
@@ -677,9 +723,8 @@ async function renderAnnouncements(body){
       actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-ann">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-ann">ביטול</button>`;
       actionsTd.querySelector('.save-ann').addEventListener('click', async ()=>{
         const val2 = tr.querySelector('.ei-body').value.trim();
-        const { error } = await sb.from('announcements').update({ body: val2 }).eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        toast('נשמר'); goto('announcements');
+        try{ await db.collection('announcements').doc(tr.dataset.id).update({ body: val2 }); toast('נשמר'); goto('announcements'); }
+        catch(err){ toast('שגיאה: '+err.message); }
       });
       actionsTd.querySelector('.cancel-ann').addEventListener('click', ()=> goto('announcements'));
     });
@@ -687,13 +732,20 @@ async function renderAnnouncements(body){
 }
 
 /* ============================================================
-   CLASSES (admin)
+   CLASSES
    ============================================================ */
 async function renderClasses(body){
-  const isAdmin = myProfile.role === 'admin';
-  const { data: classes } = await sb.from('classes').select('*, profiles!classes_homeroom_teacher_id_fkey(full_name)').order('name');
+  const p = myProfile.permissions || {};
+  const snap = await db.collection('classes').orderBy('name').get();
+  const classes = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  // שם המחנך/ת המשויכ/ת — נטען מתוך users, לפי class_id (טעינה חד-פעמית)
+  const usersSnap = await db.collection('users').get().catch(()=>({docs:[]}));
+  const teacherNameFor = (classId) => {
+    const t = usersSnap.docs?.find?.(d=>d.data().class_id===classId);
+    return t ? t.data().full_name : null;
+  };
   body.innerHTML = `
-    ${isAdmin ? `
+    ${p.manage_classes ? `
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">כיתה חדשה</h3>
       <form id="newClassForm" style="display:flex; gap:10px;">
@@ -705,34 +757,34 @@ async function renderClasses(body){
       <table class="data">
         <thead><tr><th>שם הכיתה</th><th>מחנך/ת</th><th></th></tr></thead>
         <tbody>
-          ${(classes||[]).map(c=>`
+          ${classes.map(c=>`
             <tr data-id="${c.id}">
               <td class="c-name">${esc(c.name)}</td>
-              <td>${esc(c.profiles?.full_name || '— לא שויך —')}</td>
+              <td>${esc(teacherNameFor(c.id) || '— לא שויך —')}</td>
               <td style="display:flex; gap:6px;">
                 <button class="btn btn-outline btn-sm edit-class" title="עריכה">✏️</button>
-                ${isAdmin ? '<button class="btn btn-outline btn-sm del-class" title="מחיקה">🗑</button>' : ''}
+                ${p.delete_classes ? '<button class="btn btn-outline btn-sm del-class" title="מחיקה">🗑</button>' : ''}
               </td>
             </tr>`).join('') || '<tr><td colspan="3" style="color:var(--ink-soft);">אין עדיין כיתות</td></tr>'}
         </tbody>
       </table>
     </div>`;
 
-  if (isAdmin){
+  if (p.manage_classes){
     document.getElementById('newClassForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
       const name = document.getElementById('cls_name').value.trim();
-      const { error } = await sb.from('classes').insert({ name });
-      if (error){ toast('שגיאה: '+error.message); return; }
-      goto('classes');
+      try{ await db.collection('classes').add({ name }); goto('classes'); }
+      catch(err){ toast('שגיאה: '+err.message); }
     });
+  }
+  if (p.delete_classes){
     body.querySelectorAll('.del-class').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         if (!confirm('מחיקת כיתה תמחק גם את התלמידים והטיולים המשויכים אליה. להמשיך?')) return;
         const tr = btn.closest('tr');
-        const { error } = await sb.from('classes').delete().eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        goto('classes');
+        try{ await db.collection('classes').doc(tr.dataset.id).delete(); goto('classes'); }
+        catch(err){ toast('שגיאה: '+err.message); }
       });
     });
   }
@@ -747,9 +799,8 @@ async function renderClasses(body){
       actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-class">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-class">ביטול</button>`;
       actionsTd.querySelector('.save-class').addEventListener('click', async ()=>{
         const name = tr.querySelector('.ei-name').value.trim();
-        const { error } = await sb.from('classes').update({ name }).eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        toast('נשמר'); goto('classes');
+        try{ await db.collection('classes').doc(tr.dataset.id).update({ name }); toast('נשמר'); goto('classes'); }
+        catch(err){ toast('שגיאה: '+err.message); }
       });
       actionsTd.querySelector('.cancel-class').addEventListener('click', ()=> goto('classes'));
     });
@@ -757,14 +808,15 @@ async function renderClasses(body){
 }
 
 /* ============================================================
-   USERS (admin) — invites teachers/principals via the edge function
+   USERS — role הוא טקסט חופשי, הרשאות נקבעות ב-checkboxes
    ============================================================ */
 async function renderUsers(body){
-  const [{ data: profiles }, { data: classes }] = await Promise.all([
-    sb.from('profiles').select('*, classes(name)').order('created_at', { ascending:false }),
-    sb.from('classes').select('*').order('name'),
+  const [usersSnap, classesSnap] = await Promise.all([
+    db.collection('users').orderBy('full_name').get(),
+    db.collection('classes').orderBy('name').get(),
   ]);
-  classesCache = classes || [];
+  const profiles = usersSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  classesCache = classesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
@@ -772,18 +824,16 @@ async function renderUsers(body){
       <form id="newUserForm" class="form-grid">
         <div class="field"><label>שם מלא</label><input required id="u_name"></div>
         <div class="field"><label>דוא״ל</label><input type="email" required id="u_email"></div>
-        <div class="field"><label>תפקיד</label>
-          <select id="u_role">
-            <option value="teacher">מחנך/ת</option>
-            <option value="principal">מנהל/ת</option>
-            <option value="admin">מנהל מערכת</option>
-          </select>
-        </div>
-        <div class="field"><label>כיתה (למחנך)</label>
+        <div class="field"><label>תפקיד (טקסט חופשי)</label><input required id="u_role" placeholder="לדוגמה: מחנך/ת, רכז חברתי..."></div>
+        <div class="field"><label>כיתה (רשות — רלוונטי בעיקר למחנכים)</label>
           <select id="u_class"><option value="">— ללא —</option>${classesCache.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
         </div>
         <div class="field"><label>טלפון (רשות)</label><input id="u_phone"></div>
-        <div class="field" style="align-self:flex-end;"><button class="btn btn-primary" type="submit">שליחת הזמנה</button></div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>הרשאות</label>
+          ${permissionsCheckboxesHtml('new', {})}
+        </div>
+        <div class="field" style="align-self:flex-end;"><button class="btn btn-primary" type="submit">יצירת חשבון</button></div>
       </form>
       <div id="inviteResult" style="margin-top:14px;"></div>
     </div>
@@ -791,100 +841,114 @@ async function renderUsers(body){
       <table class="data">
         <thead><tr><th>שם</th><th>תפקיד</th><th>כיתה</th><th></th></tr></thead>
         <tbody>
-          ${(profiles||[]).map(p=>`
+          ${profiles.map(p=>`
             <tr data-id="${p.id}">
               <td class="c-name">${esc(p.full_name)}</td>
-              <td class="c-role">${roleLabel(p.role)}</td>
-              <td class="c-class">${esc(p.classes?.name||'—')}</td>
+              <td class="c-role">${esc(p.role||'')}</td>
+              <td class="c-class">${esc(classesCache.find(c=>c.id===p.class_id)?.name||'—')}</td>
               <td><button class="btn btn-outline btn-sm edit-user" title="עריכה">✏️</button></td>
             </tr>
           `).join('')}
         </tbody>
       </table>
-    </div>`;
+    </div>
+    <div id="userEditBox"></div>`;
+
+  wirePermissionChips(document.getElementById('newUserForm'));
 
   document.getElementById('newUserForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const resultEl = document.getElementById('inviteResult');
-    resultEl.innerHTML = 'שולח הזמנה…';
-    const { data: { session } } = await sb.auth.getSession();
-    const payload = {
-      full_name: document.getElementById('u_name').value.trim(),
-      email: document.getElementById('u_email').value.trim(),
-      role: document.getElementById('u_role').value,
-      class_id: document.getElementById('u_class').value || null,
-      phone: document.getElementById('u_phone').value.trim(),
-    };
+    resultEl.innerHTML = 'יוצר חשבון…';
+    const full_name = document.getElementById('u_name').value.trim();
+    const email = document.getElementById('u_email').value.trim();
+    const role = document.getElementById('u_role').value.trim();
+    const class_id = document.getElementById('u_class').value || null;
+    const phone = document.getElementById('u_phone').value.trim();
+    const permissions = collectPermissions(document.getElementById('newUserForm'), 'new');
+    const tempPassword = genTempPassword();
     try{
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify(payload),
+      const uid = await createStaffAccountKeepingSession(email, tempPassword);
+      await db.collection('users').doc(uid).set({
+        full_name, email, role, class_id, phone, permissions,
+        needs_password_change: true,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
-      const json = await res.json();
-      if (!res.ok){ resultEl.innerHTML = `<div class="login-msg err">${esc(json.error||'שגיאה לא ידועה')}</div>`; return; }
-      const link = json.invite_link;
-      const waText = encodeURIComponent(`שלום ${payload.full_name},\nנוצר עבורך חשבון במערכת ישיבה תיכונית עפולה.\nלהגדרת סיסמה אישית והתחברות: ${link}`);
-      const waHref = payload.phone ? `https://wa.me/${payload.phone.replace(/\D/g,'')}?text=${waText}` : null;
+      const waText = encodeURIComponent(`שלום ${full_name},\nנוצר עבורך חשבון במערכת ישיבה תיכונית עפולה.\nלהתחברות: ${location.origin}${location.pathname}\nדוא״ל: ${email}\nסיסמה זמנית: ${tempPassword}\n(במסך ההתחברות הראשון תתבקש/י להגדיר סיסמה אישית)`);
+      const waHref = phone ? `https://wa.me/${phone.replace(/\D/g,'')}?text=${waText}` : null;
       resultEl.innerHTML = `
         <div class="login-msg ok">
-          נוצר בהצלחה! שימו לב — המערכת <b>לא</b> שולחת מייל אוטומטית, יש להעביר את קישור ההגדרה
-          ל־${esc(payload.full_name)} ידנית (וואטסאפ / מייל / כל דרך אחרת):
+          נוצר בהצלחה! יש להעביר ל־${esc(full_name)} את פרטי הכניסה (וואטסאפ / מייל / כל דרך אחרת):
         </div>
         <div style="display:flex; gap:8px; margin-bottom:10px;">
-          <input readonly value="${esc(link)}" style="flex:1; padding:10px; border:1.5px solid var(--line); border-radius:8px; font-size:.8rem;">
-          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(link)}'); toast('הועתק');">העתקה</button>
+          <input readonly value="${esc(email)}  /  ${esc(tempPassword)}" style="flex:1; padding:10px; border:1.5px solid var(--line); border-radius:8px; font-size:.8rem;">
+          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(email)} / ${esc(tempPassword)}'); toast('הועתק');">העתקה</button>
         </div>
         ${waHref ? `<a class="wa-link" target="_blank" href="${waHref}">📨 שליחה בוואטסאפ ↗</a>` : `<span style="font-size:.8rem; color:var(--ink-soft);">לא הוזן טלפון — לא ניתן לשלוח קישור וואטסאפ מהיר</span>`}`;
       goto('users');
     }catch(err){
-      resultEl.innerHTML = `<div class="login-msg err">שגיאת רשת: ${esc(err.message)}</div>`;
+      resultEl.innerHTML = `<div class="login-msg err">שגיאה: ${esc(err.message)}</div>`;
     }
   });
 
   body.querySelectorAll('.edit-user').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const tr = btn.closest('tr');
-      if (tr.dataset.editing) return;
-      tr.dataset.editing = '1';
-      const currentName = tr.querySelector('.c-name').textContent.trim();
-      const p = (profiles||[]).find(x=>x.id===tr.dataset.id);
-      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(currentName)}" style="width:100%;">`;
-      tr.querySelector('.c-role').innerHTML = `
-        <select class="ei-role">
-          <option value="teacher" ${p.role==='teacher'?'selected':''}>מחנך/ת</option>
-          <option value="principal" ${p.role==='principal'?'selected':''}>מנהל/ת</option>
-          <option value="admin" ${p.role==='admin'?'selected':''}>מנהל מערכת</option>
-          <option value="pending" ${p.role==='pending'?'selected':''}>ממתין</option>
-        </select>`;
-      tr.querySelector('.c-class').innerHTML = `
-        <select class="ei-class">
-          <option value="">— ללא —</option>
-          ${classesCache.map(c=>`<option value="${c.id}" ${c.id===p.class_id?'selected':''}>${esc(c.name)}</option>`).join('')}
-        </select>`;
-      const actionsTd = tr.children[3];
-      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-user">💾</button> <button class="btn btn-outline btn-sm cancel-user">ביטול</button>`;
-      actionsTd.querySelector('.save-user').addEventListener('click', async ()=>{
-        const full_name = tr.querySelector('.ei-name').value.trim();
-        const role = tr.querySelector('.ei-role').value;
-        const class_id = tr.querySelector('.ei-class').value || null;
-        const { error } = await sb.from('profiles').update({ full_name, role, class_id }).eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        toast('נשמר'); goto('users');
+      const p = profiles.find(x=>x.id===tr.dataset.id);
+      const box = document.getElementById('userEditBox');
+      box.innerHTML = `
+        <div class="card card-pad" style="margin-top:18px;">
+          <h3 style="margin-top:0;">עריכת ${esc(p.full_name)}</h3>
+          <div class="form-grid">
+            <div class="field"><label>שם מלא</label><input id="eu_name" value="${esc(p.full_name)}"></div>
+            <div class="field"><label>תפקיד</label><input id="eu_role" value="${esc(p.role||'')}"></div>
+            <div class="field"><label>כיתה</label>
+              <select id="eu_class"><option value="">— ללא —</option>${classesCache.map(c=>`<option value="${c.id}" ${c.id===p.class_id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+            </div>
+            <div class="field"><label>טלפון</label><input id="eu_phone" value="${esc(p.phone||'')}"></div>
+          </div>
+          <div style="margin-top:14px;">
+            <label>הרשאות</label>
+            ${permissionsCheckboxesHtml('eu', p.permissions||{})}
+          </div>
+          <div style="display:flex; gap:10px; margin-top:16px;">
+            <button class="btn btn-primary btn-sm" id="saveUserBtn">💾 שמירה</button>
+            <button class="btn btn-outline btn-sm" id="cancelUserBtn">ביטול</button>
+            <button class="btn btn-outline btn-sm" id="deleteUserBtn" style="margin-inline-start:auto; color:var(--danger);">🗑 מחיקת משתמש</button>
+          </div>
+        </div>`;
+      wirePermissionChips(box);
+      box.scrollIntoView({ behavior:'smooth', block:'center' });
+      box.querySelector('#saveUserBtn').addEventListener('click', async ()=>{
+        const full_name = document.getElementById('eu_name').value.trim();
+        const role = document.getElementById('eu_role').value.trim();
+        const class_id = document.getElementById('eu_class').value || null;
+        const phone = document.getElementById('eu_phone').value.trim();
+        const permissions = collectPermissions(box, 'eu');
+        try{
+          await db.collection('users').doc(p.id).update({ full_name, role, class_id, phone, permissions });
+          toast('נשמר'); box.innerHTML=''; goto('users');
+        }catch(err){ toast('שגיאה: '+err.message); }
       });
-      actionsTd.querySelector('.cancel-user').addEventListener('click', ()=> goto('users'));
+      box.querySelector('#cancelUserBtn').addEventListener('click', ()=>{ box.innerHTML=''; });
+      box.querySelector('#deleteUserBtn').addEventListener('click', async ()=>{
+        if (!confirm(`למחוק את המשתמש ${p.full_name}? פעולה זו מוחקת רק את פרטי הגישה שלו במערכת (יש למחוק את חשבון ה-Auth בנפרד מ-Firebase Console).`)) return;
+        try{ await db.collection('users').doc(p.id).delete(); box.innerHTML=''; toast('המשתמש הוסר'); goto('users'); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
     });
   });
 }
 
 /* ============================================================
-   TRIP TYPES (admin)
+   TRIP TYPES
    ============================================================ */
 async function renderTripTypes(body){
-  const isAdmin = myProfile.role === 'admin';
-  const { data: types } = await sb.from('trip_types').select('*').order('name');
+  const p = myProfile.permissions || {};
+  const snap = await db.collection('trip_types').orderBy('name').get();
+  const types = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   body.innerHTML = `
-    ${isAdmin ? `
+    ${p.manage_trip_types ? `
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">סוג טיול חדש</h3>
       <form id="newTypeForm" style="display:flex; gap:10px;">
@@ -897,32 +961,32 @@ async function renderTripTypes(body){
       <table class="data">
         <thead><tr><th>שם</th><th>תיאור</th><th></th></tr></thead>
         <tbody>
-          ${(types||[]).map(t=>`
+          ${types.map(t=>`
             <tr data-id="${t.id}"><td class="c-name">${esc(t.name)}</td><td class="c-desc">${esc(t.description||'')}</td>
             <td style="display:flex; gap:6px;">
               <button class="btn btn-outline btn-sm edit-type" title="עריכה">✏️</button>
-              ${isAdmin ? '<button class="btn btn-outline btn-sm del-type" title="מחיקה">🗑</button>' : ''}
+              ${p.delete_trip_types ? '<button class="btn btn-outline btn-sm del-type" title="מחיקה">🗑</button>' : ''}
             </td></tr>`).join('')}
         </tbody>
       </table>
     </div>`;
 
-  if (isAdmin){
+  if (p.manage_trip_types){
     document.getElementById('newTypeForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
       const name = document.getElementById('tt_name').value.trim();
       const description = document.getElementById('tt_desc').value.trim();
-      const { error } = await sb.from('trip_types').insert({ name, description });
-      if (error){ toast('שגיאה: '+error.message); return; }
-      goto('triptypes');
+      try{ await db.collection('trip_types').add({ name, description }); goto('triptypes'); }
+      catch(err){ toast('שגיאה: '+err.message); }
     });
+  }
+  if (p.delete_trip_types){
     body.querySelectorAll('.del-type').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         if (!confirm('למחוק סוג טיול זה?')) return;
         const tr = btn.closest('tr');
-        const { error } = await sb.from('trip_types').delete().eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        goto('triptypes');
+        try{ await db.collection('trip_types').doc(tr.dataset.id).delete(); goto('triptypes'); }
+        catch(err){ toast('שגיאה: '+err.message); }
       });
     });
   }
@@ -940,16 +1004,14 @@ async function renderTripTypes(body){
       actionsTd.querySelector('.save-type').addEventListener('click', async ()=>{
         const name = tr.querySelector('.ei-name').value.trim();
         const description = tr.querySelector('.ei-desc').value.trim();
-        const { error } = await sb.from('trip_types').update({ name, description }).eq('id', tr.dataset.id);
-        if (error){ toast('שגיאה: '+error.message); return; }
-        toast('נשמר'); goto('triptypes');
+        try{ await db.collection('trip_types').doc(tr.dataset.id).update({ name, description }); toast('נשמר'); goto('triptypes'); }
+        catch(err){ toast('שגיאה: '+err.message); }
       });
       actionsTd.querySelector('.cancel-type').addEventListener('click', ()=> goto('triptypes'));
     });
   });
 }
 
-init();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
