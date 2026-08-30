@@ -28,6 +28,7 @@
     border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
   }
   .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
+  .startBtnWrap{ text-align:center; padding:20px 0 4px; }
   @media (max-width:480px){ .trip-meta{ grid-template-columns:1fr; } .trip-card{ padding:20px; } .notice-body{ padding:20px 14px 0; } }
 </style>
 </head>
@@ -54,6 +55,7 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 
 const params = new URLSearchParams(location.search);
 const tripId = params.get('t');
@@ -118,6 +120,7 @@ async function load(){
   }
   const trip = tripSnap.data();
   const roster = trip.roster_snapshot || [];
+  const classOptions = trip.class_options || [];
 
   const tripDetailsHtml = `
     <div class="trip-card">
@@ -132,26 +135,33 @@ async function load(){
       ${trip.notes ? `<p style="color:var(--ink-soft); border-top:1px solid var(--line); padding-top:16px;">${esc(trip.notes)}</p>` : ''}
     </div>`;
 
-  if (roster.length === 0){
-    content.innerHTML = tripDetailsHtml + `<p class="center-msg">לא ניתן לטעון רשימת תלמידים לטיול זה. יש לפנות למחנך/ת לקבלת קישור אישור אישי.</p>`;
+  if (roster.length === 0 || classOptions.length === 0){
+    content.innerHTML = tripDetailsHtml + `<p class="center-msg">לא ניתן לטעון אישור עצמאי לטיול זה. יש לפנות למחנך/ת לקבלת קישור אישי.</p>`;
     return;
   }
 
   content.innerHTML = tripDetailsHtml + `
-    <div class="trip-card">
+    <div class="trip-card" id="approvalCard">
       <h3 style="margin-top:0;">אישור יציאה והשתתפות</h3>
-      <div class="field">
-        <label>בחר/י את שם בנך מהרשימה</label>
-        <select id="studentSelect">
-          <option value="">— בחר/י —</option>
-          ${roster.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name,'he')).map(r=>`<option value="${r.id}">${esc(r.full_name)}</option>`).join('')}
-        </select>
+      <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">למניעת טעויות, האישור מזהה את התלמיד לפי הצלבת כיתה + שם הורה + שם תלמיד יחד.</p>
+      <div class="startBtnWrap" id="startWrap">
+        <button class="btn btn-primary" id="startBtn">✍️ מילוי אישור יציאה</button>
       </div>
-      <div id="statusArea"></div>
       <div id="formArea" style="display:none;">
         <div class="field">
+          <label>כיתת הבן</label>
+          <select id="classSelect">
+            <option value="">— בחר/י —</option>
+            ${classOptions.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>שם התלמיד (הבן)</label>
+          <input id="studentNameInput" placeholder="שם פרטי ומשפחה">
+        </div>
+        <div class="field">
           <label>שם ההורה/ת המאשר/ת</label>
-          <input placeholder="שם מלא" id="approverName">
+          <input id="approverName" placeholder="שם מלא">
         </div>
         <div class="field">
           <label class="consent-check">
@@ -164,66 +174,78 @@ async function load(){
           <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
           <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
         </div>
+        <div id="matchMsg"></div>
         <button class="btn btn-primary" style="width:100%;" id="submitApproval">✓ שליחת אישור</button>
       </div>
+      <div id="resultArea"></div>
     </div>`;
 
-  let pad = null;
-  const select = document.getElementById('studentSelect');
-  const statusArea = document.getElementById('statusArea');
-  const formArea = document.getElementById('formArea');
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    document.getElementById('startWrap').style.display = 'none';
+    document.getElementById('formArea').style.display = '';
+  });
 
-  select.addEventListener('change', async ()=>{
-    const studentId = select.value;
-    formArea.style.display = 'none';
-    statusArea.innerHTML = '';
-    if (!studentId) return;
+  const pad = setupSignaturePad(document.getElementById('sigCanvas'));
+  document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
 
-    statusArea.innerHTML = '<p style="color:var(--ink-soft); font-size:.9rem;">בודק סטטוס…</p>';
+  document.getElementById('submitApproval').addEventListener('click', async ()=>{
+    const matchMsg = document.getElementById('matchMsg');
+    matchMsg.innerHTML = '';
+    const classId = document.getElementById('classSelect').value;
+    const studentName = document.getElementById('studentNameInput').value.trim();
+    const approverName = document.getElementById('approverName').value.trim();
+
+    if (!classId){ toast('יש לבחור כיתה'); return; }
+    if (!studentName){ toast('יש להזין את שם התלמיד'); return; }
+    if (!approverName){ toast('יש להזין את שמך'); return; }
+    if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
+    if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
+
+    // הצלבה: כיתה + שם תלמיד + שם הורה — כל השלושה יחד, בלי הצגת רשימה גלויה בשום שלב
+    const candidates = roster.filter(r =>
+      r.class_id === classId &&
+      norm(r.full_name) === norm(studentName) &&
+      norm(r.parent_name) === norm(approverName)
+    );
+
+    if (candidates.length === 0){
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצאה התאמה לפרטים שהוזנו. יש לוודא שהכיתה, שם התלמיד ושם ההורה תואמים בדיוק למה שרשום במערכת הישיבה, או לפנות למחנך/ת.</p>`;
+      return;
+    }
+    if (candidates.length > 1){
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">נמצאה יותר מהתאמה אחת. יש לפנות למחנך/ת הכיתה לקבלת קישור אישור אישי.</p>`;
+      return;
+    }
+
+    const studentId = candidates[0].id;
     const approvalRef = tripRef.collection('approvals').doc(studentId);
     const approvalSnap = await approvalRef.get();
-
     if (!approvalSnap.exists){
-      statusArea.innerHTML = '<p class="center-msg">לא נמצא רישום אישור עבור תלמיד זה. יש לפנות למחנך/ת.</p>';
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא רישום אישור עבור תלמיד זה. יש לפנות למחנך/ת.</p>`;
       return;
     }
-    const approval = approvalSnap.data();
-    if (approval.status === 'approved'){
-      statusArea.innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="color:var(--ink-soft); margin:0;">כבר אושר על ידי ${esc(approval.approved_by_name||'')}, תודה!</p></div>`;
+    if (approvalSnap.data().status === 'approved'){
+      document.getElementById('formArea').style.display = 'none';
+      document.getElementById('resultArea').innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="color:var(--ink-soft); margin:0;">כבר אושר קודם, תודה!</p></div>`;
       return;
     }
 
-    statusArea.innerHTML = '';
-    formArea.style.display = '';
-    if (!pad){
-      pad = setupSignaturePad(document.getElementById('sigCanvas'));
-      document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
-    } else {
-      pad.clear();
+    const btn = document.getElementById('submitApproval');
+    btn.disabled = true; btn.textContent = 'שולח…';
+    try{
+      await approvalRef.update({
+        status: 'approved',
+        approved_by_name: approverName,
+        consent: true,
+        signature: pad.dataUrl(),
+        approved_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      document.getElementById('formArea').style.display = 'none';
+      document.getElementById('resultArea').innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="margin:0;">האישור נקלט, תודה!</p></div>`;
+    }catch(err){
+      toast('אירעה שגיאה, נסו שוב');
+      btn.disabled = false; btn.textContent = '✓ שליחת אישור';
     }
-
-    document.getElementById('submitApproval').onclick = async ()=>{
-      const name = document.getElementById('approverName').value.trim();
-      if (!name){ toast('יש להזין שם'); return; }
-      if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
-      if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
-      const btn = document.getElementById('submitApproval');
-      btn.disabled = true; btn.textContent = 'שולח…';
-      try{
-        await approvalRef.update({
-          status: 'approved',
-          approved_by_name: name,
-          consent: true,
-          signature: pad.dataUrl(),
-          approved_at: firebase.firestore.FieldValue.serverTimestamp(),
-        });
-        formArea.style.display = 'none';
-        statusArea.innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="margin:0;">האישור נקלט, תודה!</p></div>`;
-      }catch(err){
-        toast('אירעה שגיאה, נסו שוב');
-        btn.disabled = false; btn.textContent = '✓ שליחת אישור';
-      }
-    };
   });
 }
 load();
