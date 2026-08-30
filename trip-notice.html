@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="style.css">
 <style>
   body{ background:var(--paper); }
+  .basd-line{ text-align:center; padding:10px 0 0; font-size:.8rem; color:var(--ink-soft); font-weight:600; }
   .notice-wrap{ max-width:640px; margin:0 auto; padding:0 0 60px; }
   .notice-header{
     position:relative; overflow:hidden;
@@ -37,7 +38,8 @@
     border-radius:12px; padding:16px 18px; margin-bottom:20px; font-size:1rem; color:var(--navy); font-weight:500; line-height:1.7;
   }
 
-  .date-line{ font-size:1.05rem; margin-bottom:18px; }
+  .date-line{ font-size:1.05rem; margin-bottom:18px; text-align:center; }
+  .date-line .lbl{ color:var(--ink-soft); font-size:.85rem; display:block; margin-bottom:4px; }
   .date-line .heb{ font-weight:800; color:var(--navy); }
   .date-line .sep{ color:var(--ink-soft); margin:0 8px; }
   .date-line .greg{ color:var(--ink-soft); }
@@ -62,6 +64,9 @@
   .itinerary-item .it-activity{ padding-top:3px; color:var(--ink); }
 
   .closing-block{ text-align:left; color:var(--navy); font-style:italic; font-size:.95rem; line-height:1.7; white-space:pre-line; padding-top:4px; }
+  .signatures-row{ display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
+  .signature-col{ text-align:center; font-size:.92rem; color:var(--navy); line-height:1.7; }
+  .signature-col .sig-title{ color:var(--ink-soft); font-size:.78rem; margin-top:2px; }
 
   .section-divider{ height:4px; border-radius:99px; background:linear-gradient(90deg, var(--steel), var(--teal)); margin:30px 0; opacity:.5; }
 
@@ -83,6 +88,7 @@
 </style>
 </head>
 <body>
+<div class="basd-line">בס״ד</div>
 <div class="notice-wrap">
   <div class="notice-header">
     <div class="ring">
@@ -188,14 +194,15 @@ async function load(){
       <h2 class="trip-title">${esc(trip.title)}</h2>
       ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
       ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
+        <span class="lbl">תאריך הטיול</span>
         ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
         ${trip.hebrew_date && gregDate ? '<span class="sep">·</span>' : ''}
         ${gregDate ? `<span class="greg">${gregDate}</span>` : ''}
       </div>` : ''}
       <div class="meta-badges">
         ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
-        ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
-        ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
+        ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה מהישיבה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
+        ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה לישיבה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
         ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(trip.cost)}</div></div>` : ''}
       </div>
     </div>`;
@@ -222,8 +229,12 @@ async function load(){
     </div>`;
   }
 
-  if (trip.closing_signature){
-    mainHtml += `<div class="closing-block">${esc(trip.closing_signature)}</div>`;
+  if (trip.head_name || trip.coordinator_name){
+    mainHtml += `
+    <div class="signatures-row">
+      <div class="signature-col">${trip.head_name ? `בברכה,<br><b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
+      <div class="signature-col">${trip.coordinator_name ? `בברכה,<br><b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+    </div>`;
   }
 
   mainHtml += `<div class="section-divider"></div>`;
