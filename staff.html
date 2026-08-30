@@ -11,7 +11,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="עפולה">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* הגדלת פונטים זמנית - עד שנעדכן את style.css עצמו */
+  body{ font-size:1.08rem; }
+  .side-link, .btn, input, select, textarea, table.data{ font-size:1.02rem; }
+  .btn-sm{ font-size:.92rem; }
+  #userTag{ font-size:1rem !important; line-height:1.5; }
+</style>
 </head>
 <body>
 
@@ -150,6 +157,45 @@ function collectPermissions(container, idPrefix){
   return perms;
 }
 
+/* --- תפקידים קבועים / מותאם אישית --- */
+function rolePresetSelectHtml(idPrefix, currentRole){
+  const isKnown = Object.prototype.hasOwnProperty.call(ROLE_PRESETS, currentRole || '');
+  const selVal = currentRole ? (isKnown ? currentRole : 'custom') : Object.keys(ROLE_PRESETS)[0];
+  return `
+    <div class="field"><label>תפקיד</label>
+      <select id="${idPrefix}_role_preset">
+        ${Object.keys(ROLE_PRESETS).map(r=>`<option value="${esc(r)}" ${r===selVal?'selected':''}>${esc(r)}</option>`).join('')}
+        <option value="custom" ${selVal==='custom'?'selected':''}>מותאם אישית…</option>
+      </select>
+    </div>
+    <div class="field" id="${idPrefix}_role_custom_wrap" style="display:${selVal==='custom'?'':'none'};">
+      <label>שם התפקיד המותאם</label>
+      <input id="${idPrefix}_role_custom" placeholder="לדוגמה: יועץ חינוכי" value="${selVal==='custom' ? esc(currentRole||'') : ''}">
+    </div>`;
+}
+function wireRolePresetSelect(idPrefix, permsContainer){
+  const selectEl = document.getElementById(`${idPrefix}_role_preset`);
+  const customWrapEl = document.getElementById(`${idPrefix}_role_custom_wrap`);
+  function apply(){
+    const val = selectEl.value;
+    const isCustom = val === 'custom';
+    customWrapEl.style.display = isCustom ? '' : 'none';
+    const preset = ROLE_PRESETS[val] || {};
+    permsContainer.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      const key = cb.dataset.perm;
+      cb.disabled = !isCustom;
+      cb.checked = isCustom ? cb.checked : !!preset[key];
+      cb.closest('.chip-check').classList.toggle('checked', cb.checked);
+    });
+  }
+  selectEl.addEventListener('change', apply);
+  apply();
+}
+function readRoleFromPreset(idPrefix){
+  const sel = document.getElementById(`${idPrefix}_role_preset`).value;
+  return sel === 'custom' ? document.getElementById(`${idPrefix}_role_custom`).value.trim() : sel;
+}
+
 /* ============================================================
    AUTH BOOTSTRAP
    ============================================================ */
@@ -202,7 +248,8 @@ async function onSignedIn(user){
 }
 
 async function enterApp(){
-  document.getElementById('userTag').textContent = `${myProfile.full_name} · ${esc(myProfile.role||'')}`;
+  document.getElementById('userTag').innerHTML =
+    `שלום, ${esc(myProfile.full_name)}<br><span style="font-size:.85rem; color:var(--ink-soft);">${esc(myProfile.role||'')}</span>`;
   document.getElementById('rolePill').textContent = myProfile.role || '';
   buildSideNav();
   show('appShell');
@@ -267,7 +314,6 @@ async function renderHome(body){
     db.collection('students').get(),
     db.collection('trips').get(),
   ]);
-  // "אישורים ממתינים" נספר דרך כל ה-batches הפעילים (יעיל מספיק בקנה מידה של ישיבה אחת)
   let pendingCount = 0;
   const batchesSnap = await db.collection('trip_batches').get();
   for (const b of batchesSnap.docs){
@@ -738,7 +784,6 @@ async function renderClasses(body){
   const p = myProfile.permissions || {};
   const snap = await db.collection('classes').orderBy('name').get();
   const classes = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  // שם המחנך/ת המשויכ/ת — נטען מתוך users, לפי class_id (טעינה חד-פעמית)
   const usersSnap = await db.collection('users').get().catch(()=>({docs:[]}));
   const teacherNameFor = (classId) => {
     const t = usersSnap.docs?.find?.(d=>d.data().class_id===classId);
@@ -808,7 +853,7 @@ async function renderClasses(body){
 }
 
 /* ============================================================
-   USERS — role הוא טקסט חופשי, הרשאות נקבעות ב-checkboxes
+   USERS — תפקיד נבחר מרשימה קבועה או "מותאם אישית", הרשאות ב-checkboxes
    ============================================================ */
 async function renderUsers(body){
   const [usersSnap, classesSnap] = await Promise.all([
@@ -824,7 +869,7 @@ async function renderUsers(body){
       <form id="newUserForm" class="form-grid">
         <div class="field"><label>שם מלא</label><input required id="u_name"></div>
         <div class="field"><label>דוא״ל</label><input type="email" required id="u_email"></div>
-        <div class="field"><label>תפקיד (טקסט חופשי)</label><input required id="u_role" placeholder="לדוגמה: מחנך/ת, רכז חברתי..."></div>
+        ${rolePresetSelectHtml('new', '')}
         <div class="field"><label>כיתה (רשות — רלוונטי בעיקר למחנכים)</label>
           <select id="u_class"><option value="">— ללא —</option>${classesCache.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
         </div>
@@ -855,6 +900,7 @@ async function renderUsers(body){
     <div id="userEditBox"></div>`;
 
   wirePermissionChips(document.getElementById('newUserForm'));
+  wireRolePresetSelect('new', document.getElementById('newUserForm'));
 
   document.getElementById('newUserForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
@@ -862,7 +908,7 @@ async function renderUsers(body){
     resultEl.innerHTML = 'יוצר חשבון…';
     const full_name = document.getElementById('u_name').value.trim();
     const email = document.getElementById('u_email').value.trim();
-    const role = document.getElementById('u_role').value.trim();
+    const role = readRoleFromPreset('new');
     const class_id = document.getElementById('u_class').value || null;
     const phone = document.getElementById('u_phone').value.trim();
     const permissions = collectPermissions(document.getElementById('newUserForm'), 'new');
@@ -901,7 +947,7 @@ async function renderUsers(body){
           <h3 style="margin-top:0;">עריכת ${esc(p.full_name)}</h3>
           <div class="form-grid">
             <div class="field"><label>שם מלא</label><input id="eu_name" value="${esc(p.full_name)}"></div>
-            <div class="field"><label>תפקיד</label><input id="eu_role" value="${esc(p.role||'')}"></div>
+            ${rolePresetSelectHtml('eu', p.role||'')}
             <div class="field"><label>כיתה</label>
               <select id="eu_class"><option value="">— ללא —</option>${classesCache.map(c=>`<option value="${c.id}" ${c.id===p.class_id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
             </div>
@@ -918,10 +964,11 @@ async function renderUsers(body){
           </div>
         </div>`;
       wirePermissionChips(box);
+      wireRolePresetSelect('eu', box);
       box.scrollIntoView({ behavior:'smooth', block:'center' });
       box.querySelector('#saveUserBtn').addEventListener('click', async ()=>{
         const full_name = document.getElementById('eu_name').value.trim();
-        const role = document.getElementById('eu_role').value.trim();
+        const role = readRoleFromPreset('eu');
         const class_id = document.getElementById('eu_class').value || null;
         const phone = document.getElementById('eu_phone').value.trim();
         const permissions = collectPermissions(box, 'eu');
