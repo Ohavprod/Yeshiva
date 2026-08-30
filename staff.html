@@ -759,7 +759,7 @@ function showApprovalViewModal(trip, studentName, approval){
     <div class="confirm-box" style="max-width:420px;">
       <h3>אישור הורה — ${esc(studentName)}</h3>
       <p style="margin-bottom:6px;"><b>אושר ע״י:</b> ${esc(approval.approved_by_name||'')}</p>
-      <p style="margin-bottom:6px; color:var(--ok); font-size:.9rem;">${approval.consent ? '✓ אושרה יציאת הבן/בת להשתתפות בטיול' : ''}</p>
+      <p style="margin-bottom:6px; color:var(--ok); font-size:.9rem;">${approval.consent ? '✓ אושרה יציאת הבן להשתתפות בטיול' : ''}</p>
       <p style="margin-bottom:16px; color:var(--ink-soft); font-size:.85rem;">${approvedDate ? approvedDate.toLocaleString('he-IL') : ''}</p>
       ${approval.signature ? `<div style="margin-bottom:18px;"><img src="${approval.signature}" style="max-width:100%; border:1px solid var(--line); border-radius:8px;"></div>` : ''}
       <div class="confirm-actions">
@@ -796,7 +796,7 @@ function openApprovalPrintView(trip, studentName, className, approval){
       ${trip.trip_date ? `<tr><td class="label">תאריך הטיול</td><td>${new Date(trip.trip_date).toLocaleDateString('he-IL')}</td></tr>` : ''}
       ${trip.location ? `<tr><td class="label">יעד</td><td>${esc(trip.location)}</td></tr>` : ''}
       <tr><td class="label">אושר על ידי</td><td>${esc(approval.approved_by_name||'')}</td></tr>
-      <tr><td class="label">אישור השתתפות</td><td>${approval.consent ? 'כן — אושרה יציאת הבן/בת' : ''}</td></tr>
+      <tr><td class="label">אישור השתתפות</td><td>${approval.consent ? 'כן — אושרה יציאת הבן' : ''}</td></tr>
       <tr><td class="label">תאריך אישור</td><td>${approvedDate ? approvedDate.toLocaleString('he-IL') : ''}</td></tr>
     </table>
     ${approval.signature ? `<div>חתימה:<br><img class="sig" src="${approval.signature}"></div>` : ''}
