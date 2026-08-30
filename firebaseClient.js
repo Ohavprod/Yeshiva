@@ -22,8 +22,6 @@ const ALL_PERMISSIONS = [
   { key: 'manage_class_roster',  label: 'ניהול תלמידי הכיתה המשויכת (הוספה/עריכה/מחיקה)' },
   { key: 'create_trips',         label: 'יצירת טיולים חדשים' },
   { key: 'edit_trip_details',    label: 'עריכת פרטי טיולים קיימים' },
-  { key: 'manage_trip_types',    label: 'ניהול סוגי טיולים' },
-  { key: 'delete_trip_types',    label: 'מחיקת סוגי טיולים' },
   { key: 'manage_classes',       label: 'ניהול כיתות (הוספה/עריכה)' },
   { key: 'delete_classes',       label: 'מחיקת כיתות' },
   { key: 'manage_announcements', label: 'ניהול עדכוני האתר הציבורי' },
@@ -31,11 +29,12 @@ const ALL_PERMISSIONS = [
 ];
 
 // --- תפקידים קבועים והרשאות ברירת מחדל לכל אחד מהם ---
-// "מותאם אישית" (custom) לא מופיע כאן בכוונה — הוא פותח את הצ'קבוקסים לעריכה חופשית.
+// "מותאם אישית" (custom) לא מופיע כאן בכוונה — הוא פותח את הצ'קבוכים לעריכה חופשית.
+// "ראש הישיבה" = כל ההרשאות (מנהל מערכת בפועל).
 const ROLE_PRESETS = {
   'מחנך':        { manage_class_roster:true, create_trips:true, edit_trip_details:true },
-  'ראש הישיבה':  { view_all_classes:true, manage_announcements:true, create_trips:true, edit_trip_details:true, manage_trip_types:true, manage_classes:true },
-  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_trip_types:true, manage_announcements:true },
+  'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
+  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true },
   'מורה מקצועי': {},
 };
 
