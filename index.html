@@ -166,25 +166,30 @@
   </div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/js/supabaseClient.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="assets/js/firebaseClient.js"></script>
 <script>
 async function loadTicker(){
   const track = document.getElementById('tickerTrack');
-  const { data, error } = await sb
-    .from('announcements')
-    .select('body')
-    .eq('is_active', true)
-    .order('created_at', { ascending:false })
-    .limit(15);
+  try{
+    const snap = await db.collection('announcements')
+      .where('is_active', '==', true)
+      .orderBy('created_at', 'desc')
+      .limit(15)
+      .get();
 
-  if(error || !data || data.length === 0){
+    if (snap.empty){
+      track.innerHTML = '<span>אין עדכונים חדשים כרגע</span>';
+      return;
+    }
+    const items = snap.docs.map(d => `<span>${(d.data().body||'').replace(/</g,'&lt;')}</span>`);
+    // duplicate the list so the marquee loop is seamless
+    track.innerHTML = items.join('') + items.join('');
+  }catch(err){
     track.innerHTML = '<span>אין עדכונים חדשים כרגע</span>';
-    return;
   }
-  const items = data.map(a => `<span>${a.body.replace(/</g,'&lt;')}</span>`);
-  // duplicate the list so the marquee loop is seamless
-  track.innerHTML = items.join('') + items.join('');
 }
 loadTicker();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
