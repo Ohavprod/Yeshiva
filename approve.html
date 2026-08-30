@@ -25,6 +25,11 @@
     .trip-card{ padding:20px; }
     .trip-meta{ grid-template-columns:1fr; }
   }
+  .consent-check{
+    display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:14px 16px;
+    border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
+  }
+  .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
 </style>
 </head>
 <body>
@@ -162,6 +167,12 @@ async function load(){
         <input placeholder="שם מלא" id="approverName">
       </div>
       <div class="field">
+        <label class="consent-check">
+          <input type="checkbox" id="consentCheck">
+          <span>אני מאשר/ת לבני/בתי לצאת ולהשתתף בטיול</span>
+        </label>
+      </div>
+      <div class="field">
         <label>חתימה</label>
         <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
         <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
@@ -176,6 +187,7 @@ async function load(){
   document.getElementById('submitApproval').addEventListener('click', async ()=>{
     const name = document.getElementById('approverName').value.trim();
     if (!name){ toast('יש להזין שם'); return; }
+    if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן/בת בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
     const btn = document.getElementById('submitApproval');
     btn.disabled = true; btn.textContent = 'שולח…';
@@ -183,6 +195,7 @@ async function load(){
       await approvalRef.update({
         status: 'approved',
         approved_by_name: name,
+        consent: true,
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
