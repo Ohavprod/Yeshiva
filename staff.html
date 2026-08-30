@@ -347,7 +347,7 @@ function buildSideNav(){
     { id:'announcements', label:'עדכונים באתר', icon:'📣', show: !!p.manage_announcements },
     { id:'classes', label:'ניהול כיתות', icon:'🏫', show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:'👤', show: !!p.manage_users },
-    { id:'smartschool', label:'סמארט סקול', icon:'🖥️', show:true, external:'https://www.smartschool.co.il/login.aspx?s=31.08.2026-02:06&mode=&auto=0' },
+    { id:'smartschool', label:'סמארט סקול', icon:'🖥️', show:true, external:'https://www.smartschool.co.il/homepage.aspx?page_id=20' },
   ];
   nav.innerHTML = items.filter(i=>i.show).map(i=>
     i.external
