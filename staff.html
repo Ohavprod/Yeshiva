@@ -242,9 +242,16 @@ async function onSignedIn(user){
 }
 
 async function enterApp(){
+  if (myProfile.class_id && !myProfile.class_name){
+    try{
+      const clsSnap = await db.collection('classes').doc(myProfile.class_id).get();
+      myProfile.class_name = clsSnap.exists ? clsSnap.data().name : '';
+    }catch(err){ myProfile.class_name = ''; }
+  }
+  const roleLine = myProfile.class_name ? `${myProfile.role||''} ${myProfile.class_name}` : (myProfile.role||'');
   document.getElementById('userTag').innerHTML =
-    `שלום, ${esc(myProfile.full_name)}<br><span style="font-size:.85rem; color:var(--ink-soft);">${esc(myProfile.role||'')}</span>`;
-  document.getElementById('rolePill').textContent = myProfile.role || '';
+    `שלום, ${esc(myProfile.full_name)}<br><span style="font-size:.85rem; color:var(--ink-soft);">${esc(roleLine)}</span>`;
+  document.getElementById('rolePill').textContent = roleLine;
   buildSideNav();
   show('appShell');
   goto('home');
@@ -352,7 +359,7 @@ async function renderHome(body){
     <div class="card card-pad">
       <h3 style="margin-top:0;">שלום, ${esc(myProfile.full_name)} 👋</h3>
       <p style="color:var(--ink-soft); margin:0;">
-        התפקיד שלך במערכת: <b>${esc(myProfile.role||'')}</b>.
+        התפקיד שלך במערכת: <b>${esc(myProfile.role||'')}${myProfile.class_name ? ' ' + esc(myProfile.class_name) : ''}</b>.
         ${p.manage_users ? 'יש לך גישת ניהול מלאה — ניתן ליצור משתמשים ולקבוע לכל אחד את ההרשאות שלו.' : ''}
         ${!p.manage_users && p.view_all_classes ? 'יש לך תצוגה על כלל הכיתות והטיולים בישיבה.' : ''}
         ${!p.view_all_classes && p.manage_class_roster ? 'ניתן לנהל את רשימת הכיתה שלך וליצור אישורי טיולים חדשים דרך התפריט בצד.' : ''}
