@@ -16,16 +16,33 @@
   }
   .notice-header .ring{ position:absolute; inset:0; pointer-events:none; opacity:.5; }
   .notice-header .logo-badge{
-    position:relative; z-index:1; height:76px; width:76px; border-radius:50%; margin:0 auto 14px;
-    background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 26px -8px rgba(0,0,0,.4);
-    overflow:hidden;
+    position:relative; z-index:1; height:82px; width:82px; border-radius:50%; margin:0 auto 14px;
+    background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 28px -8px rgba(0,0,0,.45);
+    overflow:hidden; border:3px solid rgba(255,255,255,.5);
   }
   .notice-header .logo-badge img{ height:100%; width:100%; object-fit:cover; }
-  .notice-header .school{ position:relative; z-index:1; font-family:'Rubik',sans-serif; font-weight:800; font-size:1.25rem; }
+  .notice-header .school{ position:relative; z-index:1; font-family:'Rubik',sans-serif; font-weight:800; font-size:1.3rem; }
   .notice-header .tag{ position:relative; z-index:1; font-size:.82rem; color:#a9c6ee; margin-top:3px; }
-  .notice-body{ padding:26px 24px 0; }
-  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:26px; box-shadow:var(--shadow-sm); margin-bottom:22px; }
-  .meta-badges{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; margin:20px 0 6px; }
+  .notice-body{ padding:0 24px; margin-top:-26px; position:relative; z-index:2; }
+  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
+
+  .section-eyebrow{
+    display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
+    background:var(--paper-2); padding:5px 14px; border-radius:999px; margin-bottom:14px;
+  }
+  .trip-title{ margin:0 0 14px; font-size:1.5rem; }
+
+  .intro-callout{
+    background:linear-gradient(135deg, #eef6ff, #f6f8fb); border-right:4px solid var(--teal);
+    border-radius:12px; padding:16px 18px; margin-bottom:20px; font-size:1rem; color:var(--navy); font-weight:500; line-height:1.7;
+  }
+
+  .date-line{ font-size:1.05rem; margin-bottom:18px; }
+  .date-line .heb{ font-weight:800; color:var(--navy); }
+  .date-line .sep{ color:var(--ink-soft); margin:0 8px; }
+  .date-line .greg{ color:var(--ink-soft); }
+
+  .meta-badges{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; margin-top:6px; }
   .meta-badge{ width:96px; text-align:center; }
   .meta-badge .m-icon{
     width:52px; height:52px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center;
@@ -34,11 +51,20 @@
   .meta-badge:nth-child(odd) .m-icon{ background:var(--navy); color:#fff; }
   .meta-badge .m-label{ font-size:.7rem; color:var(--ink-soft); }
   .meta-badge .m-value{ font-size:.85rem; font-weight:700; color:var(--navy); line-height:1.3; }
-  .tear-line{
-    display:flex; align-items:center; gap:10px; margin:26px 0 20px; color:var(--ink-soft);
-    border-top:2px dashed var(--line);
+
+  .itinerary-list{ display:flex; flex-direction:column; gap:2px; }
+  .itinerary-item{ display:flex; gap:14px; padding:10px 0; border-bottom:1px dashed var(--line); }
+  .itinerary-item:last-child{ border-bottom:none; }
+  .itinerary-item .it-time{
+    flex:none; width:64px; font-weight:800; color:#fff; background:var(--teal);
+    border-radius:8px; text-align:center; padding:4px 0; font-size:.85rem; height:fit-content;
   }
-  .tear-line span{ margin-top:-13px; background:var(--paper); padding:0 10px; font-size:1.1rem; }
+  .itinerary-item .it-activity{ padding-top:3px; color:var(--ink); }
+
+  .closing-block{ text-align:left; color:var(--navy); font-style:italic; font-size:.95rem; line-height:1.7; white-space:pre-line; padding-top:4px; }
+
+  .section-divider{ height:4px; border-radius:99px; background:linear-gradient(90deg, var(--steel), var(--teal)); margin:30px 0; opacity:.5; }
+
   .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
   .approved-card{ text-align:center; padding:40px 24px; }
   .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
@@ -47,9 +73,10 @@
     border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
   }
   .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
-  .startBtnWrap{ text-align:center; padding:20px 0 4px; }
+  .startBtnWrap{ text-align:center; padding:10px 0 4px; }
   @media (max-width:480px){
-    .trip-meta{ grid-template-columns:1fr; } .trip-card{ padding:20px; } .notice-body{ padding:20px 14px 0; }
+    .notice-body{ padding:0 14px; }
+    .trip-card{ padding:20px; }
     .meta-badge{ width:78px; }
     .meta-badge .m-icon{ width:44px; height:44px; font-size:1.15rem; }
   }
@@ -66,7 +93,7 @@
     </div>
     <div class="logo-badge"><img src="assets/img/logo.gif" alt=""></div>
     <div class="school">ישיבה תיכונית עפולה</div>
-    <div class="tag">חוזר טיול — לעיון ולאישור ההורים</div>
+    <div class="tag">ישיבה שהיא משפחה</div>
   </div>
   <div class="notice-body" id="content"><p class="center-msg">טוען פרטי טיול…</p></div>
 </div>
@@ -85,6 +112,7 @@ function toast(msg){
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 
 const params = new URLSearchParams(location.search);
 const tripId = params.get('t');
@@ -150,30 +178,65 @@ async function load(){
   const trip = tripSnap.data();
   const roster = trip.roster_snapshot || [];
   const classOptions = trip.class_options || [];
+  const itinerary = trip.itinerary || [];
 
-  const tripDetailsHtml = `
+  const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
+
+  let mainHtml = `
     <div class="trip-card">
-      <h2 style="margin-top:0; text-align:center;">${esc(trip.title)}</h2>
+      <div class="section-eyebrow">פרטי הטיול</div>
+      <h2 class="trip-title">${esc(trip.title)}</h2>
+      ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
+      ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
+        ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
+        ${trip.hebrew_date && gregDate ? '<span class="sep">·</span>' : ''}
+        ${gregDate ? `<span class="greg">${gregDate}</span>` : ''}
+      </div>` : ''}
       <div class="meta-badges">
-        ${trip.trip_date ? `<div class="meta-badge"><div class="m-icon">📅</div><div class="m-label">תאריך</div><div class="m-value">${new Date(trip.trip_date).toLocaleDateString('he-IL')}</div></div>` : ''}
+        ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
         ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
         ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
-        ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
         ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(trip.cost)}</div></div>` : ''}
       </div>
-      ${trip.notes ? `<p style="color:var(--ink-soft); border-top:1px solid var(--line); padding-top:16px; margin-top:20px;">${esc(trip.notes)}</p>` : ''}
-    </div>
-    <div class="tear-line"><span>✂️</span></div>`;
+    </div>`;
+
+  if (itinerary.length){
+    mainHtml += `
+    <div class="trip-card">
+      <div class="section-eyebrow">מה בתוכנית</div>
+      <div class="itinerary-list">
+        ${itinerary.map(it=>`
+          <div class="itinerary-item">
+            <div class="it-time">${esc(it.time)}</div>
+            <div class="it-activity">${esc(it.activity)}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  if (trip.notes){
+    mainHtml += `
+    <div class="trip-card">
+      <div class="section-eyebrow">הערות נוספות</div>
+      <p style="margin:0; color:var(--ink);">${esc(trip.notes)}</p>
+    </div>`;
+  }
+
+  if (trip.closing_signature){
+    mainHtml += `<div class="closing-block">${esc(trip.closing_signature)}</div>`;
+  }
+
+  mainHtml += `<div class="section-divider"></div>`;
 
   if (roster.length === 0 || classOptions.length === 0){
-    content.innerHTML = tripDetailsHtml + `<p class="center-msg">לא ניתן לטעון אישור עצמאי לטיול זה. יש לפנות למחנך/ת לקבלת קישור אישי.</p>`;
+    content.innerHTML = mainHtml + `<p class="center-msg">לא ניתן לטעון אישור עצמאי לטיול זה. יש לפנות למחנך/ת לקבלת קישור אישי.</p>`;
     return;
   }
 
-  content.innerHTML = tripDetailsHtml + `
+  content.innerHTML = mainHtml + `
     <div class="trip-card" id="approvalCard">
-      <h3 style="margin-top:0;">אישור יציאה והשתתפות</h3>
-      <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">למניעת טעויות, האישור מזהה את התלמיד לפי הצלבת כיתה + שם הורה + שם תלמיד יחד.</p>
+      <div class="section-eyebrow">אישור יציאה</div>
+      <h2 class="trip-title" style="font-size:1.2rem;">אישור השתתפות בטיול</h2>
       <div class="startBtnWrap" id="startWrap">
         <button class="btn btn-primary" id="startBtn">✍️ מילוי אישור יציאה</button>
       </div>
@@ -210,20 +273,22 @@ async function load(){
       <div id="resultArea"></div>
     </div>`;
 
+  let pad = null;
   document.getElementById('startBtn').addEventListener('click', ()=>{
     document.getElementById('startWrap').style.display = 'none';
     document.getElementById('formArea').style.display = '';
+    // חשוב: לאתחל את לוח החתימה רק אחרי שהקנבס נראה בפועל — קנבס בתוך אלמנט מוסתר
+    // (display:none) מקבל רוחב 0 ונשאר שבור גם אחרי שמציגים אותו.
+    pad = setupSignaturePad(document.getElementById('sigCanvas'));
+    document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
   });
-
-  const pad = setupSignaturePad(document.getElementById('sigCanvas'));
-  document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
 
   document.getElementById('submitApproval').addEventListener('click', async ()=>{
     const matchMsg = document.getElementById('matchMsg');
     matchMsg.innerHTML = '';
     const classId = document.getElementById('classSelect').value;
-    const studentName = document.getElementById('studentNameInput').value.trim();
-    const approverName = document.getElementById('approverName').value.trim();
+    const studentName = cleanText(document.getElementById('studentNameInput').value);
+    const approverName = cleanText(document.getElementById('approverName').value);
 
     if (!classId){ toast('יש לבחור כיתה'); return; }
     if (!studentName){ toast('יש להזין את שם התלמיד'); return; }
@@ -231,19 +296,15 @@ async function load(){
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
 
-    // הצלבה: כיתה + שם תלמיד + שם הורה — כל השלושה יחד, בלי הצגת רשימה גלויה בשום שלב
+    // הצלבה: כיתה + שם תלמיד + שם הורה — כל השלושה יחד
     const candidates = roster.filter(r =>
       r.class_id === classId &&
       norm(r.full_name) === norm(studentName) &&
       norm(r.parent_name) === norm(approverName)
     );
 
-    if (candidates.length === 0){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצאה התאמה לפרטים שהוזנו. יש לוודא שהכיתה, שם התלמיד ושם ההורה תואמים בדיוק למה שרשום במערכת הישיבה, או לפנות למחנך/ת.</p>`;
-      return;
-    }
-    if (candidates.length > 1){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">נמצאה יותר מהתאמה אחת. יש לפנות למחנך/ת הכיתה לקבלת קישור אישור אישי.</p>`;
+    if (candidates.length !== 1){
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">אחד מהפרטים שהוכנסו שגויים. אנא ודאו את נכונות הפרטים ונסו שוב.</p>`;
       return;
     }
 
