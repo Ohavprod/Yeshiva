@@ -202,6 +202,7 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
 .app-side{
   width:250px; flex:none; background:var(--navy); color:#dbe4f2;
   padding:24px 18px; display:flex; flex-direction:column; gap:6px;
+  position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto;
 }
 .app-side .brand{ margin-bottom:20px; padding:0 6px; }
 .app-side .role-pill{
@@ -297,3 +298,52 @@ table.data tr:last-child td{ border-bottom:none; }
   .stat-row{ grid-template-columns:repeat(2,1fr); }
   .form-grid{ grid-template-columns:1fr; }
 }
+
+/* ---------- confirm dialog ---------- */
+.confirm-overlay{
+  position:fixed; inset:0; background:rgba(16,22,40,.55); backdrop-filter:blur(2px);
+  display:flex; align-items:center; justify-content:center; z-index:200; padding:20px;
+}
+.confirm-box{
+  background:#fff; border-radius:18px; padding:28px; max-width:380px; width:100%;
+  box-shadow:0 30px 60px -20px rgba(0,0,0,.4);
+}
+.confirm-box h3{ margin-top:0; font-size:1.1rem; }
+.confirm-box p{ color:var(--ink-soft); font-size:.92rem; margin-bottom:22px; }
+.confirm-actions{ display:flex; gap:10px; justify-content:flex-end; }
+
+/* ---------- trip approvals button + rows ---------- */
+.btn-manage-approvals{
+  background:var(--paper-2); color:var(--navy); border:1.5px solid var(--line);
+  font-weight:600; padding:9px 18px; border-radius:999px; display:inline-flex; align-items:center; gap:6px;
+}
+.btn-manage-approvals:hover{ border-color:var(--steel); background:#fff; }
+.btn-manage-approvals .chev{ transition:transform .2s; }
+.btn-manage-approvals.open .chev{ transform:rotate(180deg); }
+
+.approval-row{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  border:1.5px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:10px;
+}
+.approval-row .a-actions{ display:flex; align-items:center; gap:6px; }
+.icon-btn{
+  width:36px; height:36px; border-radius:50%; border:1.5px solid var(--line); background:#fff;
+  display:inline-flex; align-items:center; justify-content:center; font-size:1.05rem; text-decoration:none;
+  color:var(--ink); transition:transform .12s, border-color .12s;
+}
+.icon-btn:hover{ transform:translateY(-1px); border-color:var(--steel); }
+.icon-btn.wa{ color:#25D366; border-color:#bfe9cf; }
+.icon-btn.call{ color:var(--steel); }
+.icon-btn.view{ color:var(--teal); }
+.icon-btn.pdf{ color:var(--navy); }
+
+.class-group-head{
+  font-family:'Rubik',sans-serif; font-weight:700; color:var(--navy);
+  margin:28px 0 12px; font-size:1.1rem; display:flex; align-items:center; gap:8px;
+}
+.class-group-head:first-child{ margin-top:0; }
+
+/* ---------- signature pad (approve.html) ---------- */
+.sig-pad-wrap{ border:1.5px dashed var(--line); border-radius:12px; overflow:hidden; margin-top:10px; background:#fbfcfe; }
+.sig-pad-wrap canvas{ display:block; width:100%; touch-action:none; cursor:crosshair; }
+.sig-clear{ font-size:.78rem; color:var(--ink-soft); background:none; border:none; text-decoration:underline; padding:6px 0; }
