@@ -1,10 +1,4 @@
-// חיבור Firebase משותף לכל דפי האתר (מחליף את supabaseClient.js הישן).
-//
-// ⚠️ לפני שהאתר יעבוד יש להחליף את הערכים למטה בערכים האמיתיים של הפרויקט שלך:
-// Firebase Console → ⚙️ Project settings → Your apps → (אם אין אפליקציית Web, ליצור אחת) → SDK setup and configuration
-//
-// שימו לב: apiKey כאן הוא ציבורי בכוונה (בדיוק כמו ה-anon key שהיה ב-Supabase) —
-// האבטחה האמיתית נאכפת בצד השרת דרך Firestore Security Rules (ר' firestore.rules).
+// חיבור Firebase משותף לכל דפי האתר.
 const firebaseConfig = {
   apiKey: "AIzaSyD8jhBcx3fel2fMN2r9E8OILfNzrr8QfDk",
   authDomain: "yeshiva-afula.firebaseapp.com",
@@ -14,12 +8,15 @@ const firebaseConfig = {
   appId: "1:605642764867:web:ce6d81552434d2f6cb5af6",
   measurementId: "G-TJ55PDJF9F"
 };
+
+// חשוב: משתמשים רק ב-SDK מסוג compat (התואם לתגי ה-<script> שנטענים ב-HTML).
+// אין להוסיף כאן initializeApp()/getAnalytics() מהסגנון המודרני (v9+ מודולים) —
+// זה יזרוק ReferenceError ויעצור את כל שאר הקובץ מלרוץ (כולל auth/db).
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// --- הגדרת ברירת המחדל של כל ההרשאות האפשריות במערכת ---
-// כל תפקיד הוא בסך הכל שם חופשי + מפה של ההרשאות האלו שסומנו לו ב-checkboxes.
+// --- הגדרת כל ההרשאות האפשריות במערכת ---
 const ALL_PERMISSIONS = [
   { key: 'view_all_classes',     label: 'צפייה בכל הכיתות והטיולים (לא רק כיתה משויכת)' },
   { key: 'manage_class_roster',  label: 'ניהול תלמידי הכיתה המשויכת (הוספה/עריכה/מחיקה)' },
@@ -33,8 +30,15 @@ const ALL_PERMISSIONS = [
   { key: 'manage_users',         label: 'ניהול משתמשים (יצירה/עריכה/הרשאות)' },
 ];
 
-// יצירת חשבון צוות חדש בלי לנתק את הסשן של המנהל המחובר.
-// עובד על ידי הפעלת מופע Firebase שני וזמני, ומחיקתו מיד לאחר מכן.
+// --- תפקידים קבועים והרשאות ברירת מחדל לכל אחד מהם ---
+// "מותאם אישית" (custom) לא מופיע כאן בכוונה — הוא פותח את הצ'קבוקסים לעריכה חופשית.
+const ROLE_PRESETS = {
+  'מחנך':        { manage_class_roster:true, create_trips:true, edit_trip_details:true },
+  'ראש הישיבה':  { view_all_classes:true, manage_announcements:true, create_trips:true, edit_trip_details:true, manage_trip_types:true, manage_classes:true },
+  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_trip_types:true, manage_announcements:true },
+  'מורה מקצועי': {},
+};
+
 async function createStaffAccountKeepingSession(email, tempPassword){
   const secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary-' + Date.now());
   try{
@@ -45,13 +49,10 @@ async function createStaffAccountKeepingSession(email, tempPassword){
     await secondaryApp.delete();
   }
 }
-
 function genTempPassword(){
   return Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(2, 6).toUpperCase() + '!1';
 }
-
 function genToken(){
-  // מזהה קישור אישור ציבורי — מספיק ארוך וקשה לניחוש (128 סיביות).
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
