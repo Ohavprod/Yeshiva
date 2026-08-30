@@ -38,8 +38,10 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/js/supabaseClient.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="assets/js/firebaseClient.js"></script>
 <script>
 function toast(msg){
   const t = document.getElementById('toast');
@@ -58,21 +60,30 @@ async function load(){
     content.innerHTML = '<p class="center-msg">קישור לא תקין. יש לוודא שהקישור המלא שהתקבל הועתק במלואו.</p>';
     return;
   }
-  const { data, error } = await sb.rpc('get_batch_by_token', { p_token: token });
-  if (error || !data || data.length === 0){
+  const batchRef = db.collection('trip_batches').doc(token);
+  const batchSnap = await batchRef.get();
+  if (!batchSnap.exists){
     content.innerHTML = '<p class="center-msg">לא נמצא טיול התואם לקישור זה. ייתכן שהקישור אינו תקין.</p>';
     return;
   }
-  const trip = data[0];
-  let rows = data;
-  if (focusStudent) rows = data.filter(r => r.student_id === focusStudent);
+  const batch = batchSnap.data();
+  const tripSnap = await db.collection('trips').doc(batch.trip_id).get();
+  if (!tripSnap.exists){
+    content.innerHTML = '<p class="center-msg">הטיול המשויך לקישור זה לא נמצא.</p>';
+    return;
+  }
+  const trip = tripSnap.data();
+
+  const studentsSnap = await batchRef.collection('students').get();
+  let rows = studentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (focusStudent) rows = rows.filter(r => r.id === focusStudent);
 
   content.innerHTML = `
     <div class="trip-card">
-      <h2 style="margin-top:0;">${esc(trip.trip_title)}</h2>
+      <h2 style="margin-top:0;">${esc(trip.title)}</h2>
       <div class="trip-meta">
         ${trip.trip_date ? `<div><span>תאריך</span>${new Date(trip.trip_date).toLocaleDateString('he-IL')}</div>` : ''}
-        ${trip.trip_location ? `<div><span>יעד</span>${esc(trip.trip_location)}</div>` : ''}
+        ${trip.location ? `<div><span>יעד</span>${esc(trip.location)}</div>` : ''}
         ${trip.departure_time ? `<div><span>שעת יציאה</span>${esc(trip.departure_time)}</div>` : ''}
         ${trip.return_time ? `<div><span>שעת חזרה</span>${esc(trip.return_time)}</div>` : ''}
         ${trip.cost ? `<div><span>עלות</span>${esc(trip.cost)}</div>` : ''}
@@ -85,7 +96,7 @@ async function load(){
 
   const wrap = document.getElementById('studentRows');
   wrap.innerHTML = rows.map(r => `
-    <div class="student-row ${r.status==='approved' ? 'approved':''}" data-student="${r.student_id}">
+    <div class="student-row ${r.status==='approved' ? 'approved':''}" data-student="${r.id}">
       <div style="width:100%;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <strong>${esc(r.student_name)}</strong>
@@ -93,12 +104,12 @@ async function load(){
             ? `<span class="badge badge-ok">✓ אושר ע״י ${esc(r.approved_by_name||'')}</span>`
             : `<button class="btn btn-primary btn-sm open-sign">אישור והשתתפות</button>`}
         </div>
-        <div class="sign-box" id="sign-${r.student_id}">
+        <div class="sign-box" id="sign-${r.id}">
           <div class="field" style="margin-top:12px;">
             <label>שם ההורה/ת המאשר/ת</label>
-            <input placeholder="שם מלא" id="name-${r.student_id}">
+            <input placeholder="שם מלא" id="name-${r.id}">
           </div>
-          <button class="btn btn-primary btn-sm confirm-sign" data-student="${r.student_id}">✓ אני מאשר/ת השתתפות</button>
+          <button class="btn btn-primary btn-sm confirm-sign" data-student="${r.id}">✓ אני מאשר/ת השתתפות</button>
         </div>
       </div>
     </div>
@@ -117,12 +128,18 @@ async function load(){
       const name = document.getElementById('name-'+sid).value.trim();
       if (!name){ toast('יש להזין שם'); return; }
       btn.disabled = true;
-      const { data: ok, error } = await sb.rpc('approve_student_in_batch', {
-        p_token: token, p_student_id: sid, p_approver_name: name,
-      });
-      if (error || !ok){ toast('אירעה שגיאה, נסו שוב'); btn.disabled = false; return; }
-      toast('האישור נקלט, תודה!');
-      load();
+      try{
+        await batchRef.collection('students').doc(sid).update({
+          status: 'approved',
+          approved_by_name: name,
+          approved_at: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        toast('האישור נקלט, תודה!');
+        load();
+      }catch(err){
+        toast('אירעה שגיאה, נסו שוב');
+        btn.disabled = false;
+      }
     });
   });
 }
