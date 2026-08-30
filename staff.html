@@ -19,7 +19,7 @@
 <div id="loginView" class="login-wrap">
   <div class="login-card">
     <div class="brand-row">
-      <img src="assets/img/logo.gif" alt="">
+      <img src="assets/img/logo.png" alt="">
       <div>
         <div style="font-family:'Rubik',sans-serif; font-weight:700;">ישיבה תיכונית עפולה</div>
         <div style="font-size:.8rem; color:var(--ink-soft);">מערכת לצוות החינוכי</div>
@@ -50,7 +50,7 @@
 <div id="setPasswordView" class="login-wrap" style="display:none;">
   <div class="login-card">
     <div class="brand-row">
-      <img src="assets/img/logo.gif" alt="">
+      <img src="assets/img/logo.png" alt="">
       <div><div style="font-family:'Rubik',sans-serif; font-weight:700;">ישיבה תיכונית עפולה</div></div>
     </div>
     <h2>הגדרת סיסמה</h2>
@@ -70,7 +70,7 @@
 <div id="pendingView" style="display:none;" class="login-wrap">
   <div class="login-card">
     <div class="brand-row">
-      <img src="assets/img/logo.gif" alt="">
+      <img src="assets/img/logo.png" alt="">
       <div><div style="font-family:'Rubik',sans-serif; font-weight:700;">ישיבה תיכונית עפולה</div></div>
     </div>
     <h2>החשבון ממתין לאישור</h2>
@@ -84,7 +84,7 @@
   <div class="side-backdrop" id="sideBackdrop"></div>
   <aside class="app-side" id="appSide">
     <a class="brand" href="index.html">
-      <img src="assets/img/logo.gif" alt="" style="height:38px;width:38px;">
+      <img src="assets/img/logo.png" alt="" style="height:46px;width:46px;">
       <div>
         <div class="t1" style="font-size:.95rem;">ישיבה תיכונית עפולה</div>
       </div>
@@ -97,7 +97,7 @@
 
   <main class="app-main">
     <div class="mobile-brand-header">
-      <img src="assets/img/logo.gif" alt="">
+      <img src="assets/img/logo.png" alt="">
       <span>ישיבה תיכונית עפולה</span>
     </div>
     <div class="app-topbar">
@@ -723,9 +723,11 @@ async function renderTrips(body){
       chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
     });
     document.getElementById('selectAllClassesBtn').addEventListener('click', ()=>{
-      document.querySelectorAll('#t_classes_picker input').forEach(i=>{
-        i.checked = true;
-        i.closest('.chip-check').classList.add('checked');
+      const boxes = document.querySelectorAll('#t_classes_picker input');
+      const allChecked = Array.from(boxes).every(i=>i.checked);
+      boxes.forEach(i=>{
+        i.checked = !allChecked;
+        i.closest('.chip-check').classList.toggle('checked', !allChecked);
       });
     });
   }
@@ -855,6 +857,7 @@ function renderTripsList(container, trips){
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">✏️</button>` : ''}
           ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">🗑</button>` : ''}
+          ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">🔗 העתקת קישור</button>` : ''}
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">📣 שליחת חוזר</button>` : ''}
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>ניהול אישורים</span><span class="chev">⌄</span></button>
         </div>
@@ -899,6 +902,15 @@ function renderTripsList(container, trips){
         toast('הטיול נמחק'); goto('trips');
       }
       catch(err){ toast('שגיאה: '+err.message); }
+    });
+  });
+
+  container.querySelectorAll('.copy-notice-link').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const trip = trips.find(t=>t.id===btn.dataset.id);
+      const link = `${siteBaseUrl()}trip-notice.html?t=${trip.id}`;
+      navigator.clipboard.writeText(link);
+      toast('הקישור הועתק — אפשר להעביר לרכזים להפצה בקבוצות שלהם');
     });
   });
 
@@ -1352,10 +1364,31 @@ async function renderClassSettings(body){
   }
 
   body.innerHTML = `
+    ${(p.manage_users || p.view_all_classes) ? `<div id="teacherGroupArea" style="margin-bottom:24px;"></div>` : ''}
     ${isAdmin ? `<div class="field" style="max-width:320px; margin-bottom:20px;"><label>בחר/י כיתה</label>
       <select id="cs_class_picker">${classesForPicker.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
     </div>` : ''}
     <div id="settingsArea"></div>`;
+
+  if (p.manage_users || p.view_all_classes){
+    const gSnap = await db.collection('settings').doc('global').get();
+    const gData = gSnap.exists ? gSnap.data() : {};
+    const gArea = document.getElementById('teacherGroupArea');
+    gArea.innerHTML = `
+      <div class="card card-pad">
+        <h3 style="margin-top:0;">קבוצת צוות המורים</h3>
+        <div class="field">
+          <label>קישור לקבוצת הוואטסאפ של צוות המורים</label>
+          <input id="cs_teachers_link" value="${esc(gData.teachers_group_link||'')}" placeholder="https://chat.whatsapp.com/xxxxxxxxxxxx">
+        </div>
+        <button class="btn btn-primary btn-sm" id="cs_teachers_save">💾 שמירה</button>
+      </div>`;
+    gArea.querySelector('#cs_teachers_save').addEventListener('click', async ()=>{
+      const link = gArea.querySelector('#cs_teachers_link').value.trim();
+      try{ await db.collection('settings').doc('global').set({ teachers_group_link: link }, { merge:true }); toast('נשמר'); }
+      catch(err){ toast('שגיאה: '+err.message); }
+    });
+  }
 
   const renderForClass = async (cid) => {
     const snap = await db.collection('classes').doc(cid).get();
