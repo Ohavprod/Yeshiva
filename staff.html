@@ -412,7 +412,7 @@ async function renderHome(body){
   let teacherTripsHtml = '';
   if (!isAdminLevel && myProfile.class_id && p.manage_class_roster){
     const [tripsSnap, rosterSnap] = await Promise.all([
-      db.collection('trips').where('class_id','==', myProfile.class_id).orderBy('created_at','desc').get(),
+      db.collection('trips').where('class_ids','array-contains', myProfile.class_id).orderBy('created_at','desc').get(),
       db.collection('students').where('class_id','==', myProfile.class_id).get(),
     ]);
     const totalStudents = rosterSnap.size;
@@ -503,11 +503,21 @@ async function renderMyClass(body){
 
   const contactIcons = (s) => `
     ${s.mother_phone ? `
-      <a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${s.mother_phone.replace(/\D/g,'')}" target="_blank" title="וואטסאפ לאמא">${WA_ICON_SVG}</a>
-      <a class="icon-btn call" style="width:34px;height:34px;" href="tel:${s.mother_phone.replace(/\D/g,'')}" title="חיוג לאמא">${PHONE_ICON_SVG}</a>` : ''}
+      <div class="parent-contact-group">
+        <span class="parent-label">👩 אמא</span>
+        <div class="parent-icons">
+          <a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${s.mother_phone.replace(/\D/g,'')}" target="_blank" title="וואטסאפ לאמא">${WA_ICON_SVG}</a>
+          <a class="icon-btn call" style="width:34px;height:34px;" href="tel:${s.mother_phone.replace(/\D/g,'')}" title="חיוג לאמא">${PHONE_ICON_SVG}</a>
+        </div>
+      </div>` : ''}
     ${s.father_phone ? `
-      <a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${s.father_phone.replace(/\D/g,'')}" target="_blank" title="וואטסאפ לאבא">${WA_ICON_SVG}</a>
-      <a class="icon-btn call" style="width:34px;height:34px;" href="tel:${s.father_phone.replace(/\D/g,'')}" title="חיוג לאבא">${PHONE_ICON_SVG}</a>` : ''}
+      <div class="parent-contact-group">
+        <span class="parent-label">👨 אבא</span>
+        <div class="parent-icons">
+          <a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${s.father_phone.replace(/\D/g,'')}" target="_blank" title="וואטסאפ לאבא">${WA_ICON_SVG}</a>
+          <a class="icon-btn call" style="width:34px;height:34px;" href="tel:${s.father_phone.replace(/\D/g,'')}" title="חיוג לאבא">${PHONE_ICON_SVG}</a>
+        </div>
+      </div>` : ''}
     ${!s.mother_phone && !s.father_phone ? '<span style="color:var(--ink-soft); font-size:.85rem;">אין טלפון</span>' : ''}`;
 
   body.innerHTML = `
@@ -621,7 +631,7 @@ async function renderMyClass(body){
 /* מוחק את כל אישורי הטיולים של תלמיד שהוסר מהכיתה, כדי שלא יישאר "ממתין" לנצח */
 async function removeStudentFromAllTripApprovals(studentId, classId){
   try{
-    const tripsSnap = await db.collection('trips').where('class_id','==', classId).get();
+    const tripsSnap = await db.collection('trips').where('class_ids','array-contains', classId).get();
     for (const tripDoc of tripsSnap.docs){
       await tripDoc.ref.collection('approvals').doc(studentId).delete().catch(()=>{});
     }
@@ -640,18 +650,24 @@ async function renderTrips(body){
   classesCache = classesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
   tripTypesCache = typesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
-  let tripsQuery = db.collection('trips').orderBy('created_at','desc');
-  if (!p.view_all_classes){
-    tripsQuery = myProfile.class_id
-      ? db.collection('trips').where('class_id','==', myProfile.class_id).orderBy('created_at','desc')
-      : null;
+  const myClassIdsForFilter = myProfile.class_id ? [myProfile.class_id] : [];
+  let trips = [];
+  if (p.view_all_classes){
+    trips = (await db.collection('trips').orderBy('created_at','desc').get()).docs.map(d=>({ id:d.id, ...d.data() }));
+  } else if (myClassIdsForFilter.length){
+    trips = (await db.collection('trips').where('class_ids','array-contains', myProfile.class_id).orderBy('created_at','desc').get())
+      .docs.map(d=>({ id:d.id, ...d.data() }));
   }
-  const trips = tripsQuery ? (await tripsQuery.get()).docs.map(d=>({ id:d.id, ...d.data() })) : [];
 
   const canCreate = !!p.create_trips;
-  const classOptionsForCreate = p.view_all_classes
-    ? classesCache.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')
-    : `<option value="${myProfile.class_id||''}">${esc(classesCache.find(c=>c.id===myProfile.class_id)?.name || '(אין כיתה משויכת)')}</option>`;
+  // בחירת כיתות ליצירת טיול: מנהל/ראש ישיבה בוחר כמה כיתות שרוצה (טיול משותף); מחנך רגיל — רק הכיתה שלו, קבועה.
+  const classPickerHtml = p.view_all_classes
+    ? `<div class="field" style="grid-column:1/-1;"><label>כיתות (ניתן לבחור כמה — לטיול משותף)</label>
+        <div class="checkgroup" id="t_classes_picker">
+          ${classesCache.map(c=>`<label class="chip-check"><input type="checkbox" value="${c.id}"> ${esc(c.name)}</label>`).join('')}
+        </div>
+      </div>`
+    : `<input type="hidden" id="t_class_fixed" value="${myProfile.class_id||''}">`;
 
   body.innerHTML = `
     ${canCreate ? `
@@ -664,7 +680,7 @@ async function renderTrips(body){
             ${tripTypesCache.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}
           </select>
         </div>
-        ${p.view_all_classes ? `<div class="field"><label>כיתה</label><select id="t_class">${classOptionsForCreate}</select></div>` : `<input type="hidden" id="t_class" value="${myProfile.class_id||''}">`}
+        ${classPickerHtml}
         <div class="field"><label>כותרת הטיול</label><input required id="t_title" placeholder="לדוגמה: טיול שנתי לצפון"></div>
         <div class="field"><label>יעד / מיקום</label><input id="t_location"></div>
         <div class="field"><label>תאריך</label><input type="date" id="t_date"></div>
@@ -678,14 +694,22 @@ async function renderTrips(body){
     <div id="tripsList"></div>
   `;
 
+  if (p.view_all_classes){
+    document.getElementById('t_classes_picker').querySelectorAll('.chip-check').forEach(chip=>{
+      chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
+    });
+  }
+
   if (canCreate){
     document.getElementById('newTripForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
-      const class_id = document.getElementById('t_class').value;
-      if (!class_id){ toast('אין כיתה תקפה לשיוך הטיול'); return; }
+      const class_ids = p.view_all_classes
+        ? Array.from(document.querySelectorAll('#t_classes_picker input:checked')).map(i=>i.value)
+        : [document.getElementById('t_class_fixed').value].filter(Boolean);
+      if (class_ids.length === 0){ toast('יש לבחור לפחות כיתה אחת'); return; }
       const payload = {
         trip_type_id: document.getElementById('t_type').value || null,
-        class_id,
+        class_ids,
         title: document.getElementById('t_title').value.trim(),
         location: document.getElementById('t_location').value.trim(),
         trip_date: document.getElementById('t_date').value || null,
@@ -698,11 +722,14 @@ async function renderTrips(body){
       };
       try{
         const tripRef = await db.collection('trips').add(payload);
-        // יוצר מיד מסמך אישור (ממתין) לכל תלמידי הכיתה, ושומר "תמונת מצב" של שמות בלבד
-        // (בלי טלפון/ת.ז) ישירות על הטיול — כדי ש-trip-notice.html הציבורי יוכל להציג
-        // רשימת בחירה בטוחה, בלי לחשוף שום מידע רגיש.
-        const rosterSnap = await db.collection('students').where('class_id','==', class_id).get();
-        const roster_snapshot = rosterSnap.docs.map(d=>({ id: d.id, full_name: d.data().full_name }));
+        // איחוד תלמידי כל הכיתות שנבחרו (Firestore 'in' תומך בעד 10 ערכים — מספיק בהחלט)
+        const rosterSnap = await db.collection('students').where('class_id','in', class_ids).get();
+        // roster_snapshot: שם תלמיד + שם הורה + כיתה — נשמר על הטיול עצמו, ומשמש רק להצלבה
+        // אוטומטית מול מה שההורה מקליד/בוחר ב-trip-notice.html. אף פעם לא מוצג כרשימה גלויה.
+        const roster_snapshot = rosterSnap.docs.map(d=>({
+          id: d.id, full_name: d.data().full_name, parent_name: d.data().parent_name||'', class_id: d.data().class_id,
+        }));
+        const class_options = class_ids.map(cid=>({ id: cid, name: classesCache.find(c=>c.id===cid)?.name || '' }));
         const batch = db.batch();
         rosterSnap.docs.forEach(d=>{
           batch.set(tripRef.collection('approvals').doc(d.id), {
@@ -710,7 +737,7 @@ async function renderTrips(body){
             created_at: firebase.firestore.FieldValue.serverTimestamp(),
           });
         });
-        batch.update(tripRef, { roster_snapshot });
+        batch.update(tripRef, { roster_snapshot, class_options });
         await batch.commit();
         toast('הטיול נוצר'); goto('trips');
       }
@@ -729,11 +756,14 @@ function renderTripsList(container, trips){
     return;
   }
 
+  const classIdsOf = (t) => t.class_ids || (t.class_id ? [t.class_id] : []);
+  const classNamesOf = (t) => classIdsOf(t).map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
+
   const tripCardHtml = (t) => `
     <div class="card card-pad" style="margin-bottom:18px;" data-trip-id="${t.id}">
       <div class="trip-summary" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
         <div>
-          <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classesCache.find(c=>c.id===t.class_id)?.name||'')}</span></h3>
+          <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span></h3>
           <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
             ${tripTypesCache.find(tt=>tt.id===t.trip_type_id)?.name ? esc(tripTypesCache.find(tt=>tt.id===t.trip_type_id).name)+' · ' : ''}
             ${t.trip_date ? new Date(t.trip_date).toLocaleDateString('he-IL')+' · ' : ''}
@@ -753,15 +783,20 @@ function renderTripsList(container, trips){
 
   if (p.view_all_classes){
     const byClass = {};
-    trips.forEach(t=>{ (byClass[t.class_id || '_none'] = byClass[t.class_id || '_none'] || []).push(t); });
-    const classIds = Object.keys(byClass).sort((a,b)=>{
+    trips.forEach(t=>{
+      const ids = classIdsOf(t);
+      const key = ids.length === 1 ? ids[0] : '_multi';
+      (byClass[key] = byClass[key] || []).push(t);
+    });
+    const groupKeys = Object.keys(byClass).filter(k=>k!=='_multi').sort((a,b)=>{
       const an = classesCache.find(c=>c.id===a)?.name || 'זזז';
       const bn = classesCache.find(c=>c.id===b)?.name || 'זזז';
       return an.localeCompare(bn, 'he');
     });
-    container.innerHTML = classIds.map(cid => {
-      const name = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה משויכת';
-      return `<div class="class-group-head">🏫 ${esc(name)}</div>` + byClass[cid].map(tripCardHtml).join('');
+    if (byClass['_multi']) groupKeys.unshift('_multi');
+    container.innerHTML = groupKeys.map(key => {
+      const name = key === '_multi' ? 'טיולים משותפים למספר כיתות' : (classesCache.find(c=>c.id===key)?.name || 'ללא כיתה משויכת');
+      return `<div class="class-group-head">🏫 ${esc(name)}</div>` + byClass[key].map(tripCardHtml).join('');
     }).join('');
   } else {
     container.innerHTML = trips.map(tripCardHtml).join('');
@@ -942,12 +977,16 @@ function showBulkSendModal(trip, students, approvalsById){
   const listEl = overlay.querySelector('#bulkList');
   listEl.innerHTML = pending.map(s=>{
     const parents = [];
-    if (s.mother_phone) parents.push({ label:'אמא', phone:s.mother_phone });
-    if (s.father_phone) parents.push({ label:'אבא', phone:s.father_phone });
+    if (s.mother_phone) parents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
+    if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
     return `<div class="approval-row" style="margin-bottom:0;">
       <strong>${esc(s.full_name)}</strong>
       <div class="a-actions">
-        ${parents.map(pr=>`<button class="icon-btn wa bulk-send" data-id="${s.id}" data-phone="${pr.phone}" title="שליחה ל${pr.label}">${WA_ICON_SVG}</button>`).join('')}
+        ${parents.map(pr=>`
+          <div class="parent-contact-group">
+            <span class="parent-label">${pr.icon} ${pr.label}</span>
+            <div class="parent-icons"><button class="icon-btn wa bulk-send" data-id="${s.id}" data-phone="${pr.phone}" title="שליחה ל${pr.label}">${WA_ICON_SVG}</button></div>
+          </div>`).join('')}
       </div>
     </div>`;
   }).join('') || '<p style="color:var(--ink-soft);">אין תלמידים ממתינים עם מספר טלפון רשום.</p>';
@@ -974,11 +1013,12 @@ function showBulkSendModal(trip, students, approvalsById){
 
 async function renderTripDetail(panel, trip){
   const p = myProfile.permissions || {};
-  const canManage = p.view_all_classes || (p.manage_class_roster && trip.class_id === myProfile.class_id);
-  const className = classesCache.find(c=>c.id===trip.class_id)?.name || '';
+  const tripClassIds = trip.class_ids || (trip.class_id ? [trip.class_id] : []);
+  const canManage = p.view_all_classes || (p.manage_class_roster && tripClassIds.includes(myProfile.class_id));
+  const className = tripClassIds.map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
 
   const [studentsSnap, approvalsSnap] = await Promise.all([
-    db.collection('students').where('class_id','==', trip.class_id).orderBy('full_name').get(),
+    tripClassIds.length ? db.collection('students').where('class_id','in', tripClassIds).orderBy('full_name').get() : Promise.resolve({docs:[]}),
     db.collection('trips').doc(trip.id).collection('approvals').get(),
   ]);
   const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
@@ -999,8 +1039,8 @@ async function renderTripDetail(panel, trip){
     const appr = approvalsById[s.id];
     const isApproved = appr?.status === 'approved';
     const parents = [];
-    if (s.mother_phone) parents.push({ label:'אמא', phone:s.mother_phone });
-    if (s.father_phone) parents.push({ label:'אבא', phone:s.father_phone });
+    if (s.mother_phone) parents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
+    if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
     return `
       <div class="approval-row" data-student="${s.id}">
         <div>
@@ -1008,8 +1048,14 @@ async function renderTripDetail(panel, trip){
           <div style="margin-top:4px;">${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}</div>
         </div>
         <div class="a-actions">
-          ${canManage && !isApproved ? parents.map(pr=>`<button class="icon-btn wa send-wa" data-id="${s.id}" data-phone="${pr.phone}" title="שליחת בקשת אישור ל${pr.label} בוואטסאפ">${WA_ICON_SVG}</button>`).join('') : ''}
-          ${parents.map(pr=>`<a class="icon-btn call" href="tel:${pr.phone.replace(/\D/g,'')}" title="חיוג ל${pr.label}">${PHONE_ICON_SVG}</a>`).join('')}
+          ${parents.map(pr=>`
+            <div class="parent-contact-group">
+              <span class="parent-label">${pr.icon} ${pr.label}</span>
+              <div class="parent-icons">
+                ${canManage && !isApproved ? `<button class="icon-btn wa send-wa" data-id="${s.id}" data-phone="${pr.phone}" title="שליחת בקשת אישור ל${pr.label} בוואטסאפ">${WA_ICON_SVG}</button>` : ''}
+                <a class="icon-btn call" href="tel:${pr.phone.replace(/\D/g,'')}" title="חיוג ל${pr.label}">${PHONE_ICON_SVG}</a>
+              </div>
+            </div>`).join('')}
           ${isApproved ? `<button class="icon-btn view view-approval" data-id="${s.id}" title="צפייה באישור">👁</button>` : ''}
           ${isApproved && canManage ? `<button class="icon-btn pdf print-approval" data-id="${s.id}" title="הדפסה / שמירה כ-PDF">${PDF_ICON_SVG}</button>` : ''}
         </div>
