@@ -123,7 +123,6 @@
 let me = null;        // firebase auth user
 let myProfile = null; // users/{uid} document data
 let classesCache = [];
-let tripTypesCache = [];
 let pendingOpenTripId = null; // טיול שצריך לפתוח אוטומטית אחרי מעבר ל"טיולים ואישורים" (מלוח הבקרה)
 
 function toast(msg){
@@ -330,10 +329,10 @@ function buildSideNav(){
     { id:'home', label:'לוח בקרה', icon:'🏠', show:true },
     { id:'myclass', label:'הכיתה שלי', icon:'🎓', show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:'🧭', show:true },
+    { id:'classsettings', label:'הגדרות כיתה', icon:'⚙️', show: (!!myProfile.class_id && !!p.manage_class_roster) || !!p.manage_classes || !!p.view_all_classes },
     { id:'announcements', label:'עדכונים באתר', icon:'📣', show: !!p.manage_announcements },
     { id:'classes', label:'ניהול כיתות', icon:'🏫', show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:'👤', show: !!p.manage_users },
-    { id:'triptypes', label:'סוגי טיולים', icon:'🗂', show: !!p.manage_trip_types },
   ];
   nav.innerHTML = items.filter(i=>i.show).map(i=>
     `<a href="#" class="side-link" data-view="${i.id}">${i.icon} ${i.label}</a>`
@@ -366,8 +365,8 @@ function setActiveNav(id){
 }
 
 const titles = {
-  home:'לוח בקרה', myclass:'הכיתה שלי', trips:'טיולים ואישורים',
-  announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים', triptypes:'סוגי טיולים',
+  home:'לוח בקרה', myclass:'הכיתה שלי', trips:'טיולים ואישורים', classsettings:'הגדרות כיתה',
+  announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
 };
 
 async function goto(view){
@@ -376,9 +375,9 @@ async function goto(view){
   const body = document.getElementById('viewBody');
   body.innerHTML = '<p style="color:var(--ink-soft);">טוען…</p>';
   const renderers = {
-    home: renderHome, myclass: renderMyClass, trips: renderTrips,
+    home: renderHome, myclass: renderMyClass, trips: renderTrips, classsettings: renderClassSettings,
     announcements: renderAnnouncements, classes: renderClasses,
-    users: renderUsers, triptypes: renderTripTypes,
+    users: renderUsers,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -497,10 +496,11 @@ async function renderMyClass(body){
     <div class="field"><label>טלפון אמא (לוואטסאפ)</label><input id="${prefix}_mother_phone" value="${esc(s.mother_phone||'')}" placeholder="05XXXXXXXX"></div>
     <div class="field"><label>טלפון אבא (לוואטסאפ)</label><input id="${prefix}_father_phone" value="${esc(s.father_phone||'')}" placeholder="05XXXXXXXX"></div>`;
 
+  const cleanText = (s) => (s||'').toString().trim().replace(/\s+/g,' ');
   const readStudentForm = (prefix) => ({
-    full_name: document.getElementById(`${prefix}_name`).value.trim(),
-    parent_name: document.getElementById(`${prefix}_parent_name`).value.trim(),
-    parent_id: document.getElementById(`${prefix}_parent_id`).value.trim(),
+    full_name: cleanText(document.getElementById(`${prefix}_name`).value),
+    parent_name: cleanText(document.getElementById(`${prefix}_parent_name`).value),
+    parent_id: cleanText(document.getElementById(`${prefix}_parent_id`).value),
     mother_phone: document.getElementById(`${prefix}_mother_phone`).value.trim(),
     father_phone: document.getElementById(`${prefix}_father_phone`).value.trim(),
   });
@@ -647,12 +647,7 @@ async function removeStudentFromAllTripApprovals(studentId, classId){
    ============================================================ */
 async function renderTrips(body){
   const p = myProfile.permissions || {};
-  const [classesSnap, typesSnap] = await Promise.all([
-    db.collection('classes').orderBy('name').get(),
-    db.collection('trip_types').orderBy('name').get(),
-  ]);
-  classesCache = classesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-  tripTypesCache = typesSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  classesCache = (await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() }));
 
   const myClassIdsForFilter = myProfile.class_id ? [myProfile.class_id] : [];
   let trips = [];
@@ -678,20 +673,26 @@ async function renderTrips(body){
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">יצירת טיול חדש</h3>
       <form id="newTripForm" class="form-grid">
-        <div class="field"><label>סוג טיול</label>
-          <select id="t_type">
-            <option value="">— בחר/י מהרשימה —</option>
-            ${tripTypesCache.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}
-          </select>
-        </div>
         ${classPickerHtml}
-        <div class="field"><label>כותרת הטיול</label><input required id="t_title" placeholder="לדוגמה: טיול שנתי לצפון"></div>
+        <div class="field" style="grid-column:1/-1;"><label>שם הטיול</label><input required id="t_title" placeholder="לדוגמה: סיור סליחות ישיבתי"></div>
+        <div class="field" style="grid-column:1/-1;"><label>פתיח / עיקרי הדברים (יוצג בבלטות בראש החוזר)</label>
+          <textarea id="t_intro" placeholder="לדוגמה: שלום הורים יקרים, כהכנה לקראת הימים הנוראים נצא כל הישיבה אי״ה ביום רביעי..."></textarea>
+        </div>
+        <div class="field"><label>תאריך עברי (טקסט חופשי)</label><input id="t_hebrew_date" placeholder="ה' תשרי תשפ״ז"></div>
+        <div class="field"><label>תאריך לועזי</label><input type="date" id="t_date"></div>
         <div class="field"><label>יעד / מיקום</label><input id="t_location"></div>
-        <div class="field"><label>תאריך</label><input type="date" id="t_date"></div>
+        <div class="field"><label>עלות</label><input id="t_cost" placeholder="₪ 80"></div>
         <div class="field"><label>שעת יציאה</label><input id="t_depart" placeholder="07:30"></div>
         <div class="field"><label>שעת חזרה</label><input id="t_return" placeholder="16:00"></div>
-        <div class="field"><label>עלות</label><input id="t_cost" placeholder="₪ 80"></div>
+
+        <div class="field" style="grid-column:1/-1;">
+          <label>תוכנייה (מה בתוכנית)</label>
+          <div id="itineraryRows"></div>
+          <button type="button" class="btn btn-outline btn-sm" id="addItineraryRow" style="margin-top:6px;">➕ הוספת שורה לתוכנייה</button>
+        </div>
+
         <div class="field" style="grid-column:1/-1;"><label>הערות נוספות</label><textarea id="t_notes"></textarea></div>
+        <div class="field" style="grid-column:1/-1;"><label>סיום/חתימה (רשות — לדוגמה "בברכה, הרב חן חניה — ראש הישיבה")</label><textarea id="t_closing"></textarea></div>
         <div class="field"><button class="btn btn-primary" type="submit">יצירת טיול</button></div>
       </form>
     </div>` : ''}
@@ -705,22 +706,46 @@ async function renderTrips(body){
   }
 
   if (canCreate){
+    const itineraryRowsEl = document.getElementById('itineraryRows');
+    const addItineraryRow = (time='', activity='') => {
+      const row = document.createElement('div');
+      row.className = 'itinerary-row';
+      row.innerHTML = `
+        <input class="it-time" placeholder="17:30" value="${esc(time)}" style="width:90px;">
+        <input class="it-activity" placeholder="לדוגמה: התכנסות" value="${esc(activity)}" style="flex:1;">
+        <button type="button" class="icon-btn call remove-itinerary" title="הסרת שורה">✕</button>`;
+      row.querySelector('.remove-itinerary').addEventListener('click', ()=> row.remove());
+      itineraryRowsEl.appendChild(row);
+    };
+    document.getElementById('addItineraryRow').addEventListener('click', ()=> addItineraryRow());
+    addItineraryRow(); // שורה ראשונה כברירת מחדל
+
     document.getElementById('newTripForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
       const class_ids = p.view_all_classes
         ? Array.from(document.querySelectorAll('#t_classes_picker input:checked')).map(i=>i.value)
         : [document.getElementById('t_class_fixed').value].filter(Boolean);
       if (class_ids.length === 0){ toast('יש לבחור לפחות כיתה אחת'); return; }
+
+      const itinerary = Array.from(itineraryRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
+        time: row.querySelector('.it-time').value.trim(),
+        activity: row.querySelector('.it-activity').value.trim(),
+      })).filter(r=> r.time || r.activity)
+        .sort((a,b)=> a.time.localeCompare(b.time));
+
       const payload = {
-        trip_type_id: document.getElementById('t_type').value || null,
         class_ids,
         title: document.getElementById('t_title').value.trim(),
+        intro_text: document.getElementById('t_intro').value.trim(),
+        hebrew_date: document.getElementById('t_hebrew_date').value.trim(),
         location: document.getElementById('t_location').value.trim(),
         trip_date: document.getElementById('t_date').value || null,
         departure_time: document.getElementById('t_depart').value.trim(),
         return_time: document.getElementById('t_return').value.trim(),
         cost: document.getElementById('t_cost').value.trim(),
+        itinerary,
         notes: document.getElementById('t_notes').value.trim(),
+        closing_signature: document.getElementById('t_closing').value.trim(),
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
       };
@@ -752,6 +777,33 @@ async function renderTrips(body){
   renderTripsList(document.getElementById('tripsList'), trips);
 }
 
+/* חלון לבחירת קבוצה לשליחה, כשלטיול משותף יש כמה קבוצות וואטסאפ מוגדרות (אחת לכל כיתה) */
+function showGroupSendModal(groups, text){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:420px;">
+      <h3>שליחה לקבוצות ההורים</h3>
+      <p>הטיול משותף למספר כיתות — יש לפתוח ולשלוח בכל קבוצה בנפרד.</p>
+      <div id="groupList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
+      <div class="confirm-actions"><button class="btn btn-primary btn-sm gm-close">סגירה</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#groupList').innerHTML = groups.map((g,i)=>`
+    <button class="btn btn-outline btn-sm open-group" data-i="${i}" style="justify-content:space-between;">
+      <span>${esc(g.name||'כיתה')}</span><span>פתיחה ↗</span>
+    </button>`).join('');
+  overlay.querySelectorAll('.open-group').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      navigator.clipboard.writeText(text);
+      toast('הטקסט הועתק — יש להדביק ולשלוח');
+      window.open(groups[btn.dataset.i].link, '_blank');
+    });
+  });
+  overlay.querySelector('.gm-close').addEventListener('click', ()=> overlay.remove());
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) overlay.remove(); });
+}
+
 function renderTripsList(container, trips){
   const p = myProfile.permissions || {};
   const canEditInfo = !!p.edit_trip_details;
@@ -769,13 +821,14 @@ function renderTripsList(container, trips){
         <div>
           <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span></h3>
           <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
-            ${tripTypesCache.find(tt=>tt.id===t.trip_type_id)?.name ? esc(tripTypesCache.find(tt=>tt.id===t.trip_type_id).name)+' · ' : ''}
+            ${t.hebrew_date ? esc(t.hebrew_date)+' · ' : ''}
             ${t.trip_date ? new Date(t.trip_date).toLocaleDateString('he-IL')+' · ' : ''}
             ${esc(t.location||'')}
           </div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">✏️</button>` : ''}
+          ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">🗑</button>` : ''}
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">📣 שליחת חוזר</button>` : ''}
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>ניהול אישורים</span><span class="chev">⌄</span></button>
         </div>
@@ -806,14 +859,44 @@ function renderTripsList(container, trips){
     container.innerHTML = trips.map(tripCardHtml).join('');
   }
 
+  container.querySelectorAll('.del-trip').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const trip = trips.find(t=>t.id===btn.dataset.id);
+      if (!(await confirmDialog(`למחוק את הטיול "${trip.title}"? כל אישורי ההורים שכבר התקבלו יימחקו לצמיתות.`))) return;
+      try{
+        const tripRef = db.collection('trips').doc(trip.id);
+        const approvalsSnap = await tripRef.collection('approvals').get();
+        const batch = db.batch();
+        approvalsSnap.docs.forEach(d=> batch.delete(d.ref));
+        batch.delete(tripRef);
+        await batch.commit();
+        toast('הטיול נמחק'); goto('trips');
+      }
+      catch(err){ toast('שגיאה: '+err.message); }
+    });
+  });
+
   container.querySelectorAll('.send-notice').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const trip = trips.find(t=>t.id===btn.dataset.id);
       const link = `${siteBaseUrl()}trip-notice.html?t=${trip.id}`;
-      const text = encodeURIComponent(`חוזר טיול — ${trip.title}\nכל הפרטים לצפייה כאן:\n${link}`);
-      // אין אפשרות טכנית לפתוח קבוצת וואטסאפ ספציפית בלחיצה אחת ללא WhatsApp Business API —
-      // wa.me/?text פותח את בורר הצ'אטים של וואטסאפ, ומשם בוחרים את קבוצת ההורים בלחיצה אחת.
-      window.open(`https://wa.me/?text=${text}`, '_blank');
+      const text = `חוזר טיול — ${trip.title}\nכל הפרטים לצפייה כאן:\n${link}`;
+      const groups = classIdsOf(trip)
+        .map(cid=>({ name: classesCache.find(c=>c.id===cid)?.name, link: classesCache.find(c=>c.id===cid)?.whatsapp_group_link }))
+        .filter(g=> g.link);
+
+      if (groups.length === 0){
+        // אין קישור קבוצה מוגדר לאף אחת מהכיתות — פותחים את בורר הצ'אטים הכללי של וואטסאפ
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+        return;
+      }
+      if (groups.length === 1){
+        navigator.clipboard.writeText(text);
+        toast('הטקסט הועתק ללוח — יש להדביק (Ctrl+V) ולשלוח בקבוצה שנפתחת');
+        window.open(groups[0].link, '_blank');
+        return;
+      }
+      showGroupSendModal(groups, text);
     });
   });
 
@@ -854,32 +937,56 @@ function renderTripsList(container, trips){
       if (!opening) return;
       box.innerHTML = `
         <div class="form-grid">
-          <div class="field"><label>סוג טיול</label>
-            <select id="et_type_${id}">
-              <option value="">— ללא —</option>
-              ${tripTypesCache.map(tt=>`<option value="${tt.id}" ${tt.id===trip.trip_type_id?'selected':''}>${esc(tt.name)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="field"><label>כותרת</label><input id="et_title_${id}" value="${esc(trip.title)}"></div>
+          <div class="field" style="grid-column:1/-1;"><label>שם הטיול</label><input id="et_title_${id}" value="${esc(trip.title)}"></div>
+          <div class="field" style="grid-column:1/-1;"><label>פתיח / עיקרי הדברים</label><textarea id="et_intro_${id}">${esc(trip.intro_text||'')}</textarea></div>
+          <div class="field"><label>תאריך עברי</label><input id="et_hebrew_${id}" value="${esc(trip.hebrew_date||'')}"></div>
+          <div class="field"><label>תאריך לועזי</label><input type="date" id="et_date_${id}" value="${trip.trip_date||''}"></div>
           <div class="field"><label>יעד / מיקום</label><input id="et_location_${id}" value="${esc(trip.location||'')}"></div>
-          <div class="field"><label>תאריך</label><input type="date" id="et_date_${id}" value="${trip.trip_date||''}"></div>
+          <div class="field"><label>עלות</label><input id="et_cost_${id}" value="${esc(trip.cost||'')}"></div>
           <div class="field"><label>שעת יציאה</label><input id="et_depart_${id}" value="${esc(trip.departure_time||'')}"></div>
           <div class="field"><label>שעת חזרה</label><input id="et_return_${id}" value="${esc(trip.return_time||'')}"></div>
-          <div class="field"><label>עלות</label><input id="et_cost_${id}" value="${esc(trip.cost||'')}"></div>
+          <div class="field" style="grid-column:1/-1;">
+            <label>תוכנייה</label>
+            <div id="et_itinerary_${id}"></div>
+            <button type="button" class="btn btn-outline btn-sm" id="et_add_row_${id}" style="margin-top:6px;">➕ הוספת שורה</button>
+          </div>
           <div class="field" style="grid-column:1/-1;"><label>הערות</label><textarea id="et_notes_${id}">${esc(trip.notes||'')}</textarea></div>
+          <div class="field" style="grid-column:1/-1;"><label>סיום/חתימה</label><textarea id="et_closing_${id}">${esc(trip.closing_signature||'')}</textarea></div>
         </div>
         <button class="btn btn-primary btn-sm save-trip-edit" data-id="${id}">💾 שמירת שינויים</button>
       `;
+      const itRowsEl = document.getElementById(`et_itinerary_${id}`);
+      const addRow = (time='', activity='') => {
+        const row = document.createElement('div');
+        row.className = 'itinerary-row';
+        row.innerHTML = `
+          <input class="it-time" placeholder="17:30" value="${esc(time)}" style="width:90px;">
+          <input class="it-activity" placeholder="פעילות" value="${esc(activity)}" style="flex:1;">
+          <button type="button" class="icon-btn call remove-itinerary" title="הסרה">✕</button>`;
+        row.querySelector('.remove-itinerary').addEventListener('click', ()=> row.remove());
+        itRowsEl.appendChild(row);
+      };
+      (trip.itinerary||[]).forEach(r=> addRow(r.time, r.activity));
+      if (!(trip.itinerary||[]).length) addRow();
+      document.getElementById(`et_add_row_${id}`).addEventListener('click', ()=> addRow());
+
       box.querySelector('.save-trip-edit').addEventListener('click', async ()=>{
+        const itinerary = Array.from(itRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
+          time: row.querySelector('.it-time').value.trim(),
+          activity: row.querySelector('.it-activity').value.trim(),
+        })).filter(r=> r.time || r.activity).sort((a,b)=> a.time.localeCompare(b.time));
         const payload = {
-          trip_type_id: document.getElementById(`et_type_${id}`).value || null,
           title: document.getElementById(`et_title_${id}`).value.trim(),
+          intro_text: document.getElementById(`et_intro_${id}`).value.trim(),
+          hebrew_date: document.getElementById(`et_hebrew_${id}`).value.trim(),
           location: document.getElementById(`et_location_${id}`).value.trim(),
           trip_date: document.getElementById(`et_date_${id}`).value || null,
           departure_time: document.getElementById(`et_depart_${id}`).value.trim(),
           return_time: document.getElementById(`et_return_${id}`).value.trim(),
           cost: document.getElementById(`et_cost_${id}`).value.trim(),
+          itinerary,
           notes: document.getElementById(`et_notes_${id}`).value.trim(),
+          closing_signature: document.getElementById(`et_closing_${id}`).value.trim(),
         };
         try{ await db.collection('trips').doc(id).update(payload); toast('הטיול עודכן'); goto('trips'); }
         catch(err){ toast('שגיאה: '+err.message); }
@@ -1039,16 +1146,18 @@ async function renderTripDetail(panel, trip){
     <div id="approvalRows"></div>`;
   const rowsEl = panel.querySelector('#approvalRows');
 
-  rowsEl.innerHTML = students.map(s=>{
+  const isMultiClass = tripClassIds.length > 1;
+  const rowHtml = (s) => {
     const appr = approvalsById[s.id];
     const isApproved = appr?.status === 'approved';
     const parents = [];
     if (s.mother_phone) parents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
     if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
+    const classTag = isMultiClass ? `<span class="badge" style="background:var(--paper-2); color:var(--steel); margin-inline-start:6px;">${esc(classesCache.find(c=>c.id===s.class_id)?.name||'')}</span>` : '';
     return `
       <div class="approval-row" data-student="${s.id}">
         <div>
-          <strong>${esc(s.full_name)}</strong>
+          <strong>${esc(s.full_name)}</strong>${classTag}
           <div style="margin-top:4px;">${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}</div>
         </div>
         <div class="a-actions">
@@ -1064,7 +1173,23 @@ async function renderTripDetail(panel, trip){
           ${isApproved && canManage ? `<button class="icon-btn pdf print-approval" data-id="${s.id}" title="הדפסה / שמירה כ-PDF">${PDF_ICON_SVG}</button>` : ''}
         </div>
       </div>`;
-  }).join('');
+  };
+
+  if (isMultiClass){
+    const byClass = {};
+    students.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
+    const classIdsSorted = Object.keys(byClass).sort((a,b)=>{
+      const an = classesCache.find(c=>c.id===a)?.name || 'זזז';
+      const bn = classesCache.find(c=>c.id===b)?.name || 'זזז';
+      return an.localeCompare(bn, 'he');
+    });
+    rowsEl.innerHTML = classIdsSorted.map(cid=>{
+      const name = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
+      return `<div class="class-group-head" style="margin-top:16px;">🏫 ${esc(name)}</div>` + byClass[cid].map(rowHtml).join('');
+    }).join('');
+  } else {
+    rowsEl.innerHTML = students.map(rowHtml).join('');
+  }
 
   rowsEl.querySelectorAll('.send-wa').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -1180,6 +1305,59 @@ async function renderAnnouncements(body){
 /* ============================================================
    CLASSES
    ============================================================ */
+/* ============================================================
+   הגדרות כיתה — קישור לקבוצת וואטסאפ + מקום להרחבות עתידיות
+   ============================================================ */
+async function renderClassSettings(body){
+  const p = myProfile.permissions || {};
+  const isAdmin = !!(p.manage_classes || p.view_all_classes);
+
+  let classesForPicker = [];
+  if (isAdmin){
+    classesForPicker = (await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() }));
+  }
+  const initialClassId = isAdmin ? (classesForPicker[0]?.id || null) : myProfile.class_id;
+
+  if (!initialClassId){
+    body.innerHTML = `<div class="card card-pad">אין כיתה זמינה להגדרה.</div>`;
+    return;
+  }
+
+  body.innerHTML = `
+    ${isAdmin ? `<div class="field" style="max-width:320px; margin-bottom:20px;"><label>בחר/י כיתה</label>
+      <select id="cs_class_picker">${classesForPicker.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+    </div>` : ''}
+    <div id="settingsArea"></div>`;
+
+  const renderForClass = async (cid) => {
+    const snap = await db.collection('classes').doc(cid).get();
+    const cls = snap.exists ? snap.data() : {};
+    const area = document.getElementById('settingsArea');
+    area.innerHTML = `
+      <div class="card card-pad">
+        <h3 style="margin-top:0;">הגדרות כיתה: ${esc(cls.name||'')}</h3>
+        <div class="field">
+          <label>קישור לקבוצת הוואטסאפ של ההורים</label>
+          <input id="cs_wa_link" value="${esc(cls.whatsapp_group_link||'')}" placeholder="https://chat.whatsapp.com/xxxxxxxxxxxx">
+        </div>
+        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:-6px;">
+          כשמוגדר קישור, כפתור "שליחת חוזר" יעתיק אוטומטית את ההודעה ללוח ויפתח ישירות את קבוצת ההורים.
+        </p>
+        <button class="btn btn-primary btn-sm" id="cs_save">💾 שמירה</button>
+      </div>`;
+    area.querySelector('#cs_save').addEventListener('click', async ()=>{
+      const link = area.querySelector('#cs_wa_link').value.trim();
+      try{ await db.collection('classes').doc(cid).update({ whatsapp_group_link: link }); toast('נשמר'); }
+      catch(err){ toast('שגיאה: '+err.message); }
+    });
+  };
+
+  if (isAdmin){
+    document.getElementById('cs_class_picker').addEventListener('change', (e)=> renderForClass(e.target.value));
+  }
+  await renderForClass(initialClassId);
+}
+
 async function renderClasses(body){
   const p = myProfile.permissions || {};
   const snap = await db.collection('classes').orderBy('name').get();
@@ -1384,78 +1562,6 @@ async function renderUsers(body){
         try{ await db.collection('users').doc(p.id).delete(); box.innerHTML=''; toast('המשתמש הוסר'); goto('users'); }
         catch(err){ toast('שגיאה: '+err.message); }
       });
-    });
-  });
-}
-
-/* ============================================================
-   TRIP TYPES
-   ============================================================ */
-async function renderTripTypes(body){
-  const p = myProfile.permissions || {};
-  const snap = await db.collection('trip_types').orderBy('name').get();
-  const types = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  body.innerHTML = `
-    ${p.manage_trip_types ? `
-    <div class="card card-pad" style="margin-bottom:24px;">
-      <h3 style="margin-top:0;">סוג טיול חדש</h3>
-      <form id="newTypeForm" style="display:flex; gap:10px;">
-        <input id="tt_name" required placeholder="שם סוג הטיול" style="flex:1; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px;">
-        <input id="tt_desc" placeholder="תיאור (רשות)" style="flex:2; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px;">
-        <button class="btn btn-primary" type="submit">הוספה</button>
-      </form>
-    </div>` : ''}
-    <div class="card card-pad">
-      <table class="data">
-        <thead><tr><th>שם</th><th>תיאור</th><th></th></tr></thead>
-        <tbody>
-          ${types.map(t=>`
-            <tr data-id="${t.id}"><td class="c-name">${esc(t.name)}</td><td class="c-desc">${esc(t.description||'')}</td>
-            <td style="display:flex; gap:6px;">
-              <button class="btn btn-outline btn-sm edit-type" title="עריכה">✏️</button>
-              ${p.delete_trip_types ? '<button class="btn btn-outline btn-sm del-type" title="מחיקה">🗑</button>' : ''}
-            </td></tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-
-  if (p.manage_trip_types){
-    document.getElementById('newTypeForm').addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      const name = document.getElementById('tt_name').value.trim();
-      const description = document.getElementById('tt_desc').value.trim();
-      try{ await db.collection('trip_types').add({ name, description }); goto('triptypes'); }
-      catch(err){ toast('שגיאה: '+err.message); }
-    });
-  }
-  if (p.delete_trip_types){
-    body.querySelectorAll('.del-type').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if (!(await confirmDialog('למחוק סוג טיול זה?'))) return;
-        const tr = btn.closest('tr');
-        try{ await db.collection('trip_types').doc(tr.dataset.id).delete(); goto('triptypes'); }
-        catch(err){ toast('שגיאה: '+err.message); }
-      });
-    });
-  }
-  body.querySelectorAll('.edit-type').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tr = btn.closest('tr');
-      if (tr.dataset.editing) return;
-      tr.dataset.editing = '1';
-      const name = tr.querySelector('.c-name').textContent.trim();
-      const desc = tr.querySelector('.c-desc').textContent.trim();
-      tr.querySelector('.c-name').innerHTML = `<input class="ei-name" value="${esc(name)}" style="width:100%;">`;
-      tr.querySelector('.c-desc').innerHTML = `<input class="ei-desc" value="${esc(desc)}" style="width:100%;">`;
-      const actionsTd = tr.children[2];
-      actionsTd.innerHTML = `<button class="btn btn-primary btn-sm save-type">💾 שמירה</button> <button class="btn btn-outline btn-sm cancel-type">ביטול</button>`;
-      actionsTd.querySelector('.save-type').addEventListener('click', async ()=>{
-        const name = tr.querySelector('.ei-name').value.trim();
-        const description = tr.querySelector('.ei-desc').value.trim();
-        try{ await db.collection('trip_types').doc(tr.dataset.id).update({ name, description }); toast('נשמר'); goto('triptypes'); }
-        catch(err){ toast('שגיאה: '+err.message); }
-      });
-      actionsTd.querySelector('.cancel-type').addEventListener('click', ()=> goto('triptypes'));
     });
   });
 }
