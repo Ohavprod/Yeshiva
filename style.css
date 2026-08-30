@@ -33,7 +33,11 @@
 }
 
 *,*::before,*::after{ box-sizing:border-box; }
-html{ scroll-behavior:smooth; }
+html{
+  scroll-behavior:smooth;
+  /* גודל גופן בסיס מוגדל — כל הגדלים היחסיים (rem) בכל הדפים גדלים איתו */
+  font-size:18px;
+}
 body{
   margin:0;
   font-family:'Assistant',sans-serif;
