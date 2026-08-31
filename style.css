@@ -367,7 +367,9 @@ table.data tr:last-child td{ border-bottom:none; }
   .btn-manage-approvals{ width:100%; justify-content:center; padding:8px 14px; font-size:.85rem; }
 
   .approval-row{ flex-direction:column; align-items:flex-start; gap:8px; padding:10px 12px; }
-  .approval-row .a-actions{ width:100%; justify-content:flex-start; gap:6px; }
+  .approval-row .a-actions{ width:100%; justify-content:flex-start; gap:6px 8px; flex-wrap:wrap; }
+  .parent-contact-group{ padding:3px 6px 3px 3px; }
+  .parent-label{ font-size:.7rem; }
   .icon-btn{ width:38px; height:38px; }
   .icon-btn svg{ width:18px; height:18px; }
   .icon-btn{ font-size:1rem; }
