@@ -11,37 +11,98 @@
 <link rel="stylesheet" href="style.css">
 <style>
   body{ background:var(--paper); }
-  .approve-wrap{ max-width:560px; margin:0 auto; padding:32px 20px 60px; }
-  .approve-header{ display:flex; align-items:center; gap:12px; margin-bottom:26px; }
-  .approve-header img{ height:48px; width:48px; border-radius:50%; }
-  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:26px; box-shadow:var(--shadow-sm); margin-bottom:22px; }
-  .trip-meta{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:18px 0; font-size:.92rem; }
-  .trip-meta div span{ display:block; color:var(--ink-soft); font-size:.78rem; }
+  .basd-line{ text-align:right; max-width:640px; margin:0 auto; padding:10px 24px 0; font-size:.8rem; color:var(--ink-soft); font-weight:600; }
+  .notice-wrap{ max-width:640px; margin:0 auto; padding:0 0 60px; }
+  .notice-header{
+    position:relative; overflow:hidden;
+    background:radial-gradient(1100px 500px at 85% -20%, #1f3563 0%, var(--navy) 55%, var(--navy) 100%);
+    color:#fff; text-align:center; padding:40px 24px 34px;
+  }
+  .notice-header .ring{ position:absolute; inset:0; pointer-events:none; opacity:.5; }
+  .notice-header .logo-badge{
+    position:relative; z-index:1; height:112px; width:112px; border-radius:50%; margin:0 auto 14px;
+    background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 28px -8px rgba(0,0,0,.45);
+    overflow:hidden; border:3px solid rgba(255,255,255,.5);
+  }
+  .notice-header .logo-badge img{ height:100%; width:100%; object-fit:cover; }
+  .notice-header .school{ position:relative; z-index:1; font-family:'Rubik',sans-serif; font-weight:800; font-size:1.3rem; }
+  .notice-header .tag{ position:relative; z-index:1; font-size:1rem; font-weight:800; color:#fff; margin-top:5px; letter-spacing:.02em; }
+  .notice-body{ padding:0 24px; margin-top:-26px; position:relative; z-index:2; }
+  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
+
+  .section-eyebrow{
+    display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
+    background:var(--paper-2); padding:5px 14px; border-radius:999px; margin-bottom:14px;
+  }
+  .trip-title{ margin:0 0 14px; font-size:1.5rem; }
+
+  .intro-callout{
+    background:linear-gradient(135deg, #eef6ff, #f6f8fb); border-right:4px solid var(--teal);
+    border-radius:12px; padding:16px 18px; margin-bottom:20px; font-size:1rem; color:var(--navy); font-weight:500; line-height:1.7;
+  }
+
+  .date-line{ font-size:1.05rem; margin-bottom:18px; text-align:center; }
+  .date-line .lbl{ color:var(--ink-soft); font-size:.85rem; display:block; margin-bottom:4px; }
+  .date-line .heb{ font-weight:800; color:var(--navy); }
+  .date-line .sep{ color:var(--ink-soft); margin:0 8px; }
+  .date-line .greg{ color:var(--ink-soft); }
+
+  .meta-badges{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; margin-top:6px; }
+  .meta-badge{ width:96px; text-align:center; }
+  .meta-badge .m-icon{
+    width:52px; height:52px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center;
+    font-size:1.4rem; background:var(--paper-2); color:var(--steel);
+  }
+  .meta-badge:nth-child(odd) .m-icon{ background:var(--navy); color:#fff; }
+  .meta-badge .m-label{ font-size:.7rem; color:var(--ink-soft); }
+  .meta-badge .m-value{ font-size:.85rem; font-weight:700; color:var(--navy); line-height:1.3; }
+
+  .itinerary-list{ display:flex; flex-direction:column; gap:2px; }
+  .itinerary-item{ display:flex; gap:14px; padding:10px 0; border-bottom:1px dashed var(--line); }
+  .itinerary-item:last-child{ border-bottom:none; }
+  .itinerary-item .it-time{
+    flex:none; width:64px; font-weight:800; color:#fff; background:var(--teal);
+    border-radius:8px; text-align:center; padding:4px 0; font-size:.85rem; height:fit-content;
+  }
+  .itinerary-item .it-activity{ padding-top:3px; color:var(--ink); }
+
+  .signatures-row{ display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
+  .signature-col{ text-align:center; font-size:.92rem; color:var(--navy); line-height:1.7; }
+  .signature-col .sig-title{ color:var(--ink-soft); font-size:.78rem; margin-top:2px; }
+
+  .section-divider{ height:4px; border-radius:99px; background:linear-gradient(90deg, var(--steel), var(--teal)); margin:30px 0; opacity:.5; }
+
   .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
   .approved-card{ text-align:center; padding:40px 24px; }
   .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
-  @media (max-width:480px){
-    .approve-wrap{ padding:20px 14px 50px; }
-    .trip-card{ padding:20px; }
-    .trip-meta{ grid-template-columns:1fr; }
-  }
   .consent-check{
     display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:14px 16px;
     border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
   }
   .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
+  @media (max-width:480px){
+    .notice-body{ padding:0 14px; }
+    .trip-card{ padding:20px; }
+    .meta-badge{ width:78px; }
+    .meta-badge .m-icon{ width:44px; height:44px; font-size:1.15rem; }
+  }
 </style>
 </head>
 <body>
-<div class="approve-wrap">
-  <div class="approve-header">
-    <img src="assets/img/logo.png" alt="">
-    <div>
-      <div style="font-family:'Rubik',sans-serif; font-weight:700; color:var(--navy);">ישיבה תיכונית עפולה</div>
-      <div style="font-size:.8rem; color:var(--ink-soft);">אישור השתתפות בטיול</div>
+<div class="basd-line">בס״ד</div>
+<div class="notice-wrap">
+  <div class="notice-header">
+    <div class="ring">
+      <svg width="100%" height="100%" viewBox="0 0 400 220" preserveAspectRatio="none" style="position:absolute; inset:0;">
+        <circle cx="360" cy="10" r="140" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
+        <circle cx="360" cy="10" r="100" fill="none" stroke="rgba(79,163,220,.15)" stroke-width="1.5" stroke-dasharray="4 9"/>
+      </svg>
     </div>
+    <div class="logo-badge"><img src="assets/img/logo.png" alt=""></div>
+    <div class="school">ישיבה תיכונית עפולה</div>
+    <div class="tag">אישור אישי לטיול</div>
   </div>
-  <div id="content"><p class="center-msg">טוען פרטי טיול…</p></div>
+  <div class="notice-body" id="content"><p class="center-msg">טוען פרטי טיול…</p></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -57,6 +118,7 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 
 const params = new URLSearchParams(location.search);
 const tripId = params.get('t');
@@ -76,8 +138,7 @@ function setupSignaturePad(canvas){
     ctx.strokeStyle = '#16203a';
   }
   resize();
-  let drawing = false;
-  let last = null;
+  let drawing = false, last = null;
   function pos(e){
     const rect = canvas.getBoundingClientRect();
     const p = e.touches ? e.touches[0] : e;
@@ -88,10 +149,7 @@ function setupSignaturePad(canvas){
     if (!drawing) return;
     e.preventDefault();
     const p = pos(e);
-    ctx.beginPath();
-    ctx.moveTo(last.x, last.y);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
     last = p;
   }
   function end(){ drawing = false; }
@@ -133,6 +191,8 @@ async function load(){
   const trip = tripSnap.data();
   const approval = approvalSnap.data();
   const studentName = approval.student_name || '';
+  const itinerary = trip.itinerary || [];
+  const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
 
   if (approval.status === 'approved'){
     const approvedDate = approval.approved_at?.toDate ? approval.approved_at.toDate() : null;
@@ -148,20 +208,62 @@ async function load(){
     return;
   }
 
-  content.innerHTML = `
+  let mainHtml = `
     <div class="trip-card">
-      <h2 style="margin-top:0;">${esc(trip.title)}</h2>
-      <div class="trip-meta">
-        ${trip.trip_date ? `<div><span>תאריך</span>${new Date(trip.trip_date).toLocaleDateString('he-IL')}</div>` : ''}
-        ${trip.location ? `<div><span>יעד</span>${esc(trip.location)}</div>` : ''}
-        ${trip.departure_time ? `<div><span>שעת יציאה</span>${esc(trip.departure_time)}</div>` : ''}
-        ${trip.return_time ? `<div><span>שעת חזרה</span>${esc(trip.return_time)}</div>` : ''}
-        ${trip.cost ? `<div><span>עלות</span>${esc(trip.cost)}</div>` : ''}
+      <div class="section-eyebrow">פרטי הטיול</div>
+      <h2 class="trip-title">${esc(trip.title)}</h2>
+      ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
+      ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
+        <span class="lbl">תאריך הטיול</span>
+        ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
+        ${trip.hebrew_date && gregDate ? '<span class="sep">·</span>' : ''}
+        ${gregDate ? `<span class="greg">${gregDate}</span>` : ''}
+      </div>` : ''}
+      <div class="meta-badges">
+        ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
+        ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה מהישיבה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
+        ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה לישיבה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
+        ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(trip.cost)}</div></div>` : ''}
       </div>
-      ${trip.notes ? `<p style="color:var(--ink-soft); font-size:.9rem; border-top:1px solid var(--line); padding-top:14px;">${esc(trip.notes)}</p>` : ''}
-    </div>
+    </div>`;
+
+  if (itinerary.length){
+    mainHtml += `
     <div class="trip-card">
-      <h3 style="margin-top:0;">אישור השתתפות עבור ${esc(studentName)}</h3>
+      <div class="section-eyebrow">מה בתוכנית</div>
+      <div class="itinerary-list">
+        ${itinerary.map(it=>`
+          <div class="itinerary-item">
+            <div class="it-time">${esc(it.time)}</div>
+            <div class="it-activity">${esc(it.activity)}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  if (trip.notes){
+    mainHtml += `
+    <div class="trip-card">
+      <div class="section-eyebrow">הערות נוספות</div>
+      <p style="margin:0; color:var(--ink);">${esc(trip.notes)}</p>
+    </div>`;
+  }
+
+  if (trip.head_name || trip.coordinator_name){
+    mainHtml += `
+    <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:6px;">בברכה,</div>
+    <div class="signatures-row">
+      <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
+      <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+    </div>`;
+  }
+
+  mainHtml += `<div class="section-divider"></div>`;
+
+  content.innerHTML = mainHtml + `
+    <div class="trip-card">
+      <div class="section-eyebrow">אישור יציאה</div>
+      <h3 class="trip-title" style="font-size:1.2rem;">אישור השתתפות עבור ${esc(studentName)}</h3>
       <div class="field">
         <label>שם ההורה/ת המאשר/ת</label>
         <input placeholder="שם מלא" id="approverName">
@@ -185,9 +287,9 @@ async function load(){
   document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
 
   document.getElementById('submitApproval').addEventListener('click', async ()=>{
-    const name = document.getElementById('approverName').value.trim();
+    const name = cleanText(document.getElementById('approverName').value);
     if (!name){ toast('יש להזין שם'); return; }
-    if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן/בת בטיול'); return; }
+    if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
     const btn = document.getElementById('submitApproval');
     btn.disabled = true; btn.textContent = 'שולח…';
