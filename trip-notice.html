@@ -312,7 +312,7 @@ async function load(){
     const candidates = roster.filter(r =>
       r.class_id === classId &&
       norm(r.full_name) === norm(studentName) &&
-      norm(r.parent_name) === norm(approverName)
+      (norm(r.father_name) === norm(approverName) || norm(r.mother_name) === norm(approverName))
     );
 
     if (candidates.length !== 1){
