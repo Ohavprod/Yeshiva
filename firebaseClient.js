@@ -26,16 +26,20 @@ const ALL_PERMISSIONS = [
   { key: 'delete_classes',       label: 'מחיקת כיתות' },
   { key: 'manage_announcements', label: 'ניהול עדכוני האתר הציבורי' },
   { key: 'manage_users',         label: 'ניהול משתמשים (יצירה/עריכה/הרשאות)' },
+  { key: 'manage_events',        label: 'ניהול לוח אירועים ופרוטוקולי ישיבות צוות' },
+  { key: 'manage_payments',      label: 'ניהול תשלומי טיולים (מזכירה)' },
 ];
 
 // --- תפקידים קבועים והרשאות ברירת מחדל לכל אחד מהם ---
 // "מותאם אישית" (custom) לא מופיע כאן בכוונה — הוא פותח את הצ'קבוכים לעריכה חופשית.
-// "ראש הישיבה" = כל ההרשאות (מנהל מערכת בפועל).
+// "ראש הישיבה" = כל ההרשאות חוץ מניהול תשלומים (זה נשאר ייחודי למזכירה).
+// "מזכירה" = כל מה שיש לראש הישיבה, ובנוסף ניהול תשלומי הטיולים.
 const ROLE_PRESETS = {
   'מחנך':        { manage_class_roster:true, create_trips:true, edit_trip_details:true },
-  'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
-  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true },
+  'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.filter(p=>p.key!=='manage_payments').map(p=>[p.key, true])),
+  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true, manage_events:true },
   'מורה מקצועי': {},
+  'מזכירה':      Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
 };
 
 async function createStaffAccountKeepingSession(email, tempPassword){
@@ -48,8 +52,12 @@ async function createStaffAccountKeepingSession(email, tempPassword){
     await secondaryApp.delete();
   }
 }
+/* סיסמה זמנית קצרה וקריאה — בלי תווים מבלבלים (0/O, 1/I/L) כדי שיהיה נוח להקליד מהטלפון */
 function genTempPassword(){
-  return Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(2, 6).toUpperCase() + '!1';
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let pass = '';
+  for (let i = 0; i < 6; i++) pass += chars[Math.floor(Math.random() * chars.length)];
+  return pass;
 }
 function genToken(){
   const bytes = new Uint8Array(16);
