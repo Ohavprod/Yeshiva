@@ -287,11 +287,6 @@ table.data tr:last-child td{ border-bottom:none; }
 }
 .chip-check input{ accent-color:var(--teal); }
 .chip-check.checked{ border-color:var(--teal); background:#eef8f6; }
-.schoolwide-toggle{
-  width:100%; border:1.5px dashed var(--steel); border-radius:var(--radius-sm); padding:13px 18px;
-  font-weight:700; font-size:.95rem; color:var(--navy); background:var(--paper-2); justify-content:flex-start;
-}
-.schoolwide-toggle.checked{ border-style:solid; border-color:var(--teal); background:#eef8f6; }
 
 .wa-link{ color:var(--ok); font-weight:600; text-decoration:none; font-size:.85rem; }
 .wa-link:hover{ text-decoration:underline; }
@@ -334,6 +329,8 @@ table.data tr:last-child td{ border-bottom:none; }
 @media (max-width:900px){
   /* גודל בסיס מוגדל במובייל — פחות "כיווץ" ביחס לדסקטופ, לקריאות וברור טובים יותר */
   html{ font-size:18px; }
+  .trip-form-grid{ grid-template-columns:1fr; }
+  .notice-preview{ position:static; margin-top:20px; }
   .app-shell{ flex-direction:column; min-height:auto; }
 
   .mobile-menu-btn{ display:inline-flex; }
@@ -524,6 +521,46 @@ table.data tr:last-child td{ border-bottom:none; }
   font-family:inherit; font-size:.92rem; background:#fbfcfe;
 }
 .personal-note-wrap textarea:focus{ outline:none; border-color:var(--steel); background:#fff; }
+
+/* ---------- live trip-notice preview (trip creation/edit form) ---------- */
+.notice-preview{ position:sticky; top:20px; }
+.notice-preview .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow-sm); margin-bottom:16px; }
+.notice-preview .section-eyebrow{
+  display:inline-block; font-size:.68rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
+  background:var(--paper-2); padding:4px 12px; border-radius:999px; margin-bottom:12px;
+}
+.notice-preview .trip-title{ margin:0 0 12px; font-size:1.25rem; color:var(--navy); font-family:'Rubik',sans-serif; font-weight:700; }
+.notice-preview .intro-callout{
+  background:linear-gradient(135deg, #eef6ff, #f6f8fb); border-right:4px solid var(--teal);
+  border-radius:12px; padding:13px 15px; margin-bottom:16px; font-size:.9rem; color:var(--navy); font-weight:500; line-height:1.7;
+}
+.notice-preview .date-line{ font-size:.95rem; margin-bottom:14px; text-align:center; }
+.notice-preview .date-line .lbl{ color:var(--ink-soft); font-size:.78rem; display:block; margin-bottom:3px; }
+.notice-preview .date-line .heb{ font-weight:800; color:var(--navy); }
+.notice-preview .date-line .sep{ color:var(--ink-soft); margin:0 6px; }
+.notice-preview .date-line .greg{ color:var(--ink-soft); }
+.notice-preview .meta-badges{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:4px; }
+.notice-preview .meta-badge{ width:78px; text-align:center; }
+.notice-preview .meta-badge .m-icon{
+  width:42px; height:42px; border-radius:50%; margin:0 auto 6px; display:flex; align-items:center; justify-content:center;
+  font-size:1.15rem; background:var(--paper-2); color:var(--steel);
+}
+.notice-preview .meta-badge:nth-child(odd) .m-icon{ background:var(--navy); color:#fff; }
+.notice-preview .meta-badge .m-label{ font-size:.64rem; color:var(--ink-soft); }
+.notice-preview .meta-badge .m-value{ font-size:.78rem; font-weight:700; color:var(--navy); line-height:1.3; }
+.notice-preview .itinerary-list{ display:flex; flex-direction:column; gap:2px; }
+.notice-preview .itinerary-item{ display:flex; gap:12px; padding:8px 0; border-bottom:1px dashed var(--line); }
+.notice-preview .itinerary-item:last-child{ border-bottom:none; }
+.notice-preview .itinerary-item .it-time{
+  flex:none; width:54px; font-weight:800; color:#fff; background:var(--teal);
+  border-radius:8px; text-align:center; padding:3px 0; font-size:.76rem; height:fit-content;
+}
+.notice-preview .itinerary-item .it-activity{ padding-top:2px; color:var(--ink); font-size:.88rem; }
+.notice-preview .signatures-row{ display:flex; justify-content:space-between; gap:14px; margin-top:6px; }
+.notice-preview .signature-col{ text-align:center; font-size:.85rem; color:var(--navy); line-height:1.6; }
+.notice-preview .signature-col .sig-title{ color:var(--ink-soft); font-size:.72rem; margin-top:2px; }
+.notice-preview .np-empty{ color:var(--ink-soft); font-size:.88rem; text-align:center; padding:20px 10px; }
+.trip-form-grid{ display:grid; grid-template-columns:1.3fr 1fr; gap:24px; align-items:start; }
 
 /* ---------- approval summary (approved/pending, prominent) ---------- */
 .approval-summary{
