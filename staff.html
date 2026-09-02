@@ -119,6 +119,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
 /* ============================================================
@@ -151,6 +153,98 @@ async function fetchStudentDocsForClassIds(classIds){
   for (let i=0; i<ids.length; i+=10) chunks.push(ids.slice(i, i+10));
   const snaps = await Promise.all(chunks.map(chunk => db.collection('students').where('class_id','in', chunk).get()));
   return snaps.flatMap(s => s.docs);
+}
+
+/* ============================================================
+   EXCEL IMPORT — reads a student roster from an uploaded xlsx/xls/csv file.
+   Header matching is forgiving (spacing/quotes/order don't matter).
+   ============================================================ */
+const EXCEL_IMPORT_FIELD_ALIASES = {
+  full_name:    ['שםהתלמיד','שם','שםמלא','תלמיד','שםהתלמידה'],
+  father_name:  ['שםהאב','אב','שםאב'],
+  mother_name:  ['שםהאם','אם','שםאם'],
+  parent_id:    ['תז','תעודתזהות'],
+  mother_phone: ['טלפוןאמא','טלפוןאם','ניידאמא','טלאמא'],
+  father_phone: ['טלפוןאבא','טלפוןאב','ניידאבא','טלאבא'],
+  notes:        ['הערות','הערה'],
+};
+function normalizeExcelHeader(h){
+  return (h||'').toString().replace(/["'׳״.]/g,'').replace(/\s+/g,'').trim();
+}
+function matchExcelImportHeaders(headerRow){
+  const map = {};
+  (headerRow||[]).forEach((raw, idx)=>{
+    const norm = normalizeExcelHeader(raw);
+    for (const [field, aliases] of Object.entries(EXCEL_IMPORT_FIELD_ALIASES)){
+      if (map[field] !== undefined) continue;
+      if (aliases.includes(norm)) map[field] = idx;
+    }
+  });
+  return map;
+}
+/* מחבר בין כפתור טריגר + input[type=file] מוסתר + אזור תצוגה מקדימה, לפי idPrefix,
+   ומייבא לכיתה שmarkedGetClassId() מחזירה. onImported נקרא אחרי ייבוא מוצלח כדי לרענן את התצוגה */
+function wireExcelImportWidget(idPrefix, getClassId, getClassName, onImported){
+  const fileInput = document.getElementById(`${idPrefix}_file`);
+  const trigger = document.getElementById(`${idPrefix}_trigger`);
+  const previewEl = document.getElementById(`${idPrefix}_preview`);
+  if (!fileInput || !trigger || !previewEl) return;
+
+  trigger.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), { type:'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
+        if (!rows.length){ toast('הקובץ ריק'); fileInput.value=''; return; }
+        const headerMap = matchExcelImportHeaders(rows[0]);
+        if (headerMap.full_name === undefined){
+          toast('לא נמצאה עמודת "שם התלמיד" בקובץ — יש לוודא שיש שורת כותרות ראשונה עם עמודה כזו');
+          fileInput.value=''; return;
+        }
+        const field = (r, key) => headerMap[key] !== undefined ? (r[headerMap[key]] ?? '').toString().trim() : '';
+        const parsed = rows.slice(1).map(r=>({
+          full_name: field(r,'full_name'), father_name: field(r,'father_name'), mother_name: field(r,'mother_name'),
+          parent_id: field(r,'parent_id'), mother_phone: field(r,'mother_phone'), father_phone: field(r,'father_phone'),
+          notes: field(r,'notes'),
+        })).filter(s=> s.full_name);
+
+        if (!parsed.length){ toast('לא נמצאו שורות תלמידים תקינות בקובץ'); fileInput.value=''; return; }
+
+        previewEl.innerHTML = `
+          <div class="card card-pad" style="background:var(--paper-2); margin-top:16px;">
+            <p style="margin:0 0 10px;">נמצאו <b>${parsed.length}</b> תלמידים לייבוא לכיתה <b>${esc(getClassName())}</b>:</p>
+            <ul style="margin:0 0 14px; padding-inline-start:20px; max-height:160px; overflow-y:auto;">
+              ${parsed.map(s=>`<li>${esc(s.full_name)}</li>`).join('')}
+            </ul>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" id="${idPrefix}_confirm">✅ ייבוא ${parsed.length} תלמידים</button>
+              <button class="btn btn-outline btn-sm" id="${idPrefix}_cancel">ביטול</button>
+            </div>
+          </div>`;
+        document.getElementById(`${idPrefix}_cancel`).addEventListener('click', ()=>{ previewEl.innerHTML=''; fileInput.value=''; });
+        document.getElementById(`${idPrefix}_confirm`).addEventListener('click', async ()=>{
+          const classId = getClassId();
+          if (!classId){ toast('לא נבחרה כיתה'); return; }
+          try{
+            const batch = db.batch();
+            parsed.forEach(s=>{
+              batch.set(db.collection('students').doc(), { class_id: classId, ...s });
+            });
+            await batch.commit();
+            toast(`יובאו ${parsed.length} תלמידים בהצלחה`);
+            previewEl.innerHTML=''; fileInput.value='';
+            onImported();
+          }catch(err){ toast('שגיאה בייבוא: '+err.message); }
+        });
+      }catch(err){ toast('שגיאה בקריאת הקובץ: '+err.message); fileInput.value=''; }
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /* --- אייקוני SVG (וואטסאפ הירוק המקורי + טלפון) --- */
@@ -364,7 +458,7 @@ function buildSideNav(){
     { id:'home', label:'לוח בקרה', icon:'🏠', show:true },
     { id:'myclass', label:'הכיתה שלי', icon:'🎓', show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:'🧭', show:true },
-    { id:'payments', label:'ניהול תשלומים', icon:'💰', show: !!p.manage_payments },
+    { id:'payments', label:'ניהול תשלומים', icon:'💰', show: !!p.manage_payments || !!p.manage_users },
     { id:'mytasks', label:'המשימות שלי', icon:'✅', show:true },
     { id:'meetings', label:'ישיבות צוות', icon:'📝', show:true },
     { id:'classsettings', label:'הגדרות כיתה', icon:'⚙️', show: (!!myProfile.class_id && !!p.manage_class_roster) || !!p.manage_classes || !!p.view_all_classes },
@@ -515,6 +609,32 @@ async function renderHome(body){
       </div>
     </div>`;
 
+  const canManageStaffAnnouncements = !!p.manage_staff_announcements;
+  const staffAnnSnap = await db.collection('staff_announcements').orderBy('created_at','desc').limit(6).get().catch(()=>({docs:[]}));
+  const staffAnnouncements = staffAnnSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const staffAnnHtml = `
+    <div class="card card-pad" style="margin-top:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <h3 style="margin:0;">📢 הודעות מהנהלה</h3>
+        ${canManageStaffAnnouncements ? `<button class="btn btn-outline btn-sm" id="addStaffAnnBtn">➕ הודעה חדשה</button>` : ''}
+      </div>
+      ${canManageStaffAnnouncements ? `
+      <div id="addStaffAnnWrap" style="display:none; margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="field"><label>תוכן ההודעה</label><textarea id="new_ann_text" placeholder="לדוגמה: מחר יום לימודים מקוצר עקב אירוע בית ספרי"></textarea></div>
+        <button class="btn btn-primary btn-sm" id="new_ann_save">💾 פרסום ההודעה</button>
+      </div>` : ''}
+      <div id="staffAnnList" style="${staffAnnouncements.length ? 'margin-top:14px;' : ''}">
+        ${staffAnnouncements.map(a=>`
+          <div class="staff-ann-row">
+            <div style="flex:1; min-width:0;">
+              <div>${esc(a.text)}</div>
+              <div style="font-size:.78rem; color:var(--ink-soft); margin-top:4px;">${esc(a.created_by||'')}${a.created_at?.toDate ? ' · ' + a.created_at.toDate().toLocaleDateString('he-IL') : ''}</div>
+            </div>
+            ${canManageStaffAnnouncements ? `<button class="icon-btn call del-staff-ann" data-id="${a.id}" title="מחיקה" style="width:34px;height:34px; flex:none;">🗑</button>` : ''}
+          </div>`).join('') || '<p style="color:var(--ink-soft); font-size:.9rem; margin:12px 0 0;">אין כרגע הודעות מההנהלה.</p>'}
+      </div>
+    </div>`;
+
   body.innerHTML = `
     ${statsHtml}
     <div class="card card-pad">
@@ -526,8 +646,32 @@ async function renderHome(body){
         ${!p.view_all_classes && p.manage_class_roster ? 'ניתן לנהל את רשימת הכיתה שלך וליצור אישורי טיולים חדשים דרך התפריט בצד.' : ''}
       </p>
     </div>
+    ${staffAnnHtml}
     ${teacherTripsHtml}
     ${eventsHtml}`;
+
+  const addAnnBtn = document.getElementById('addStaffAnnBtn');
+  if (addAnnBtn){
+    addAnnBtn.addEventListener('click', ()=>{
+      const wrap = document.getElementById('addStaffAnnWrap');
+      wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+    });
+    document.getElementById('new_ann_save').addEventListener('click', async ()=>{
+      const text = document.getElementById('new_ann_text').value.trim();
+      if (!text){ toast('יש להזין תוכן להודעה'); return; }
+      try{
+        await db.collection('staff_announcements').add({ text, created_by: myProfile.full_name, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+        toast('ההודעה פורסמה'); goto('home');
+      }catch(err){ toast('שגיאה: '+err.message); }
+    });
+  }
+  body.querySelectorAll('.del-staff-ann').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if (!(await confirmDialog('למחוק את ההודעה?'))) return;
+      try{ await db.collection('staff_announcements').doc(btn.dataset.id).delete(); toast('ההודעה נמחקה'); goto('home'); }
+      catch(err){ toast('שגיאה: '+err.message); }
+    });
+  });
 
   body.querySelectorAll('.dash-trip-row').forEach(row=>{
     row.addEventListener('click', ()=>{
@@ -662,9 +806,16 @@ async function renderMyClass(body){
     body.innerHTML = `<div class="card card-pad">עדיין לא שויכת לכיתה. יש לפנות למנהל המערכת לשיוך כיתה לחשבונך.</div>`;
     return;
   }
-  const clsSnap = await db.collection('classes').doc(myProfile.class_id).get();
+  await renderClassRosterView(body, myProfile.class_id);
+}
+
+/* תצוגת ניהול תלמידי כיתה — משמשת גם את "הכיתה שלי" (למחנך/ת) וגם את "הגדרות כיתה"
+   (לראש הישיבה/מזכירה שיכולים לבחור כל כיתה, כולל ייבוא אקסל) */
+async function renderClassRosterView(container, classId){
+  const refresh = () => renderClassRosterView(container, classId);
+  const clsSnap = await db.collection('classes').doc(classId).get();
   const cls = clsSnap.exists ? clsSnap.data() : {};
-  const studentsSnap = await db.collection('students').where('class_id','==', myProfile.class_id).orderBy('full_name').get();
+  const studentsSnap = await db.collection('students').where('class_id','==', classId).orderBy('full_name').get();
   const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
   const studentFormFieldsHtml = (prefix, s={}) => `
@@ -706,17 +857,22 @@ async function renderMyClass(body){
       </div>` : ''}
     ${!s.mother_phone && !s.father_phone ? '<span style="color:var(--ink-soft); font-size:.85rem;">אין טלפון</span>' : ''}`;
 
-  body.innerHTML = `
+  container.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <h3 style="margin:0;">כיתה: ${esc(cls.name || '')}</h3>
-        <button class="btn btn-outline btn-sm" id="toggleAddStudentBtn">➕ הוספת תלמיד</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" id="toggleAddStudentBtn">➕ הוספת תלמיד</button>
+          <button class="btn btn-outline btn-sm" id="excelImport_trigger">📥 ייבוא מאקסל</button>
+        </div>
       </div>
       <div class="bulk-contact-bar">
         <button class="btn btn-outline btn-sm" id="copyAllMothers">📋 טלפוני כל האימהות</button>
         <button class="btn btn-outline btn-sm" id="copyAllFathers">📋 טלפוני כל האבות</button>
         <button class="btn btn-outline btn-sm" id="copyAllParents">📋 כל ההורים</button>
       </div>
+      <input type="file" id="excelImport_file" accept=".xlsx,.xls,.csv" style="display:none;">
+      <div id="excelImport_preview"></div>
       <div id="addStudentWrap" style="display:none; margin-top:20px; border-top:1px solid var(--line); padding-top:20px;">
         <form id="addStudentForm" class="form-grid">
           ${studentFormFieldsHtml('new')}
@@ -753,6 +909,8 @@ async function renderMyClass(body){
     wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
   });
 
+  wireExcelImportWidget('excelImport', ()=>classId, ()=>cls.name||'', refresh);
+
   const copyList = (list, label) => {
     const nums = list.filter(Boolean);
     if (!nums.length){ toast('אין מספרי טלפון רשומים'); return; }
@@ -767,31 +925,31 @@ async function renderMyClass(body){
     e.preventDefault();
     const data = readStudentForm('new');
     try{
-      await db.collection('students').add({ class_id: myProfile.class_id, ...data });
-      toast('התלמיד נוסף'); goto('myclass');
+      await db.collection('students').add({ class_id: classId, ...data });
+      toast('התלמיד נוסף'); refresh();
     }catch(err){ toast('שגיאה: '+err.message); }
   });
 
   // לחיצה על שורת תלמיד פותחת/סוגרת את פרטיו (לא כשלוחצים על כפתור עריכה/מחיקה בתוך הפרטים)
-  body.querySelectorAll('.roster-row-head').forEach(head=>{
+  container.querySelectorAll('.roster-row-head').forEach(head=>{
     head.addEventListener('click', ()=>{
       head.closest('.roster-row').classList.toggle('open');
     });
   });
 
   const wireDelete = (studentId, studentName) => {
-    body.querySelector(`.del-student[data-id="${studentId}"]`)?.addEventListener('click', async (e)=>{
+    container.querySelector(`.del-student[data-id="${studentId}"]`)?.addEventListener('click', async (e)=>{
       e.stopPropagation();
       if (!(await confirmDialog(`למחוק את ${studentName} מהכיתה? הפעולה תמחק גם את כל אישורי הטיולים שלו.`))) return;
       try{
         await db.collection('students').doc(studentId).delete();
-        await removeStudentFromAllTripApprovals(studentId, myProfile.class_id);
-        goto('myclass');
+        await removeStudentFromAllTripApprovals(studentId, classId);
+        refresh();
       }catch(err){ toast('שגיאה: '+err.message); }
     });
   };
   const wireEdit = (student) => {
-    body.querySelector(`.edit-student[data-id="${student.id}"]`)?.addEventListener('click', (e)=>{
+    container.querySelector(`.edit-student[data-id="${student.id}"]`)?.addEventListener('click', (e)=>{
       e.stopPropagation();
       const box = document.getElementById('studentEditBox');
       box.innerHTML = `
@@ -808,7 +966,7 @@ async function renderMyClass(body){
         const data = readStudentForm('edit');
         try{
           await db.collection('students').doc(student.id).update(data);
-          toast('נשמר'); box.innerHTML=''; goto('myclass');
+          toast('נשמר'); box.innerHTML=''; refresh();
         }catch(err){ toast('שגיאה: '+err.message); }
       });
       box.querySelector('#cancelStudentBtn').addEventListener('click', ()=>{ box.innerHTML=''; });
@@ -1296,11 +1454,10 @@ function showApprovalViewModal(trip, studentName, approval){
 }
 
 /* פותח חלון הדפסה מעוצב עברית (ניתן לשמור כ-PDF דרך "שמירה כ-PDF" בחלון ההדפסה) */
-function openApprovalPrintView(trip, studentName, className, approval){
+/* בונה את מסמך ה-HTML המעוצב של אישור הורה — משמש גם לחלון ההדפסה הבודד וגם לייצוא ה-ZIP המרוכז */
+function buildApprovalDocHtml(trip, studentName, className, approval){
   const approvedDate = approval.approved_at?.toDate ? approval.approved_at.toDate() : null;
-  const w = window.open('', '_blank');
-  if (!w) { toast('הדפדפן חסם את חלון ההדפסה — יש לאשר חלונות קופצים'); return; }
-  w.document.write(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8">
+  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8">
     <title>אישור טיול — ${esc(studentName)}</title>
     <style>
       body{ font-family:Arial,sans-serif; padding:40px; color:#16203a; }
@@ -1325,8 +1482,33 @@ function openApprovalPrintView(trip, studentName, className, approval){
     </table>
     ${approval.signature ? `<div>חתימה:<br><img class="sig" src="${approval.signature}"></div>` : ''}
     <script>window.onload = () => window.print();<\/script>
-  </body></html>`);
+  </body></html>`;
+}
+function openApprovalPrintView(trip, studentName, className, approval){
+  const w = window.open('', '_blank');
+  if (!w) { toast('הדפדפן חסם את חלון ההדפסה — יש לאשר חלונות קופצים'); return; }
+  w.document.write(buildApprovalDocHtml(trip, studentName, className, approval));
   w.document.close();
+}
+/* מייצא לקובץ ZIP אחד את כל האישורים המאושרים של הטיול — כל תלמיד/ה כקובץ HTML נפרד,
+   שאפשר לפתוח ולשמור כ-PDF בלחיצת "הדפסה" מבלי לעבור אחד-אחד */
+async function exportApprovalsZip(trip, students, approvalsById, className){
+  const approvedList = students.filter(s => approvalsById[s.id]?.status === 'approved');
+  if (!approvedList.length){ toast('אין עדיין אישורים מאושרים לטיול זה'); return; }
+  toast('מכין קובץ ZIP…');
+  try{
+    const zip = new JSZip();
+    approvedList.forEach(s=>{
+      const html = buildApprovalDocHtml(trip, s.full_name, className, approvalsById[s.id]);
+      zip.file(`אישור - ${s.full_name}.html`, html);
+    });
+    const blob = await zip.generateAsync({ type:'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `אישורים - ${trip.title}.zip`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 3000);
+    toast(`יוצאו ${approvedList.length} אישורים לקובץ ZIP`);
+  }catch(err){ toast('שגיאה בהכנת קובץ ה-ZIP: '+err.message); }
 }
 
 /* חלון "שליחה לכל הממתינים" — לא באמת אוטומטי (וואטסאפ מחייב אישור שליחה ידני בכל הודעה),
@@ -1423,7 +1605,10 @@ async function renderTripDetail(panel, trip){
 
   panel.innerHTML = `
     ${summaryHtml}
-    ${canManage ? `<div style="margin-bottom:16px;"><button class="btn btn-outline btn-sm" id="bulkSendBtn">📨 שליחה לכל הממתינים</button></div>` : ''}
+    ${canManage ? `<div style="margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button class="btn btn-outline btn-sm" id="bulkSendBtn">📨 שליחה לכל הממתינים</button>
+      <button class="btn btn-outline btn-sm" id="exportApprovalsZipBtn">🗂️ ייצוא כל האישורים ל-ZIP</button>
+    </div>` : ''}
     <div id="approvalRows"></div>`;
   const rowsEl = panel.querySelector('#approvalRows');
 
@@ -1489,6 +1674,7 @@ async function renderTripDetail(panel, trip){
   });
 
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=> showBulkSendModal(trip, students, approvalsById));
+  panel.querySelector('#exportApprovalsZipBtn')?.addEventListener('click', ()=> exportApprovalsZip(trip, students, approvalsById, className));
 
   rowsEl.querySelectorAll('.view-approval').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -1530,6 +1716,44 @@ function downloadCsv(filename, rows){
   a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=> URL.revokeObjectURL(url), 3000);
 }
+/* פותח חלון הדפסה מעוצב עברית עבור טבלת דוח — "שמירה כ-PDF" דרך חלון ההדפסה של הדפדפן */
+function openPrintableTable(title, rows){
+  const w = window.open('', '_blank');
+  if (!w){ toast('הדפדפן חסם את חלון ההדפסה — יש לאשר חלונות קופצים'); return; }
+  const [header, ...body] = rows;
+  w.document.write(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8">
+    <title>${esc(title)}</title>
+    <style>
+      body{ font-family:Arial,sans-serif; padding:32px; color:#16203a; }
+      h1{ font-size:20px; margin-bottom:4px; }
+      .sub{ color:#4b566d; margin-bottom:20px; font-size:13px; }
+      table{ width:100%; border-collapse:collapse; }
+      th,td{ border:1px solid #dde4ee; padding:8px 10px; text-align:right; font-size:13px; }
+      th{ background:#eef2f8; }
+    </style></head><body>
+    <h1>${esc(title)}</h1>
+    <div class="sub">הופק בתאריך ${new Date().toLocaleDateString('he-IL')}</div>
+    <table>
+      <thead><tr>${(header||[]).map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${body.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+    <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
+  </body></html>`);
+  w.document.close();
+}
+/* מייצא טבלת שורות (rows: מערך מערכים, שורה ראשונה = כותרות) בפורמט הנבחר: אקסל / PDF (הדפסה) / CSV */
+function exportTable(rows, filenameBase, format){
+  if (format === 'xlsx'){
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'דוח');
+    XLSX.writeFile(wb, `${filenameBase}.xlsx`);
+  } else if (format === 'pdf'){
+    openPrintableTable(filenameBase, rows);
+  } else {
+    downloadCsv(`${filenameBase}.csv`, rows);
+  }
+}
 
 async function renderPayments(body){
   classesCache = classesCache.length ? classesCache : sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
@@ -1539,7 +1763,15 @@ async function renderPayments(body){
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">📤 ייצוא דוחות תשלומים</h3>
-      <div class="form-grid">
+      <div class="field" style="max-width:240px;">
+        <label>פורמט ייצוא</label>
+        <select id="exportFormat">
+          <option value="xlsx">קובץ אקסל (מומלץ)</option>
+          <option value="pdf">PDF (הדפסה / שמירה)</option>
+          <option value="csv">CSV</option>
+        </select>
+      </div>
+      <div class="form-grid" style="margin-top:10px;">
         <div class="field"><label>מתאריך</label><input type="date" id="exp_from"></div>
         <div class="field"><label>עד תאריך</label><input type="date" id="exp_to"></div>
         <div class="field" style="grid-column:1/-1;"><button class="btn btn-primary btn-sm" id="exportRangeBtn">📤 ייצוא כל התשלומים בתקופה זו</button></div>
@@ -1554,6 +1786,8 @@ async function renderPayments(body){
       </div>
     </div>
     <div id="paymentsTripsList"></div>`;
+
+  const exportFormat = () => document.getElementById('exportFormat').value;
 
   const tripSelect = document.getElementById('exp_trip');
   const studentSelect = document.getElementById('exp_student');
@@ -1583,7 +1817,7 @@ async function renderPayments(body){
       });
     }
     if (rows.length === 1){ toast('לא נמצאו תשלומים בטווח התאריכים שנבחר'); return; }
-    downloadCsv(`תשלומים ${from} עד ${to}.csv`, rows);
+    exportTable(rows, `תשלומים ${from} עד ${to}`, exportFormat());
   });
 
   document.getElementById('exportStudentTripBtn').addEventListener('click', async ()=>{
@@ -1599,7 +1833,7 @@ async function renderPayments(body){
     } else {
       rows.push([trip.title, studentName, 'טרם שולם', '', '']);
     }
-    downloadCsv(`תשלום ${studentName} - ${trip.title}.csv`, rows);
+    exportTable(rows, `תשלום ${studentName} - ${trip.title}`, exportFormat());
   });
 
   document.getElementById('exportStudentHistoryBtn').addEventListener('click', async ()=>{
@@ -1615,7 +1849,7 @@ async function renderPayments(body){
       rows.push([trip?.title || tripId, pay.amount, pay.payment_date, methodLabel(pay.payment_method)]);
     });
     if (rows.length === 1){ toast('לא נמצאו תשלומים עבור תלמיד/ה זו'); return; }
-    downloadCsv(`היסטוריית תשלומים - ${studentName}.csv`, rows);
+    exportTable(rows, `היסטוריית תשלומים - ${studentName}`, exportFormat());
   });
 
   const listEl = document.getElementById('paymentsTripsList');
@@ -1649,7 +1883,7 @@ async function renderPayments(body){
         rows.push([pay.student_name, className, pay.amount, pay.payment_date, methodLabel(pay.payment_method)]);
       });
       if (rows.length === 1){ toast('אין עדיין תשלומים רשומים לטיול זה'); return; }
-      downloadCsv(`תשלומים - ${trip.title}.csv`, rows);
+      exportTable(rows, `תשלומים - ${trip.title}`, exportFormat());
     });
   });
 
@@ -1703,6 +1937,9 @@ async function renderTripPaymentsPanel(panel, trip){
   const rowHtml = (s) => {
     const pay = paymentsById[s.id];
     const isPaid = !!pay;
+    const reminderParents = [];
+    if (!isPaid && s.mother_phone) reminderParents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
+    if (!isPaid && s.father_phone) reminderParents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
     return `
       <div class="approval-row" data-student="${s.id}">
         <div>
@@ -1710,6 +1947,13 @@ async function renderTripPaymentsPanel(panel, trip){
           <div style="margin-top:4px;">${isPaid ? `<span class="badge badge-ok">✓ שולם ₪${esc(pay.amount)} · ${esc(methodLabel(pay.payment_method))} · ${pay.payment_date ? new Date(pay.payment_date).toLocaleDateString('he-IL') : ''}</span>` : '<span class="badge badge-wait">טרם שולם</span>'}</div>
         </div>
         <div class="a-actions">
+          ${reminderParents.map(pr=>`
+            <div class="parent-contact-group">
+              <span class="parent-label">${pr.icon} ${pr.label}</span>
+              <div class="parent-icons">
+                <button class="icon-btn wa send-payment-reminder" data-id="${s.id}" data-phone="${pr.phone}" title="שליחת תזכורת תשלום ל${pr.label} בוואטסאפ">${WA_ICON_SVG}</button>
+              </div>
+            </div>`).join('')}
           <button class="btn btn-outline btn-sm record-payment" data-id="${s.id}">${isPaid ? '✏️ עריכה' : '💰 רישום תשלום'}</button>
           ${isPaid ? `<button class="btn btn-outline btn-sm cancel-payment" data-id="${s.id}" style="color:var(--danger); border-color:#f2c6c2;">✕ ביטול</button>` : ''}
         </div>
@@ -1770,6 +2014,16 @@ async function renderTripPaymentsPanel(panel, trip){
         panel.dataset.loaded = '';
         await renderTripPaymentsPanel(panel, trip);
       }catch(err){ toast('שגיאה: '+err.message); }
+    });
+  });
+
+  rowsEl.querySelectorAll('.send-payment-reminder').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const student = students.find(s=>s.id===btn.dataset.id);
+      const phone = btn.dataset.phone;
+      if (!phone){ toast('לא נמצא מספר טלפון'); return; }
+      const text = encodeURIComponent(`שלום, זוהי תזכורת ידידותית לתשלום עבור "${trip.title}" עבור ${student.full_name}${trip.cost ? ` (עלות: ${trip.cost})` : ''}. תודה רבה!`);
+      window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${text}`, '_blank');
     });
   });
 }
@@ -2086,7 +2340,8 @@ async function renderClassSettings(body){
     ${isAdmin ? `<div class="field" style="max-width:320px; margin-bottom:20px;"><label>בחר/י כיתה</label>
       <select id="cs_class_picker">${classesForPicker.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
     </div>` : ''}
-    <div id="settingsArea"></div>`;
+    <div id="settingsArea"></div>
+    ${isAdmin ? `<div id="settingsRoster" style="margin-top:24px;"></div>` : ''}`;
 
   if (p.manage_users || p.view_all_classes){
     const gSnap = await db.collection('settings').doc('global').get();
@@ -2129,6 +2384,11 @@ async function renderClassSettings(body){
       try{ await db.collection('classes').doc(cid).update({ whatsapp_group_link: link }); toast('נשמר'); }
       catch(err){ toast('שגיאה: '+err.message); }
     });
+
+    if (isAdmin){
+      const rosterArea = document.getElementById('settingsRoster');
+      if (rosterArea) await renderClassRosterView(rosterArea, cid);
+    }
   };
 
   if (isAdmin){
