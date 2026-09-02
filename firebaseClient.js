@@ -27,16 +27,17 @@ const ALL_PERMISSIONS = [
   { key: 'manage_announcements', label: 'ניהול עדכוני האתר הציבורי' },
   { key: 'manage_users',         label: 'ניהול משתמשים (יצירה/עריכה/הרשאות)' },
   { key: 'manage_events',        label: 'ניהול לוח אירועים ופרוטוקולי ישיבות צוות' },
-  { key: 'manage_payments',      label: 'ניהול תשלומי טיולים (מזכירה)' },
+  { key: 'manage_payments',      label: 'ניהול תשלומי טיולים' },
+  { key: 'manage_staff_announcements', label: 'ניהול הודעות עדכון למורים (במסך הראשי)' },
 ];
 
 // --- תפקידים קבועים והרשאות ברירת מחדל לכל אחד מהם ---
 // "מותאם אישית" (custom) לא מופיע כאן בכוונה — הוא פותח את הצ'קבוכים לעריכה חופשית.
-// "ראש הישיבה" = כל ההרשאות חוץ מניהול תשלומים (זה נשאר ייחודי למזכירה).
-// "מזכירה" = כל מה שיש לראש הישיבה, ובנוסף ניהול תשלומי הטיולים.
+// "ראש הישיבה" ו"מזכירה" מקבלים את כל ההרשאות, כולל ניהול תשלומים —
+// כך שגם ראש הישיבה חשוף לתשלומים וגם למזכירה יש את כל מה שיש לראש הישיבה.
 const ROLE_PRESETS = {
   'מחנך':        { manage_class_roster:true, create_trips:true, edit_trip_details:true },
-  'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.filter(p=>p.key!=='manage_payments').map(p=>[p.key, true])),
+  'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
   'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true, manage_events:true },
   'מורה מקצועי': {},
   'מזכירה':      Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
