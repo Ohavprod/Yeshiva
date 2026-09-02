@@ -269,6 +269,10 @@ async function load(){
           <input id="approverName" placeholder="שם מלא">
         </div>
         <div class="field">
+          <label>ת.ז ההורה/ת המאשר/ת</label>
+          <input id="approverId" placeholder="מספר תעודת זהות" inputmode="numeric">
+        </div>
+        <div class="field">
           <label class="consent-check">
             <input type="checkbox" id="consentCheck">
             <span>אני מאשר לבני לצאת ולהשתתף בטיול</span>
@@ -301,22 +305,30 @@ async function load(){
     const classId = document.getElementById('classSelect').value;
     const studentName = cleanText(document.getElementById('studentNameInput').value);
     const approverName = cleanText(document.getElementById('approverName').value);
+    const approverId = cleanText(document.getElementById('approverId').value);
 
     if (!classId){ toast('יש לבחור כיתה'); return; }
     if (!studentName){ toast('יש להזין את שם התלמיד'); return; }
     if (!approverName){ toast('יש להזין את שמך'); return; }
+    if (!approverId){ toast('יש להזין מספר תעודת זהות'); return; }
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
 
-    // הצלבה: כיתה + שם תלמיד + שם הורה — כל השלושה יחד
-    const candidates = roster.filter(r =>
-      r.class_id === classId &&
-      norm(r.full_name) === norm(studentName) &&
-      (norm(r.father_name) === norm(approverName) || norm(r.mother_name) === norm(approverName))
-    );
+    // הצלבה: כיתה + שם תלמיד + שם הורה + ת.ז — לא משנה אם ההורה הוא האם או האב,
+    // ובלבד שהת.ז שהוקלד תואם לת.ז של אותו הורה בדיוק (ולא של ההורה השני).
+    const normId = (s) => (s||'').toString().replace(/\D/g,'');
+    const candidates = roster.filter(r => {
+      if (r.class_id !== classId) return false;
+      if (norm(r.full_name) !== norm(studentName)) return false;
+      const nameMatch = norm(approverName);
+      const idMatch = normId(approverId);
+      const matchesFather = norm(r.father_name) === nameMatch && normId(r.father_id) && normId(r.father_id) === idMatch;
+      const matchesMother = norm(r.mother_name) === nameMatch && normId(r.mother_id) && normId(r.mother_id) === idMatch;
+      return matchesFather || matchesMother;
+    });
 
     if (candidates.length !== 1){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">אחד מהפרטים שהוכנסו שגויים. אנא ודאו את נכונות הפרטים ונסו שוב.</p>`;
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">אחד מהפרטים שהוזנו שגוי. יש לוודא שהפרטים נכונים (כיתה, ת.ז, שם הורה ושם תלמיד) ולנסות שוב.</p>`;
       return;
     }
 
@@ -339,6 +351,7 @@ async function load(){
       await approvalRef.update({
         status: 'approved',
         approved_by_name: approverName,
+        approved_by_id: approverId,
         consent: true,
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
