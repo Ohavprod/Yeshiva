@@ -502,6 +502,12 @@ table.data tr:last-child td{ border-bottom:none; }
 .ev-greg{ display:block; font-size:.78rem; color:var(--ink-soft); margin-top:2px; white-space:nowrap; }
 .event-row-main{ flex:1; min-width:0; }
 
+/* ---------- staff announcements (dashboard) ---------- */
+.staff-ann-row{
+  display:flex; align-items:flex-start; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line);
+}
+.staff-ann-row:last-child{ border-bottom:none; }
+
 /* ---------- personal tasks ---------- */
 .task-list{ display:flex; flex-direction:column; gap:2px; }
 .task-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 4px; border-bottom:1px dashed var(--line); }
