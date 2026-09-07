@@ -1204,6 +1204,7 @@ async function renderClassRosterView(container, classId){
         <select id="rosterSortBy">
           <option value="first">שם פרטי (א-ת)</option>
           <option value="last">שם משפחה (א-ת)</option>
+          <option value="city">מקום מגורים (א-ת)</option>
         </select>
       </div>
     </div>
@@ -1287,6 +1288,13 @@ async function renderClassRosterView(container, classId){
       list = list.filter(s=> (s.full_name||'').toLowerCase().includes(searchTerm));
     }
     list.sort((a,b)=>{
+      if (sortBy === 'city'){
+        const ca = (a.city||'').trim(), cb = (b.city||'').trim();
+        if (!ca && !cb) return 0;
+        if (!ca) return 1;
+        if (!cb) return -1;
+        return ca.localeCompare(cb, 'he') || (a.full_name||'').localeCompare(b.full_name||'', 'he');
+      }
       const fa = getFirstLast(a), fb = getFirstLast(b);
       const va = sortBy === 'last' ? (fa.last || fa.first) : (fa.first || fa.last);
       const vb = sortBy === 'last' ? (fb.last || fb.first) : (fb.first || fb.last);
