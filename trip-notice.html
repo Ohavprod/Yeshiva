@@ -120,6 +120,10 @@ function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&am
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 
 const params = new URLSearchParams(location.search);
 const tripId = params.get('t');
@@ -315,17 +319,15 @@ async function load(){
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
 
-    // הצלבה: כיתה + שם תלמיד + שם הורה + ת.ז — לא משנה אם ההורה הוא האם או האב,
-    // ובלבד שהת.ז שהוקלד תואם לת.ז של אותו הורה בדיוק (ולא של ההורה השני).
+    // הצלבה: כיתה + שם תלמיד + (שם הורה + ת.ז) — לא משנה אם ההורה הוא האם או האב.
+    // ההשוואה מתבצעת מול גיבוב חד-כיווני שנשמר מראש על מסמך הטיול (roster_snapshot),
+    // ולא מול שם/ת.ז גולמיים — כך שמסמך הטיול הציבורי לא חושף פרטי הורים.
     const normId = (s) => (s||'').toString().replace(/\D/g,'');
+    const candidateHash = await sha256Hex(`${norm(approverName)}|${normId(approverId)}`);
     const candidates = roster.filter(r => {
       if (r.class_id !== classId) return false;
       if (norm(r.full_name) !== norm(studentName)) return false;
-      const nameMatch = norm(approverName);
-      const idMatch = normId(approverId);
-      const matchesFather = norm(r.father_name) === nameMatch && normId(r.father_id) && normId(r.father_id) === idMatch;
-      const matchesMother = norm(r.mother_name) === nameMatch && normId(r.mother_id) && normId(r.mother_id) === idMatch;
-      return matchesFather || matchesMother;
+      return (r.verify_hashes||[]).includes(candidateHash);
     });
 
     if (candidates.length !== 1){
