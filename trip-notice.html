@@ -117,6 +117,7 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 
@@ -203,7 +204,7 @@ async function load(){
         ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
         ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה מהישיבה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
         ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה לישיבה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
-        ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(trip.cost)}</div></div>` : ''}
+        ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(trip.cost))}</div></div>` : ''}
       </div>
     </div>`;
 
