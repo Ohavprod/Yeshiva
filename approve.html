@@ -118,6 +118,7 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 
 const params = new URLSearchParams(location.search);
@@ -170,6 +171,46 @@ function setupSignaturePad(canvas){
   };
 }
 
+function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+/* מסך אימות זהות — לפני הצגת פרטי הטיול, ההורה מתבקש להזין 4 פרטים תואמים
+   (ת.ז, שם התלמיד/ה, שם ההורה, כיתה) כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה,
+   גם אם הקישור הועבר בטעות או שיש מספר תלמידים בעלי שם דומה.
+   ההשוואה מתבצעת מול גיבוב (hash) חד-כיווני שנשמר מראש על מסמך האישור — לעולם לא
+   נשלף כאן ת.ז/שם הורה גולמיים ממסד הנתונים (וגם לא ניתן, כי ההורה אינו מחובר למערכת). */
+function renderVerificationGate(content, studentName, approval, onVerified){
+  content.innerHTML = `
+    <div class="trip-card">
+      <div class="section-eyebrow">אימות זהות</div>
+      <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
+      <p class="verify-hint">כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה, נא למלא את 4 הפרטים הבאים כפי שנמסרו לישיבה.</p>
+      <div id="verifyErrorBox"></div>
+      <form id="verifyForm" class="verify-box">
+        <div class="field"><label>שם התלמיד/ה (מלא)</label><input id="v_name" required></div>
+        <div class="field"><label>שם ההורה/ת</label><input id="v_parent" required></div>
+        <div class="field"><label>כיתה</label><input id="v_class" required></div>
+        <div class="field"><label>ת.ז ההורה/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
+        <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
+      </form>
+    </div>`;
+  document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const nameOk = norm(document.getElementById('v_name').value) === norm(studentName);
+    const idDigits = document.getElementById('v_id').value.replace(/\D/g,'');
+    const candidate = await sha256Hex(`${norm(document.getElementById('v_parent').value)}|${idDigits}|${norm(document.getElementById('v_class').value)}`);
+    const hashOk = (approval.verify_hashes||[]).includes(candidate);
+    if (nameOk && hashOk){
+      onVerified();
+    } else {
+      document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
+    }
+  });
+}
+
 async function load(){
   const content = document.getElementById('content');
   if (!tripId || !studentId){
@@ -191,6 +232,7 @@ async function load(){
   const trip = tripSnap.data();
   const approval = approvalSnap.data();
   const studentName = approval.student_name || '';
+  const className = approval.class_name || '';
   const itinerary = trip.itinerary || [];
   const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
 
@@ -208,7 +250,16 @@ async function load(){
     return;
   }
 
+  if ((approval.verify_hashes||[]).length){
+    renderVerificationGate(content, studentName, approval, ()=> renderTripAndApprovalForm());
+  } else {
+    // גיבוי: אישורים ישנים שנוצרו לפני הוספת האימות (אין להם verify_hashes) — ממשיכים בלי שער האימות
+    renderTripAndApprovalForm();
+  }
+
+  function renderTripAndApprovalForm(){
   let mainHtml = `
+    ${studentName ? `<div class="match-confirm">מאשרים עבור: ${esc(studentName)}${className ? ' · כיתה ' + esc(className) : ''}</div>` : ''}
     <div class="trip-card">
       <div class="section-eyebrow">פרטי הטיול</div>
       <h2 class="trip-title">${esc(trip.title)}</h2>
@@ -223,7 +274,7 @@ async function load(){
         ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
         ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה מהישיבה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
         ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה לישיבה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
-        ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(trip.cost)}</div></div>` : ''}
+        ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(trip.cost))}</div></div>` : ''}
       </div>
     </div>`;
 
@@ -307,6 +358,7 @@ async function load(){
       btn.disabled = false; btn.textContent = '✓ שליחת אישור';
     }
   });
+  } // end renderTripAndApprovalForm
 }
 load();
 </script>
