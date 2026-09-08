@@ -241,14 +241,14 @@ const EXCEL_IMPORT_FIELD_ALIASES = {
   first_name:   ['שםפרטי','פרטי'],
   last_name:    ['שםמשפחה','משפחה'],
   full_name:    ['שםהתלמיד','שם','שםמלא','תלמיד','שםהתלמידה'],
-  father_name:  ['שםהאב','אב','שםאב'],
-  mother_name:  ['שםהאם','אם','שםאם'],
+  father_name:  ['שםהאב','אב','שםאב','אבא','שםהאבא'],
+  mother_name:  ['שםהאם','אם','שםאם','אמא','שםהאמא'],
   mother_id:    ['תזאמא','תעודתזהותאמא','תזאם'],
   father_id:    ['תזאבא','תעודתזהותאבא','תזאב'],
   mother_phone: ['טלפוןאמא','טלפוןאם','ניידאמא','טלאמא'],
   father_phone: ['טלפוןאבא','טלפוןאב','ניידאבא','טלאבא'],
   notes:        ['הערות','הערה','רגישויות'],
-  city:         ['עיר','עירמגורים'],
+  city:         ['עיר','עירמגורים','מקוםמגורים','כתובת'],
   extra_notes:  ['הערותנוספות'],
 };
 function normalizeExcelHeader(h){
@@ -281,62 +281,83 @@ function wireExcelImportWidget(idPrefix, getClassId, getClassName, onImported){
     reader.onload = (ev)=>{
       try{
         const wb = XLSX.read(new Uint8Array(ev.target.result), { type:'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
-        if (!rows.length){ toast('הקובץ ריק'); fileInput.value=''; return; }
-        const headerMap = matchExcelImportHeaders(rows[0]);
-        const hasNameCols = headerMap.first_name !== undefined || headerMap.last_name !== undefined;
-        if (!hasNameCols && headerMap.full_name === undefined){
-          toast('לא נמצאה עמודת שם ("שם פרטי"+"שם משפחה", או "שם התלמיד") בקובץ — יש לוודא שיש שורת כותרות ראשונה');
-          fileInput.value=''; return;
-        }
-        const field = (r, key) => headerMap[key] !== undefined ? (r[headerMap[key]] ?? '').toString().trim() : '';
-        const parsed = rows.slice(1).map(r=>{
-          let first_name = field(r,'first_name');
-          let last_name = field(r,'last_name');
-          if (!hasNameCols){
-            const parts = field(r,'full_name').split(/\s+/).filter(Boolean);
-            first_name = parts[0] || '';
-            last_name = parts.slice(1).join(' ');
+        const renderForSheet = (sheetName) => {
+          const sheet = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
+          if (!rows.length){ previewEl.innerHTML = `<p style="color:var(--danger);">הגיליון "${esc(sheetName)}" ריק.</p>`; return; }
+          const headerMap = matchExcelImportHeaders(rows[0]);
+          const hasNameCols = headerMap.first_name !== undefined || headerMap.last_name !== undefined;
+          if (!hasNameCols && headerMap.full_name === undefined){
+            previewEl.innerHTML = `<p style="color:var(--danger);">לא נמצאה עמודת שם ("שם פרטי"+"שם משפחה", או "שם התלמיד") בגיליון "${esc(sheetName)}" — יש לוודא שיש שורת כותרות ראשונה.</p>` + sheetPickerHtml(sheetName);
+            wireSheetPicker(sheetName);
+            return;
           }
-          const full_name = `${first_name} ${last_name}`.trim();
-          return {
-            full_name, first_name, last_name,
-            father_name: field(r,'father_name'), mother_name: field(r,'mother_name'),
-            mother_id: field(r,'mother_id').replace(/\D/g,''), father_id: field(r,'father_id').replace(/\D/g,''),
-            mother_phone: field(r,'mother_phone').replace(/\D/g,''), father_phone: field(r,'father_phone').replace(/\D/g,''),
-            city: field(r,'city'), notes: field(r,'notes'), extra_notes: field(r,'extra_notes'),
-          };
-        }).filter(s=> s.full_name);
+          const field = (r, key) => headerMap[key] !== undefined ? (r[headerMap[key]] ?? '').toString().trim() : '';
+          const parsed = rows.slice(1).map(r=>{
+            let first_name = field(r,'first_name');
+            let last_name = field(r,'last_name');
+            if (!hasNameCols){
+              const parts = field(r,'full_name').split(/\s+/).filter(Boolean);
+              first_name = parts[0] || '';
+              last_name = parts.slice(1).join(' ');
+            }
+            const full_name = `${first_name} ${last_name}`.trim();
+            return {
+              full_name, first_name, last_name,
+              father_name: field(r,'father_name'), mother_name: field(r,'mother_name'),
+              mother_id: field(r,'mother_id').replace(/\D/g,''), father_id: field(r,'father_id').replace(/\D/g,''),
+              mother_phone: field(r,'mother_phone').replace(/\D/g,''), father_phone: field(r,'father_phone').replace(/\D/g,''),
+              city: field(r,'city'), notes: field(r,'notes'), extra_notes: field(r,'extra_notes'),
+            };
+          }).filter(s=> s.full_name);
 
-        if (!parsed.length){ toast('לא נמצאו שורות תלמידים תקינות בקובץ'); fileInput.value=''; return; }
+          if (!parsed.length){
+            previewEl.innerHTML = `<p style="color:var(--danger);">לא נמצאו שורות תלמידים תקינות בגיליון "${esc(sheetName)}".</p>` + sheetPickerHtml(sheetName);
+            wireSheetPicker(sheetName);
+            return;
+          }
 
-        previewEl.innerHTML = `
-          <div class="card card-pad" style="background:var(--paper-2); margin-top:16px;">
-            <p style="margin:0 0 10px;">נמצאו <b>${parsed.length}</b> תלמידים לייבוא לכיתה <b>${esc(getClassName())}</b>:</p>
-            <ul style="margin:0 0 14px; padding-inline-start:20px; max-height:160px; overflow-y:auto;">
-              ${parsed.map(s=>`<li>${esc(s.full_name)}</li>`).join('')}
-            </ul>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <button class="btn btn-primary btn-sm" id="${idPrefix}_confirm">✅ ייבוא ${parsed.length} תלמידים</button>
-              <button class="btn btn-outline btn-sm" id="${idPrefix}_cancel">ביטול</button>
-            </div>
-          </div>`;
-        document.getElementById(`${idPrefix}_cancel`).addEventListener('click', ()=>{ previewEl.innerHTML=''; fileInput.value=''; });
-        document.getElementById(`${idPrefix}_confirm`).addEventListener('click', async ()=>{
-          const classId = getClassId();
-          if (!classId){ toast('לא נבחרה כיתה'); return; }
-          try{
-            const batch = db.batch();
-            parsed.forEach(s=>{
-              batch.set(db.collection('students').doc(), { class_id: classId, ...s });
-            });
-            await batch.commit();
-            toast(`יובאו ${parsed.length} תלמידים בהצלחה`);
-            previewEl.innerHTML=''; fileInput.value='';
-            onImported();
-          }catch(err){ toast('שגיאה בייבוא: '+err.message); }
-        });
+          previewEl.innerHTML = sheetPickerHtml(sheetName) + `
+            <div class="card card-pad" style="background:var(--paper-2); margin-top:12px;">
+              <p style="margin:0 0 10px;">נמצאו <b>${parsed.length}</b> תלמידים לייבוא לכיתה <b>${esc(getClassName())}</b>:</p>
+              <ul style="margin:0 0 14px; padding-inline-start:20px; max-height:160px; overflow-y:auto;">
+                ${parsed.map(s=>`<li>${esc(s.full_name)}</li>`).join('')}
+              </ul>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" id="${idPrefix}_confirm">✅ ייבוא ${parsed.length} תלמידים</button>
+                <button class="btn btn-outline btn-sm" id="${idPrefix}_cancel">ביטול</button>
+              </div>
+            </div>`;
+          wireSheetPicker(sheetName);
+          document.getElementById(`${idPrefix}_cancel`).addEventListener('click', ()=>{ previewEl.innerHTML=''; fileInput.value=''; });
+          document.getElementById(`${idPrefix}_confirm`).addEventListener('click', async ()=>{
+            const classId = getClassId();
+            if (!classId){ toast('לא נבחרה כיתה'); return; }
+            try{
+              const batch = db.batch();
+              parsed.forEach(s=>{
+                batch.set(db.collection('students').doc(), { class_id: classId, ...s });
+              });
+              await batch.commit();
+              toast(`יובאו ${parsed.length} תלמידים בהצלחה`);
+              previewEl.innerHTML=''; fileInput.value='';
+              onImported();
+            }catch(err){ toast('שגיאה בייבוא: '+err.message); }
+          });
+        };
+        /* בקובץ עם כמה גיליונות (למשל קובץ אחד עם גיליון לכל כיתה) — מאפשר לבחור איזה גיליון לייבא */
+        const sheetPickerHtml = (currentSheet) => wb.SheetNames.length > 1 ? `
+          <div class="field" style="margin-top:12px;">
+            <label>גיליון לייבוא (בקובץ יש כמה כיתות)</label>
+            <select id="${idPrefix}_sheet">
+              ${wb.SheetNames.map(n=>`<option value="${esc(n)}" ${n===currentSheet?'selected':''}>${esc(n)}</option>`).join('')}
+            </select>
+          </div>` : '';
+        const wireSheetPicker = (currentSheet) => {
+          const sel = document.getElementById(`${idPrefix}_sheet`);
+          if (sel) sel.addEventListener('change', ()=> renderForSheet(sel.value));
+        };
+        renderForSheet(wb.SheetNames[0]);
       }catch(err){ toast('שגיאה בקריאת הקובץ: '+err.message); fileInput.value=''; }
     };
     reader.readAsArrayBuffer(file);
@@ -1240,6 +1261,7 @@ async function renderClassRosterView(container, classId){
       </div>` : ''}
     ${!s.mother_phone && !s.father_phone ? '<span style="color:var(--ink-soft); font-size:.85rem;">אין טלפון</span>' : ''}`;
 
+  const p = myProfile.permissions || {};
   container.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -1247,6 +1269,7 @@ async function renderClassRosterView(container, classId){
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-outline btn-sm" id="toggleAddStudentBtn">➕ הוספת תלמיד</button>
           <button class="btn btn-outline btn-sm" id="excelImport_trigger">📥 ייבוא מאקסל</button>
+          ${p.delete_classes ? `<button class="btn btn-outline btn-sm" id="deleteClassBtn" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקת הכיתה</button>` : ''}
         </div>
       </div>
       <input type="file" id="excelImport_file" accept=".xlsx,.xls,.csv" style="display:none;">
@@ -1274,6 +1297,13 @@ async function renderClassRosterView(container, classId){
       </div>
     </div>
 
+    <div class="card card-pad" style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <label style="display:flex; align-items:center; gap:8px; font-size:.9rem; margin:0;">
+        <input type="checkbox" id="selectAllStudentsCb"> בחירת הכל
+      </label>
+      <button class="btn btn-outline btn-sm" id="deleteSelectedStudentsBtn" style="display:none; color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקת נבחרים (<span id="selectedCount">0</span>)</button>
+    </div>
+
     <!-- רשימת שמות מתקפלת: פרטים נוספים נחשפים רק בלחיצה על תלמיד -->
     <div class="roster-list" id="rosterListArea"></div>
     <div id="studentEditBox"></div>`;
@@ -1281,6 +1311,7 @@ async function renderClassRosterView(container, classId){
   const rowHtml = (s, idx) => `
     <div class="roster-row" data-id="${s.id}">
       <div class="roster-row-head">
+        <input type="checkbox" class="roster-select-cb" data-id="${s.id}" onclick="event.stopPropagation();">
         <span class="roster-row-name"><span class="roster-row-num">${idx+1}.</span> ${esc(s.full_name)}</span>
         <span class="chev">⌄</span>
       </div>
@@ -1303,6 +1334,9 @@ async function renderClassRosterView(container, classId){
   const wireRosterRows = (listEl) => {
     listEl.querySelectorAll('.roster-row-head').forEach(head=>{
       head.addEventListener('click', ()=> head.closest('.roster-row').classList.toggle('open'));
+    });
+    listEl.querySelectorAll('.roster-select-cb').forEach(cb=>{
+      cb.addEventListener('change', updateBulkDeleteBar);
     });
     listEl.querySelectorAll('.del-student').forEach(btn=>{
       btn.addEventListener('click', async (e)=>{
@@ -1369,6 +1403,42 @@ async function renderClassRosterView(container, classId){
     listEl.innerHTML = list.map((s,idx)=> rowHtml(s, idx)).join('') || `<div class="card card-pad" style="color:var(--ink-soft);">${searchTerm ? 'לא נמצאו תלמידים התואמים לחיפוש' : 'אין עדיין תלמידים בכיתה'}</div>`;
     wireRosterRows(listEl);
   };
+
+  const updateBulkDeleteBar = () => {
+    const checked = document.querySelectorAll('.roster-select-cb:checked');
+    const btn = document.getElementById('deleteSelectedStudentsBtn');
+    btn.style.display = checked.length ? '' : 'none';
+    document.getElementById('selectedCount').textContent = checked.length;
+  };
+  document.getElementById('selectAllStudentsCb').addEventListener('change', (e)=>{
+    document.querySelectorAll('.roster-select-cb').forEach(cb=> cb.checked = e.target.checked);
+    updateBulkDeleteBar();
+  });
+  document.getElementById('deleteSelectedStudentsBtn').addEventListener('click', async ()=>{
+    const ids = Array.from(document.querySelectorAll('.roster-select-cb:checked')).map(cb=>cb.dataset.id);
+    if (!ids.length) return;
+    if (!(await confirmDialog(`למחוק ${ids.length} תלמידים מהכיתה? הפעולה תמחק גם את כל אישורי הטיולים שלהם. לא ניתן לבטל.`))) return;
+    try{
+      const batch = db.batch();
+      ids.forEach(id=> batch.delete(db.collection('students').doc(id)));
+      await batch.commit();
+      await Promise.all(ids.map(id=> removeStudentFromAllTripApprovals(id, classId)));
+      toast(`${ids.length} תלמידים נמחקו`);
+      refresh();
+    }catch(err){ toast('שגיאה: '+err.message); }
+  });
+  document.getElementById('deleteClassBtn')?.addEventListener('click', async ()=>{
+    if (!(await confirmDialog(`למחוק את הכיתה "${cls.name||''}" לצמיתות, כולל כל ${students.length} התלמידים שבה וכל אישורי הטיולים שלהם? לא ניתן לבטל פעולה זו.`))) return;
+    try{
+      const batch = db.batch();
+      students.forEach(s=> batch.delete(db.collection('students').doc(s.id)));
+      batch.delete(db.collection('classes').doc(classId));
+      await batch.commit();
+      await Promise.all(students.map(s=> removeStudentFromAllTripApprovals(s.id, classId)));
+      toast('הכיתה נמחקה');
+      goto('classes');
+    }catch(err){ toast('שגיאה: '+err.message); }
+  });
 
   document.getElementById('toggleAddStudentBtn').addEventListener('click', ()=>{
     const wrap = document.getElementById('addStudentWrap');
@@ -3725,16 +3795,6 @@ async function renderUsers(body){
   classesCache = sortClassesByGrade(classesSnap.docs.map(d=>({ id:d.id, ...d.data() })));
 
   body.innerHTML = `
-    <div class="card card-pad" style="margin-bottom:24px; background:#fff8ee; border-color:#f0dcb8;">
-      <h3 style="margin-top:0;">🔒 תחזוקת אבטחה — ניקוי נתוני הורים מטיולים ישנים</h3>
-      <p style="color:var(--ink-soft); font-size:.88rem;">
-        טיולים שנוצרו לפני עדכון האבטחה שמרו ת.ז ושמות הורים כטקסט גלוי בתוך מסמך הטיול (שקריא לכולם ללא התחברות, כדי שקישור חוזר הטיול הכללי יעבוד).
-        הכפתור הבא עובר על כל הטיולים, ומחליף את הנתונים הגולמיים בגיבוב חד-כיווני בלבד — מבלי לפגוע בטיולים שכבר פועלים.
-        פעולה זו בטוחה להרצה חוזרת ולא תשפיע על טיולים שכבר עודכנו.
-      </p>
-      <button class="btn btn-outline btn-sm" id="migrateRosterBtn">הרצת ניקוי נתונים</button>
-      <div id="migrateRosterResult" style="margin-top:10px; font-size:.85rem;"></div>
-    </div>
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">הוספת איש/אשת צוות</h3>
       <form id="newUserForm" class="form-grid">
@@ -3856,37 +3916,6 @@ async function renderUsers(body){
         catch(err){ toast('שגיאה: '+err.message); }
       });
     });
-  });
-
-  document.getElementById('migrateRosterBtn').addEventListener('click', async ()=>{
-    const resultEl = document.getElementById('migrateRosterResult');
-    const btn = document.getElementById('migrateRosterBtn');
-    btn.disabled = true; resultEl.textContent = 'סורק טיולים…';
-    try{
-      const tripsSnap = await db.collection('trips').get();
-      let cleaned = 0, skipped = 0;
-      for (const tripDoc of tripsSnap.docs){
-        const trip = tripDoc.data();
-        const roster = trip.roster_snapshot;
-        if (!Array.isArray(roster) || !roster.length){ skipped++; continue; }
-        // אם כבר עברו ניקוי (יש verify_hashes ואין שדות גולמיים) — לדלג
-        const alreadyClean = roster.every(r => !('father_id' in r) && !('mother_id' in r) && !('father_name' in r) && !('mother_name' in r));
-        if (alreadyClean){ skipped++; continue; }
-        const classIds = trip.class_ids || (trip.class_id ? [trip.class_id] : []);
-        const studentDocs = await fetchStudentDocsForClassIds(classIds);
-        const byId = {}; studentDocs.forEach(d=> byId[d.id] = d.data());
-        const cleanRoster = await Promise.all(roster.map(async r=>{
-          const sd = byId[r.id] || r;
-          return { id:r.id, full_name: sd.full_name || r.full_name, class_id: sd.class_id || r.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
-        }));
-        await tripDoc.ref.update({ roster_snapshot: cleanRoster });
-        cleaned++;
-      }
-      resultEl.textContent = `הסתיים: ${cleaned} טיולים נוקו, ${skipped} כבר היו נקיים או ללא נתונים.`;
-    }catch(err){
-      resultEl.innerHTML = `<span style="color:var(--danger);">שגיאה: ${esc(err.message)}</span>`;
-    }
-    btn.disabled = false;
   });
 }
 
