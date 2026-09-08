@@ -70,6 +70,14 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
+   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
+const PUSH_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const PUSH_WEBHOOK_SECRET = 'PASTE_YOUR_WEBHOOK_SECRET_HERE';
+function notifyPush(type, title, body){
+  if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body }) }).catch(()=>{});
+}
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
@@ -215,6 +223,7 @@ async function load(){
             payment_method_other: '',
           },
         });
+        notifyPush('shirt_order_submitted', 'הזמנת חולצה חדשה', `התקבלה הזמנת חולצה עבור ${pub.full_name} (${selectedType.name}, מידה ${sizeSel.value})`);
         load();
       }catch(err){
         toast('אירעה שגיאה, נא לנסות שוב');
