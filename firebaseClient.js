@@ -22,6 +22,7 @@ const ALL_PERMISSIONS = [
   { key: 'manage_class_roster',  label: 'ניהול תלמידי הכיתה המשויכת (הוספה/עריכה/מחיקה)' },
   { key: 'create_trips',         label: 'יצירת טיולים חדשים' },
   { key: 'edit_trip_details',    label: 'עריכת פרטי טיולים קיימים' },
+  { key: 'manage_trip_certificates', label: 'צירוף אישור טיול (מסמך) לטיול קיים' },
   { key: 'manage_classes',       label: 'ניהול כיתות (הוספה/עריכה)' },
   { key: 'delete_classes',       label: 'מחיקת כיתות' },
   { key: 'manage_announcements', label: 'ניהול עדכוני האתר הציבורי' },
@@ -41,6 +42,8 @@ const ROLE_PRESETS = {
   'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true, manage_events:true },
   'מורה מקצועי': {},
   'מזכירה':      Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
+  'יועץ חינוכי': { view_all_classes:true },
+  'רכזת טיולים': { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_trip_certificates:true },
 };
 
 async function createStaffAccountKeepingSession(email, tempPassword){
