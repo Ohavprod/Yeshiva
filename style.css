@@ -369,9 +369,11 @@ table.data tr:last-child td{ border-bottom:none; }
 }
 .roster-row.open{ border-color:var(--steel); }
 .roster-row-head{
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  display:flex; align-items:center; gap:12px;
   padding:14px 18px; cursor:pointer; user-select:none;
 }
+.roster-row-head .roster-select-cb{ flex:none; width:18px; height:18px; }
+.roster-row-head .roster-row-name{ flex:1; }
 .roster-row-head:hover{ background:var(--paper-2); }
 .roster-row-head .chev{ color:var(--ink-soft); transition:transform .2s; flex:none; }
 .roster-row.open .chev{ transform:rotate(180deg); }
