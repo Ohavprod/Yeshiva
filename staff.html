@@ -126,6 +126,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://upload-widget.cloudinary.com/global/all.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
 /* ============================================================
@@ -148,11 +149,42 @@ function show(id){
   });
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
+   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
+const PUSH_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const PUSH_WEBHOOK_SECRET = 'PASTE_YOUR_WEBHOOK_SECRET_HERE';
+function notifyPush(type, title, body){
+  if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body }) }).catch(()=>{});
+}
 /* מציג ערך עלות עם סימן ₪ (רק אם יש ערך, ורק אם עדיין אין ₪ בטקסט שהוזן ידנית) */
 function fmtCost(v){
   if (!v) return '';
   const s = v.toString().trim();
   return s.includes('₪') ? s : `${s} ₪`;
+}
+/* --- Cloudinary: להחליף בערכים האמיתיים אחרי יצירת חשבון/upload preset ---
+   cloud_name נמצא בדשבורד הראשי של Cloudinary. upload_preset הוא preset מסוג
+   "Unsigned" שיוצרים תחת Settings > Upload > Upload presets (כדי שהעלאה תעבוד
+   ישירות מהדפדפן בלי לחשוף את ה-API secret). */
+const CLOUDINARY_CLOUD_NAME = 'PASTE_YOUR_CLOUDINARY_CLOUD_NAME';
+const CLOUDINARY_UPLOAD_PRESET = 'PASTE_YOUR_UNSIGNED_UPLOAD_PRESET';
+function openCloudinaryWidget(onSuccess){
+  if (!window.cloudinary || CLOUDINARY_CLOUD_NAME.indexOf('PASTE_') === 0){
+    toast('חיבור Cloudinary עדיין לא הוגדר במערכת');
+    return;
+  }
+  const widget = cloudinary.createUploadWidget({
+    cloudName: CLOUDINARY_CLOUD_NAME,
+    uploadPreset: CLOUDINARY_UPLOAD_PRESET,
+    folder: 'yeshiva-gallery',
+    multiple: false,
+    sources: ['local','camera','url'],
+    language: 'he',
+  }, (error, result)=>{
+    if (!error && result && result.event === 'success') onSuccess(result.info);
+  });
+  widget.open();
 }
 /* --- אימות זהות בקישור ההורה: לעולם לא שולחים ת.ז/שם הורה גולמיים לדף הציבורי.
    במקום זה שומרים על מסמך האישור (הפתוח לקריאה ציבורית ממילא) רק גיבוב (hash) חד-כיווני
@@ -349,6 +381,7 @@ const ICON = {
   dots: fIcon('<circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle><circle cx="5" cy="12" r="1.6"></circle>', 18),
   lock: fIcon('<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>', 15),
   archive: fIcon('<rect x="2" y="4" width="20" height="5" rx="1"></rect><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path><line x1="10" y1="13" x2="14" y2="13"></line>', 15),
+  bell: fIcon('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>'),
 };
 
 /* נתיב הבסיס לקישורים ציבוריים (approve.html) — עמיד גם מול Netlify Clean URLs
@@ -484,7 +517,7 @@ document.getElementById('forgotPwLink').addEventListener('click', async (e)=>{
     return;
   }
   try{
-    await auth.sendPasswordResetEmail(email);
+    await auth.sendPasswordResetEmail(email, { url: `${siteBaseUrl()}reset-password.html`, handleCodeInApp: true });
     msgEl.innerHTML = `<div class="login-msg ok">נשלח דוא״ל לאיפוס סיסמה ל-${esc(email)}. יש לעקוב אחר ההוראות בהודעה.</div>`;
   }catch(err){
     msgEl.innerHTML = `<div class="login-msg err">שגיאה בשליחת דוא״ל האיפוס: ${esc(err.message)}</div>`;
@@ -661,6 +694,7 @@ function buildSideNav(){
     { id:'announcements', label:'עדכונים באתר', icon:ICON.megaphone, show: !!p.manage_announcements },
     { id:'classes', label:'ניהול כיתות', icon:ICON.building, show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:ICON.user, show: !!p.manage_users },
+    { id:'pushprefs', label:'הגדרות התראות', icon:ICON.bell, show: !!p.manage_users },
     { id:'smartschool', label:'סמארט סקול', icon:ICON.monitor, show:true, external:'https://www.smartschool.co.il/homepage.aspx?page_id=20' },
   ];
   nav.innerHTML = items.filter(i=>i.show).map(i=>
@@ -699,6 +733,7 @@ const titles = {
   home:'לוח בקרה', myclass:'הכיתה שלי', trips:'טיולים ואישורים', payments:'ניהול תשלומים',
   mytasks:'המשימות שלי', meetings:'ישיבות צוות', classsettings:'הגדרות כיתה',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
+  pushprefs:'הגדרות התראות',
 };
 
 let currentView = 'home';
@@ -712,7 +747,7 @@ async function goto(view){
     home: renderHome, myclass: renderMyClass, trips: renderTrips, payments: renderPayments,
     mytasks: renderMyTasks, meetings: renderMeetings, classsettings: renderClassSettings,
     announcements: renderAnnouncements, classes: renderClasses,
-    users: renderUsers,
+    users: renderUsers, pushprefs: renderPushPrefs,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -856,6 +891,7 @@ async function renderHome(body){
   const todayIso = new Date().toISOString().slice(0,10);
   const eventsSnap = await db.collection('events').where('event_date','>=', todayIso).orderBy('event_date').limit(8).get().catch(()=>({docs:[]}));
   const events = eventsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const eventsByMonth = groupEventsByHebrewMonth(events);
 
   const eventsHtml = `
     <div class="card card-pad" style="margin-top:20px;">
@@ -865,7 +901,10 @@ async function renderHome(body){
       </div>
       ${canManageEvents ? `<div id="addEventWrap" style="display:none; margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">${eventFormHtml('new')}</div>` : ''}
       <div id="eventsList" style="${events.length ? 'margin-top:14px;' : ''}">
-        ${events.map(ev=>eventRowHtml(ev, canManageEvents)).join('') || '<p style="color:var(--ink-soft); font-size:.9rem; margin:12px 0 0;">אין אירועים קרובים בלוח כרגע.</p>'}
+        ${eventsByMonth.map(g=>`
+          <div class="month-group-head">${esc(g.month)}</div>
+          ${g.items.map(ev=>eventRowHtml(ev, canManageEvents)).join('')}
+        `).join('') || '<p style="color:var(--ink-soft); font-size:.9rem; margin:12px 0 0;">אין אירועים קרובים בלוח כרגע.</p>'}
       </div>
     </div>`;
 
@@ -916,6 +955,7 @@ async function renderHome(body){
       if (!text){ toast('יש להזין תוכן להודעה'); return; }
       try{
         await db.collection('staff_announcements').add({ text, created_by: myProfile.full_name, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+        notifyPush('new_staff_announcement', 'עדכון פנימי חדש', text.slice(0,120));
         toast('ההודעה פורסמה'); goto('home');
       }catch(err){ toast('שגיאה: '+err.message); }
     });
@@ -977,6 +1017,22 @@ function renderAdminTripBreakdown(el, byClassMap, classesList){
 /* ============================================================
    EVENTS (yeshiva-wide calendar, shown to everyone on the dashboard)
    ============================================================ */
+/* מחשב את שם החודש העברי מתאריך לועזי (event_date), דרך לוח השנה העברי המובנה בדפדפן —
+   לא תלוי בטקסט "תאריך עברי" החופשי שהמורה מקליד, כדי שהקיבוץ יהיה עקבי גם אם הניסוח שונה. */
+function hebrewMonthOf(dateStr){
+  if (!dateStr) return 'ללא תאריך';
+  try{ return new Intl.DateTimeFormat('he-u-ca-hebrew', { month:'long' }).format(new Date(dateStr)); }
+  catch(err){ return 'ללא תאריך'; }
+}
+function groupEventsByHebrewMonth(events){
+  const order = []; const byMonth = {};
+  events.forEach(ev=>{
+    const month = hebrewMonthOf(ev.event_date);
+    if (!byMonth[month]){ byMonth[month] = []; order.push(month); }
+    byMonth[month].push(ev);
+  });
+  return order.map(month=>({ month, items: byMonth[month] }));
+}
 function eventFormHtml(prefix, ev={}){
   return `
     <div class="form-grid">
@@ -1045,6 +1101,7 @@ function wireEventsUi(body, events, canManageEvents){
       if (!data.title){ toast('יש להזין כותרת לאירוע'); return; }
       try{
         await db.collection('events').add({ ...data, created_by: myProfile.full_name, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+        notifyPush('new_event', 'אירוע חדש נוסף ללוח', data.title);
         toast('האירוע נוסף'); goto('home');
       }catch(err){ toast('שגיאה: '+err.message); }
     });
@@ -1587,6 +1644,7 @@ async function renderTrips(body){
         }
         batch.update(tripRef, { roster_snapshot, class_options });
         await batch.commit();
+        notifyPush('new_trip', 'נוצר טיול חדש', payload.title);
         toast('הטיול נוצר'); goto('trips');
       }
       catch(err){ toast('שגיאה: '+err.message); }
@@ -2161,6 +2219,80 @@ function buildCityAndSensitivityStatsHtml(approvedStudents, heading){
     </div>`;
 }
 
+/* ============================================================
+   TRIP CERTIFICATE — מסמך אישור טיול רשמי (למשל ממשרד החינוך/הרשות המקומית) שמצורף לטיול.
+   נשמר כ-base64 במסמך נפרד תחת trips/{id}/certificate/file (ולא על מסמך הטיול עצמו),
+   כדי לא להתקרב למגבלת הגודל של Firestore. מוגבל ל-700KB לקובץ מקורי (בלי Firebase Storage
+   אין מגבלה גדולה יותר בלי לעבור לתוכנית בתשלום) — לקובץ גדול יותר מומלץ לצלם/לסרוק ברזולוציה נמוכה יותר.
+   ============================================================ */
+const TRIP_CERT_MAX_BYTES = 700 * 1024;
+async function renderTripCertificateCard(card, trip, canUpload){
+  const certRef = db.collection('trips').doc(trip.id).collection('certificate').doc('file');
+  let certSnap;
+  try{ certSnap = await certRef.get(); }
+  catch(err){ card.innerHTML = `<p style="color:var(--danger); font-size:.85rem;">שגיאה בטעינת אישור הטיול: ${esc(err.message)}</p>`; return; }
+  const cert = certSnap.exists ? certSnap.data() : null;
+
+  const renderView = () => {
+    card.innerHTML = `
+      <h3 style="margin-top:0;">📎 אישור טיול (מסמך)</h3>
+      ${cert ? `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:700;">${esc(cert.filename||'קובץ מצורף')}</div>
+            <div style="font-size:.8rem; color:var(--ink-soft);">צורף ע״י ${esc(cert.uploaded_by||'')} ${cert.uploaded_at?.toDate ? '· ' + cert.uploaded_at.toDate().toLocaleDateString('he-IL') : ''}</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <a class="btn btn-outline btn-sm" href="${cert.data}" download="${esc(cert.filename||'אישור-טיול')}">${ICON.download} הורדה</a>
+            ${canUpload ? `<button class="btn btn-outline btn-sm" id="certRemoveBtn" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} הסרה</button>` : ''}
+          </div>
+        </div>
+        ${canUpload ? `<div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+          <label style="font-size:.82rem; color:var(--ink-soft); display:block; margin-bottom:6px;">להחלפת הקובץ:</label>
+          <input type="file" id="certFileInput" accept="application/pdf,image/*">
+        </div>` : ''}
+      ` : `
+        <p style="color:var(--ink-soft); font-size:.88rem;">${canUpload ? 'טרם צורף אישור טיול. ניתן לצרף כאן קובץ (PDF או תמונה, עד 700KB).' : 'טרם צורף אישור טיול על ידי רכזת הטיולים.'}</p>
+        ${canUpload ? `<input type="file" id="certFileInput" accept="application/pdf,image/*">` : ''}
+      `}
+      <div id="certUploadMsg" style="margin-top:8px; font-size:.82rem;"></div>`;
+
+    const fileInput = card.querySelector('#certFileInput');
+    if (fileInput){
+      fileInput.addEventListener('change', async ()=>{
+        const file = fileInput.files[0];
+        if (!file) return;
+        const msgEl = card.querySelector('#certUploadMsg');
+        if (file.size > TRIP_CERT_MAX_BYTES){
+          msgEl.innerHTML = `<span style="color:var(--danger);">הקובץ גדול מדי (${Math.round(file.size/1024)}KB). המגבלה היא 700KB — נא לצרף סריקה/צילום בקובץ קטן יותר, או לדחוס את ה-PDF.</span>`;
+          fileInput.value = '';
+          return;
+        }
+        msgEl.textContent = 'מעלה…';
+        const reader = new FileReader();
+        reader.onload = async ()=>{
+          try{
+            await certRef.set({
+              data: reader.result, filename: file.name,
+              uploaded_by: myProfile.full_name, uploaded_at: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            notifyPush('trip_certificate_uploaded', 'אישור טיול הועלה', `${myProfile.full_name} העלה/תה אישור עבור "${trip.title}"`);
+            toast('אישור הטיול צורף בהצלחה');
+            await renderTripCertificateCard(card, trip, canUpload);
+          }catch(err){ msgEl.innerHTML = `<span style="color:var(--danger);">שגיאה: ${esc(err.message)}</span>`; }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    card.querySelector('#certRemoveBtn')?.addEventListener('click', async ()=>{
+      if (!(await confirmDialog('להסיר את אישור הטיול המצורף?'))) return;
+      try{ await certRef.delete(); await renderTripCertificateCard(card, trip, canUpload); }
+      catch(err){ toast('שגיאה: '+err.message); }
+    });
+  };
+  renderView();
+}
+
 async function renderTripDetail(panel, trip){
   const p = myProfile.permissions || {};
   const tripClassIds = trip.class_ids || (trip.class_id ? [trip.class_id] : []);
@@ -2202,9 +2334,12 @@ async function renderTripDetail(panel, trip){
     ? buildCityAndSensitivityStatsHtml(approvedStudents, 'כלל הכיתות בטיול זה')
     : buildCityAndSensitivityStatsHtml(approvedStudents, '');
 
+  const canViewCert = p.view_all_classes || p.manage_trip_certificates;
+
   panel.innerHTML = `
     ${summaryHtml}
     ${cityStatsHtml}
+    ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
     ${canManage ? `<div style="margin-bottom:16px; display:flex; justify-content:flex-end;">
       <div class="more-actions-wrap">
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
@@ -2215,6 +2350,9 @@ async function renderTripDetail(panel, trip){
       </div>
     </div>` : ''}
     <div id="approvalRows"></div>`;
+
+  if (canViewCert) renderTripCertificateCard(panel.querySelector('#tripCertCard'), trip, !!p.manage_trip_certificates);
+
   const rowsEl = panel.querySelector('#approvalRows');
   const moreBtn = panel.querySelector('#tripMoreActionsBtn');
   const moreMenu = panel.querySelector('#tripMoreActionsMenu');
@@ -2496,16 +2634,33 @@ async function renderPayments(body){
           <h3 style="margin:0 0 4px;">${esc(t.title)}</h3>
           <div style="font-size:.85rem; color:var(--ink-soft);">עלות לתלמיד: ${esc(fmtCost(t.cost))}</div>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn btn-outline btn-sm export-trip-payments" data-id="${t.id}">📤 ייצוא דוח לטיול</button>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="more-actions-wrap">
+            <button class="more-actions-btn" data-id="${t.id}" data-role="trip-more-btn" title="פעולות נוספות">${ICON.dots}</button>
+            <div class="more-actions-menu" data-id="${t.id}" data-role="trip-more-menu">
+              <button class="export-trip-payments" data-id="${t.id}">${ICON.download} ייצוא דוח לטיול</button>
+            </div>
+          </div>
           <button class="btn-manage-approvals payments-toggle" data-id="${t.id}" style="background:linear-gradient(135deg, var(--wait), #d99a3a);"><span>💰 ניהול תשלומים</span><span class="chev">⌄</span></button>
         </div>
       </div>
       <div id="pay-detail-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
     </div>`).join('');
 
+  listEl.querySelectorAll('[data-role="trip-more-btn"]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const menu = listEl.querySelector(`[data-role="trip-more-menu"][data-id="${btn.dataset.id}"]`);
+      const wasOpen = menu.classList.contains('open');
+      listEl.querySelectorAll('.more-actions-menu').forEach(m=> m.classList.remove('open'));
+      if (!wasOpen) menu.classList.add('open');
+    });
+  });
+  document.addEventListener('click', ()=> listEl.querySelectorAll('.more-actions-menu').forEach(m=> m.classList.remove('open')));
+
   listEl.querySelectorAll('.export-trip-payments').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
+      listEl.querySelectorAll('.more-actions-menu').forEach(m=> m.classList.remove('open'));
       const trip = tripsWithCost.find(t=>t.id===btn.dataset.id);
       const paySnap = await db.collection('trips').doc(trip.id).collection('payments').get();
       const rows = [['תלמיד/ה','כיתה','סכום','תאריך תשלום','אופן תשלום']];
@@ -2977,9 +3132,10 @@ async function renderMeetings(body){
   if (canManage){
     document.getElementById('newMeetingForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
+      const meetingTitle = document.getElementById('mt_title').value.trim();
       try{
         await db.collection('meetings').add({
-          title: document.getElementById('mt_title').value.trim(),
+          title: meetingTitle,
           hebrew_date: document.getElementById('mt_hebrew_date').value.trim(),
           date: document.getElementById('mt_date').value || new Date().toISOString().slice(0,10),
           topics: [],
@@ -2988,6 +3144,7 @@ async function renderMeetings(body){
           created_by: myProfile.full_name,
           created_at: firebase.firestore.FieldValue.serverTimestamp(),
         });
+        notifyPush('new_meeting', 'נקבעה ישיבת צוות חדשה', meetingTitle);
         toast('הישיבה נשמרה'); goto('meetings');
       }catch(err){ toast('שגיאה: '+err.message); }
     });
@@ -3267,6 +3424,80 @@ async function renderAnnouncements(body){
       actionsTd.querySelector('.cancel-ann').addEventListener('click', ()=> goto('announcements'));
     });
   });
+
+  /* --- ניהול גלריה (אתר ציבורי) --- */
+  let galleryItems = [];
+  const galleryListEl = document.createElement('div');
+  body.insertAdjacentHTML('beforeend', `
+    <div class="card card-pad" style="margin-top:24px;">
+      <h3 style="margin-top:0;">🖼️ ניהול גלריה (עמוד הבית)</h3>
+      <p style="color:var(--ink-soft); font-size:.85rem;">
+        התמונות שמוצגות בגלריה בעמוד הבית הציבורי. ניתן להעלות תמונה חדשה, להחליף תמונה קיימת, לערוך כיתוב וסדר, או להסיר.
+      </p>
+      <button class="btn btn-primary btn-sm" id="uploadGalleryImgBtn">${ICON.plus} העלאת תמונה חדשה</button>
+      <div id="galleryAdminList" style="margin-top:16px; display:flex; flex-direction:column; gap:10px;"></div>
+    </div>`);
+
+  async function loadGalleryAdmin(){
+    const snap = await db.collection('gallery_images').orderBy('order').get();
+    galleryItems = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    const listEl = document.getElementById('galleryAdminList');
+    listEl.innerHTML = galleryItems.map(g=>`
+      <div class="approval-row" data-id="${g.id}" style="cursor:default; align-items:center;">
+        <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+          <img src="${esc(g.url)}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; flex:none;">
+          <input class="gallery-caption" data-id="${g.id}" value="${esc(g.caption||'')}" placeholder="כיתוב לתמונה" style="flex:1; min-width:0; padding:8px 10px; border:1.5px solid var(--line); border-radius:8px;">
+          <input class="gallery-order" data-id="${g.id}" type="number" value="${g.order ?? 0}" title="סדר הופעה" style="width:60px; padding:8px; border:1.5px solid var(--line); border-radius:8px;">
+        </div>
+        <div class="a-actions">
+          <button class="icon-btn call gallery-replace" data-id="${g.id}" title="החלפת תמונה">${ICON.edit}</button>
+          <button class="icon-btn call gallery-delete" data-id="${g.id}" title="הסרה" style="color:var(--danger);">${ICON.trash}</button>
+        </div>
+      </div>`).join('') || '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין תמונות בגלריה.</p>';
+
+    listEl.querySelectorAll('.gallery-caption').forEach(inp=>{
+      inp.addEventListener('change', async ()=>{
+        try{ await db.collection('gallery_images').doc(inp.dataset.id).update({ caption: inp.value.trim() }); toast('נשמר'); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+    listEl.querySelectorAll('.gallery-order').forEach(inp=>{
+      inp.addEventListener('change', async ()=>{
+        try{ await db.collection('gallery_images').doc(inp.dataset.id).update({ order: Number(inp.value)||0 }); toast('נשמר'); loadGalleryAdmin(); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+    listEl.querySelectorAll('.gallery-delete').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if (!(await confirmDialog('להסיר תמונה זו מהגלריה?'))) return;
+        try{ await db.collection('gallery_images').doc(btn.dataset.id).delete(); loadGalleryAdmin(); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+    listEl.querySelectorAll('.gallery-replace').forEach(btn=>{
+      btn.addEventListener('click', ()=> openCloudinaryWidget(async (info)=>{
+        try{
+          await db.collection('gallery_images').doc(btn.dataset.id).update({ url: info.secure_url, public_id: info.public_id });
+          loadGalleryAdmin();
+        }catch(err){ toast('שגיאה: '+err.message); }
+      }));
+    });
+  }
+
+  document.getElementById('uploadGalleryImgBtn').addEventListener('click', ()=>{
+    openCloudinaryWidget(async (info)=>{
+      const maxOrder = galleryItems.length ? Math.max(...galleryItems.map(g=>g.order||0)) : 0;
+      try{
+        await db.collection('gallery_images').add({
+          url: info.secure_url, public_id: info.public_id, caption:'', order: maxOrder+1,
+          created_at: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        loadGalleryAdmin();
+      }catch(err){ toast('שגיאה: '+err.message); }
+    });
+  });
+
+  loadGalleryAdmin();
 }
 
 /* ============================================================
@@ -3428,6 +3659,63 @@ async function renderClasses(body){
 /* ============================================================
    USERS — תפקיד נבחר מרשימה קבועה או "מותאם אישית", הרשאות ב-checkboxes
    ============================================================ */
+/* ============================================================
+   PUSH NOTIFICATION PREFERENCES — למנהל המערכת בלבד. קובע אילו תפקידים
+   מקבלים כל סוג התראה. הנתונים נקראים על ידי סקריפט Apps Script חיצוני
+   ששולח את ההתראות בפועל (ראו הסבר נפרד) — כאן רק ההגדרות עצמן.
+   ============================================================ */
+const PUSH_NOTIFICATION_TYPES = [
+  { key:'trip_approved', label:'הורה אישר טיול עבור תלמיד/ה' },
+  { key:'trip_certificate_uploaded', label:'רכזת הטיולים העלתה אישור טיול (קובץ)' },
+  { key:'shirt_order_submitted', label:'הורה מילא הזמנת חולצה' },
+  { key:'new_trip', label:'נוצר טיול חדש' },
+  { key:'new_event', label:'נוסף אירוע חדש ללוח' },
+  { key:'new_meeting', label:'נקבעה ישיבת צוות חדשה' },
+  { key:'new_staff_announcement', label:'עדכון פנימי חדש לצוות' },
+];
+async function renderPushPrefs(body){
+  const [prefsSnap, usersSnap] = await Promise.all([
+    db.collection('settings').doc('push_prefs').get(),
+    db.collection('users').get(),
+  ]);
+  const prefs = prefsSnap.exists ? prefsSnap.data() : {};
+  const rolesInUse = new Set(usersSnap.docs.map(d=>d.data().role).filter(Boolean));
+  Object.keys(ROLE_PRESETS).forEach(r=> rolesInUse.add(r));
+  const roles = Array.from(rolesInUse).sort((a,b)=>a.localeCompare(b,'he'));
+
+  body.innerHTML = `
+    <div class="card card-pad">
+      <h3 style="margin-top:0;">🔔 הגדרות התראות פוש</h3>
+      <p style="color:var(--ink-soft); font-size:.88rem;">
+        בחרו אילו תפקידים יקבלו התראת פוש על כל סוג אירוע. שינויים נשמרים אוטומטית לכל תיבה.
+        השליחה בפועל מתבצעת דרך הסקריפט החיצוני (ראו הוראות ההתקנה) — כל עוד הוא לא מותקן, ההגדרות כאן לא יגרמו לשליחת התראות.
+      </p>
+      <div style="overflow-x:auto;">
+        <table class="data" style="min-width:${360 + roles.length*90}px;">
+          <thead><tr><th style="text-align:right;">סוג התראה</th>${roles.map(r=>`<th style="text-align:center;">${esc(r)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${PUSH_NOTIFICATION_TYPES.map(t=>`
+              <tr>
+                <td>${esc(t.label)}</td>
+                ${roles.map(r=>`<td style="text-align:center;"><input type="checkbox" class="push-pref-cb" data-type="${t.key}" data-role="${esc(r)}" ${(prefs[t.key]?.roles||[]).includes(r)?'checked':''}></td>`).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  body.querySelectorAll('.push-pref-cb').forEach(cb=>{
+    cb.addEventListener('change', async ()=>{
+      const type = cb.dataset.type, role = cb.dataset.role;
+      const current = (prefs[type]?.roles || []).slice();
+      const updated = cb.checked ? Array.from(new Set([...current, role])) : current.filter(r=>r!==role);
+      prefs[type] = { roles: updated };
+      try{ await db.collection('settings').doc('push_prefs').set({ [type]: { roles: updated } }, { merge:true }); }
+      catch(err){ toast('שגיאה: '+err.message); cb.checked = !cb.checked; }
+    });
+  });
+}
+
 async function renderUsers(body){
   const [usersSnap, classesSnap] = await Promise.all([
     db.collection('users').orderBy('full_name').get(),
