@@ -162,21 +162,21 @@ input,select,textarea{ font-family:inherit; }
 
 /* ---------- ticker ---------- */
 .ticker-bar{
-  background:var(--teal); color:#fff; overflow:hidden; position:relative;
-  border-bottom:1px solid rgba(255,255,255,.15);
+  background:linear-gradient(90deg, var(--teal-2), var(--teal)); color:#fff; overflow:hidden; position:relative;
+  border-bottom:2px solid rgba(255,255,255,.2); box-shadow:0 4px 18px -6px rgba(28,122,122,.55);
 }
 .ticker-bar .label{
   position:absolute; right:0; top:0; bottom:0; z-index:2;
   display:flex; align-items:center; gap:8px;
-  background:var(--teal-2); padding:0 18px; font-weight:700; font-size:.85rem;
-  box-shadow:14px 0 18px -10px rgba(28,122,122,.9);
+  background:var(--navy); padding:0 22px; font-weight:800; font-size:.92rem;
+  box-shadow:16px 0 20px -10px rgba(22,34,61,.9);
 }
 .ticker-track{
-  display:flex; gap:64px; white-space:nowrap; padding:14px 0 14px 260px;
+  display:flex; gap:64px; white-space:nowrap; padding:18px 0 18px 280px;
   animation:ticker 32s linear infinite;
-  font-size:.95rem;
+  font-size:1.05rem; font-weight:600;
 }
-.ticker-track span{ opacity:.95; }
+.ticker-track span{ opacity:.98; }
 @keyframes ticker{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
 .ticker-bar:hover .ticker-track{ animation-play-state:paused; }
 
@@ -210,6 +210,7 @@ section{ padding:88px 0; position:relative; }
 .gallery-tile{
   border-radius:var(--radius-sm); overflow:hidden; position:relative;
   background:linear-gradient(135deg,var(--steel),var(--teal));
+  background-size:cover; background-position:center;
   display:flex; align-items:flex-end; padding:14px; color:#fff; font-size:.85rem; font-weight:600;
 }
 .gallery-tile::after{
@@ -231,7 +232,25 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .about-wrap{ grid-template-columns:1fr; }
   .gallery-grid{ grid-template-columns:repeat(2,1fr); }
   .nav-links{ display:none; }
+  .site-nav .container{ height:60px; }
+  .site-nav .brand img{ height:38px; width:38px; }
+  .site-nav .brand .t2{ display:none; }
+  .site-nav .btn{ padding:8px 14px; font-size:.8rem; }
+  .contact-grid{ grid-template-columns:1fr; }
 }
+
+/* ---------- contact section ---------- */
+.contact-strip{ background:var(--paper-2); }
+.contact-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:760px; }
+.contact-card{
+  display:flex; align-items:center; gap:16px; background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--radius); padding:22px 24px; text-decoration:none; color:inherit;
+  box-shadow:var(--shadow-sm); transition:transform .15s, box-shadow .15s;
+}
+.contact-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--teal); }
+.contact-card .icon{ font-size:1.6rem; flex:none; }
+.contact-card h3{ margin:0 0 2px; font-size:.95rem; color:var(--navy); }
+.contact-card p{ margin:0; color:var(--ink-soft); }
 
 /* ==========================================================================
    Staff app (login / dashboard) — shared with staff.html
@@ -784,3 +803,24 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
   .approval-row{ border-radius:16px; }
   .event-row, .task-row{ border-radius:14px; }
 }
+
+/* ---------- school year switcher (sidebar) ---------- */
+.year-switcher{ display:flex; align-items:center; gap:6px; margin:10px 0 14px; }
+.year-switcher select{
+  flex:1; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:#e7ecf5;
+  font-size:.82rem; padding:8px 10px; border-radius:10px; font-family:inherit;
+}
+.year-switcher select option{ color:#16223d; }
+.year-switcher button{
+  width:34px; height:34px; flex:none; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.07); color:#c7d4ea; display:flex; align-items:center; justify-content:center;
+}
+.year-switcher button:hover{ background:rgba(255,255,255,.14); color:#fff; }
+
+/* ---------- month group header (events list, grouped by Hebrew month) ---------- */
+.month-group-head{
+  font-weight:800; color:#fff; background:linear-gradient(135deg, var(--steel), var(--teal));
+  display:inline-block; padding:5px 16px; border-radius:8px 8px 8px 0; font-size:.82rem;
+  margin:16px 0 8px;
+}
+.month-group-head:first-child{ margin-top:0; }
