@@ -118,6 +118,14 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
+   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
+const PUSH_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const PUSH_WEBHOOK_SECRET = 'PASTE_YOUR_WEBHOOK_SECRET_HERE';
+function notifyPush(type, title, body){
+  if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body }) }).catch(()=>{});
+}
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 
@@ -311,13 +319,27 @@ async function load(){
 
   mainHtml += `<div class="section-divider"></div>`;
 
+  const nameParts = (()=>{
+    const parts = (studentName||'').trim().split(/\s+/);
+    return { first: parts[0] || '', last: parts.slice(1).join(' ') || '' };
+  })();
+
   content.innerHTML = mainHtml + `
     <div class="trip-card">
       <div class="section-eyebrow">אישור יציאה</div>
-      <h3 class="trip-title" style="font-size:1.2rem;">אישור השתתפות עבור ${esc(studentName)}</h3>
+      <h3 class="trip-title" style="font-size:1.2rem;">אישור השתתפות בטיול</h3>
+      <div class="student-summary" style="display:flex; gap:22px; flex-wrap:wrap; margin-bottom:20px; padding:14px 16px; background:var(--paper-2); border-radius:12px;">
+        <div><div style="font-size:.72rem; color:var(--ink-soft);">שם פרטי</div><div style="font-weight:700;">${esc(nameParts.first)}</div></div>
+        <div><div style="font-size:.72rem; color:var(--ink-soft);">שם משפחה</div><div style="font-weight:700;">${esc(nameParts.last)}</div></div>
+        ${className ? `<div><div style="font-size:.72rem; color:var(--ink-soft);">כיתה</div><div style="font-weight:700;">${esc(className)}</div></div>` : ''}
+      </div>
       <div class="field">
         <label>שם ההורה/ת המאשר/ת</label>
         <input placeholder="שם מלא" id="approverName">
+      </div>
+      <div class="field">
+        <label>ת.ז ההורה/ת המאשר/ת</label>
+        <input placeholder="מספר תעודת זהות" id="approverId" inputmode="numeric" maxlength="9">
       </div>
       <div class="field">
         <label class="consent-check">
@@ -339,7 +361,9 @@ async function load(){
 
   document.getElementById('submitApproval').addEventListener('click', async ()=>{
     const name = cleanText(document.getElementById('approverName').value);
+    const idDigits = document.getElementById('approverId').value.replace(/\D/g,'');
     if (!name){ toast('יש להזין שם'); return; }
+    if (idDigits.length !== 9){ toast('יש להזין מספר תעודת זהות בן 9 ספרות'); return; }
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
     const btn = document.getElementById('submitApproval');
@@ -348,10 +372,12 @@ async function load(){
       await approvalRef.update({
         status: 'approved',
         approved_by_name: name,
+        approved_by_id: idDigits,
         consent: true,
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
+      notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`);
       load();
     }catch(err){
       toast('אירעה שגיאה, נסו שוב');
