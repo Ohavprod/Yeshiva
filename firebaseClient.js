@@ -30,6 +30,7 @@ const ALL_PERMISSIONS = [
   { key: 'manage_events',        label: 'ניהול לוח אירועים ופרוטוקולי ישיבות צוות' },
   { key: 'manage_payments',      label: 'ניהול תשלומי טיולים' },
   { key: 'manage_staff_announcements', label: 'ניהול הודעות עדכון למורים (במסך הראשי)' },
+  { key: 'manage_trip_logistics', label: 'ניהול לוגיסטי לטיול (הוצאות, אוטובוסים ואחראים, נוכחות ביום הטיול)' },
 ];
 
 // --- תפקידים קבועים והרשאות ברירת מחדל לכל אחד מהם ---
@@ -39,7 +40,7 @@ const ALL_PERMISSIONS = [
 const ROLE_PRESETS = {
   'מחנך':        { manage_class_roster:true, create_trips:true, edit_trip_details:true },
   'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
-  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true, manage_events:true },
+  'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true, manage_events:true, manage_trip_logistics:true },
   'מורה מקצועי': {},
   'מזכירה':      Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
   'יועץ חינוכי': { view_all_classes:true },
