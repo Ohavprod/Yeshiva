@@ -150,7 +150,7 @@ function show(id){
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 /* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
    ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
-const PUSH_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
 const PUSH_WEBHOOK_SECRET = 'PASTE_YOUR_WEBHOOK_SECRET_HERE';
 /* type/title/body — כמו קודם. targetUid אופציונלי: כאשר מסופק, הכוונה היא לשלוח
    רק למשתמש הספציפי הזה (למשל "שויכה משימה חדשה" — רק למורה שאליו שויכה),
