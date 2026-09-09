@@ -1,0 +1,28 @@
+  .stat .num{ font-size:1.7rem; }
+  .app-side{ border-radius:0 0 22px 22px; }
+  .side-link{ border-radius:14px; }
+  .card{ border-radius:20px; }
+  .approval-row{ border-radius:16px; }
+  .event-row, .task-row{ border-radius:14px; }
+}
+
+/* ---------- school year switcher (sidebar) ---------- */
+.year-switcher{ display:flex; align-items:center; gap:6px; margin:10px 0 14px; }
+.year-switcher select{
+  flex:1; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:#e7ecf5;
+  font-size:.82rem; padding:8px 10px; border-radius:10px; font-family:inherit;
+}
+.year-switcher select option{ color:#16223d; }
+.year-switcher button{
+  width:34px; height:34px; flex:none; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.07); color:#c7d4ea; display:flex; align-items:center; justify-content:center;
+}
+.year-switcher button:hover{ background:rgba(255,255,255,.14); color:#fff; }
+
+/* ---------- month group header (events list, grouped by Hebrew month) ---------- */
+.month-group-head{
+  font-weight:800; color:#fff; background:linear-gradient(135deg, var(--steel), var(--teal));
+  display:inline-block; padding:5px 16px; border-radius:8px 8px 8px 0; font-size:.82rem;
+  margin:16px 0 8px;
+}
+.month-group-head:first-child{ margin-top:0; }
