@@ -109,7 +109,7 @@
     </div>
     <div class="app-topbar">
       <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="תפריט"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></button>
-      <h1 id="viewTitle">לוח בקרה</h1>
+      <h1 id="viewTitle">בית</h1>
       <div id="userTag" style="color:var(--ink-soft); font-size:.9rem;"></div>
     </div>
     <div id="viewBody"></div>
@@ -713,7 +713,7 @@ function buildSideNav(){
   const p = myProfile.permissions || {};
   const nav = document.getElementById('sideNav');
   const items = [
-    { id:'home', label:'לוח בקרה', icon:ICON.home, show:true },
+    { id:'home', label:'בית', icon:ICON.home, show:true },
     { id:'myclass', label:'הכיתה שלי', icon:ICON.cap, show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:ICON.compass, show:true },
     { id:'payments', label:'ניהול תשלומים', icon:ICON.wallet, show: !!p.manage_payments || !!p.manage_users },
@@ -759,7 +759,7 @@ function setActiveNav(id){
 }
 
 const titles = {
-  home:'לוח בקרה', myclass:'הכיתה שלי', trips:'טיולים ואישורים', payments:'ניהול תשלומים',
+  home:'בית', myclass:'הכיתה שלי', trips:'טיולים ואישורים', payments:'ניהול תשלומים',
   mytasks:'המשימות שלי', meetings:'ישיבות צוות', classsettings:'הגדרות כיתה',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
   pushprefs:'הגדרות התראות',
@@ -853,10 +853,9 @@ async function renderHome(body){
       adminTripsHtml = `
       <div class="card card-pad" style="margin-top:20px;">
         <h3 style="margin-top:0;">טיולים קרובים — סטטוס אישורים כלל ישיבתי</h3>
-        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:-8px;">לחיצה על "אישרו" או "ממתינים" מציגה פירוט לפי כיתה.</p>
+        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:-8px;">לחיצה על טיול מציגה פירוט אישורים לפי כיתה.</p>
         ${tripSummaries.map((s,i)=>`
-          <div data-idx="${i}">
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:10px;">
+          <div class="admin-trip-row" data-idx="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:10px; cursor:pointer;">
               <div>
                 <b>${esc(s.trip.title)}</b>
                 <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? new Date(s.trip.trip_date).toLocaleDateString('he-IL') : 'ללא תאריך'}</div>
@@ -864,10 +863,9 @@ async function renderHome(body){
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 ${s.approvedCount === null
                   ? '<span class="badge badge-wait">לא ניתן לטעון סטטוס</span>'
-                  : `<span class="badge badge-ok admin-trip-toggle" data-idx="${i}">${s.approvedCount} אישרו</span><span class="badge badge-wait admin-trip-toggle" data-idx="${i}">${Math.max(s.totalStudents - s.approvedCount, 0)} ממתינים</span>`}
+                  : `<span class="as-count as-count-sm as-ok"><span class="as-icon">${ICON.check}</span><span class="as-text"><span class="as-num">${s.approvedCount}</span><span class="as-lbl">אישרו</span></span></span><span class="as-count as-count-sm as-wait"><span class="as-icon">${ICON.clock}</span><span class="as-text"><span class="as-num">${Math.max(s.totalStudents - s.approvedCount, 0)}</span><span class="as-lbl">ממתינים</span></span></span>`}
               </div>
-            </div>
-            <div class="admin-trip-breakdown" id="admin-trip-breakdown-${i}" style="display:none;"></div>
+            <div class="admin-trip-breakdown" id="admin-trip-breakdown-${i}" style="display:none; width:100%;"></div>
           </div>`).join('')}
       </div>`;
     }
@@ -909,7 +907,7 @@ async function renderHome(body){
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               ${s.approvedCount === null
                 ? '<span class="badge badge-wait">לא ניתן לטעון סטטוס</span>'
-                : `<span class="badge badge-ok">${s.approvedCount} אישרו</span><span class="badge badge-wait">${Math.max(s.totalStudents - s.approvedCount, 0)} ממתינים</span>`}
+                : `<span class="as-count as-count-sm as-ok"><span class="as-icon">${ICON.check}</span><span class="as-text"><span class="as-num">${s.approvedCount}</span><span class="as-lbl">אישרו</span></span></span><span class="as-count as-count-sm as-wait"><span class="as-icon">${ICON.clock}</span><span class="as-text"><span class="as-num">${Math.max(s.totalStudents - s.approvedCount, 0)}</span><span class="as-lbl">ממתינים</span></span></span>`}
             </div>
           </div>`).join('')}
       </div>`;
@@ -1008,7 +1006,7 @@ async function renderHome(body){
     });
   });
 
-  body.querySelectorAll('.admin-trip-toggle').forEach(el=>{
+  body.querySelectorAll('.admin-trip-row').forEach(el=>{
     el.addEventListener('click', ()=>{
       const idx = el.dataset.idx;
       const panel = document.getElementById(`admin-trip-breakdown-${idx}`);
