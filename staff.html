@@ -167,8 +167,8 @@ function fmtCost(v){
    cloud_name נמצא בדשבורד הראשי של Cloudinary. upload_preset הוא preset מסוג
    "Unsigned" שיוצרים תחת Settings > Upload > Upload presets (כדי שהעלאה תעבוד
    ישירות מהדפדפן בלי לחשוף את ה-API secret). */
-const CLOUDINARY_CLOUD_NAME = 'PASTE_YOUR_CLOUDINARY_CLOUD_NAME';
-const CLOUDINARY_UPLOAD_PRESET = 'PASTE_YOUR_UNSIGNED_UPLOAD_PRESET';
+const CLOUDINARY_CLOUD_NAME = 'dfyxbiogx';
+const CLOUDINARY_UPLOAD_PRESET = 'Yeshiva';
 function openCloudinaryWidget(onSuccess){
   if (!window.cloudinary || CLOUDINARY_CLOUD_NAME.indexOf('PASTE_') === 0){
     toast('חיבור Cloudinary עדיין לא הוגדר במערכת');
@@ -411,6 +411,7 @@ const ICON = {
   clock: fIcon('<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>', 16),
   upload: fIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>', 15),
   folder: fIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>', 15),
+  chevronDown: fIcon('<polyline points="6 9 12 15 18 9"></polyline>', 16),
 };
 
 /* נתיב הבסיס לקישורים ציבוריים (approve.html) — עמיד גם מול Netlify Clean URLs
@@ -2456,7 +2457,7 @@ async function renderTripDetail(panel, trip){
     const parents = [];
     if (s.mother_phone) parents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
     if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
-    const classTag = isMultiClass ? `<span class="badge" style="background:var(--paper-2); color:var(--steel); margin-inline-start:6px;">${esc(classesCache.find(c=>c.id===s.class_id)?.name||'')}</span>` : '';
+    const classTag = ''; // כפול מיותר כעת שכל כיתה מקובצת תחת כותרת קיפול משלה
     return `
       <div class="approval-row" data-student="${s.id}">
         <div>
@@ -2477,7 +2478,7 @@ async function renderTripDetail(panel, trip){
       </div>`;
   };
 
-  if (isMultiClass){
+  if (true){
     const byClass = {};
     students.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
     const classIdsSorted = Object.keys(byClass).sort((a,b)=>{
@@ -2487,11 +2488,21 @@ async function renderTripDetail(panel, trip){
     });
     rowsEl.innerHTML = classIdsSorted.map(cid=>{
       const name = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
-      const classApproved = byClass[cid].filter(s=> approvalsById[s.id]?.status === 'approved');
-      return `<div class="class-group-head" style="margin-top:16px;">🏫 ${esc(name)}</div>`
-        + buildCityAndSensitivityStatsHtml(classApproved, '')
-        + byClass[cid].map(rowHtml).join('');
+      const classStudents = byClass[cid];
+      const classApproved = classStudents.filter(s=> approvalsById[s.id]?.status === 'approved');
+      return `
+        <div class="class-group">
+          <button type="button" class="class-group-toggle" data-cid="cgb-${trip.id}-${cid}">
+            <span class="cg-title"><span class="cg-chev">${ICON.chevronDown}</span>🏫 ${esc(name)}</span>
+            <span class="cg-summary">${classApproved.length} / ${classStudents.length} אישרו</span>
+          </button>
+          <div class="class-group-body" id="cgb-${trip.id}-${cid}" style="display:none;">
+            ${isMultiClass ? buildCityAndSensitivityStatsHtml(classApproved, '') : ''}
+            ${classStudents.map(rowHtml).join('')}
+          </div>
+        </div>`;
     }).join('');
+    wireClassGroupToggles(rowsEl);
   } else {
     rowsEl.innerHTML = students.map(rowHtml).join('');
   }
@@ -2541,6 +2552,93 @@ async function renderTripDetail(panel, trip){
    PAYMENTS (secretary-only: view every trip that has a cost, record who paid,
    and export reports by trip / date range / specific student)
    ============================================================ */
+function wireClassGroupToggles(container){
+  container.querySelectorAll('.class-group-toggle').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const body = document.getElementById(btn.dataset.cid);
+      const opening = body.style.display === 'none';
+      body.style.display = opening ? '' : 'none';
+      btn.classList.toggle('open', opening);
+    });
+  });
+}
+/* מקבץ תלמידים לפי כיתה עם אפשרות קיפול — כדי שהמזכירה תדע תמיד לאיזו כיתה שייך כל תלמיד/ה */
+function shirtOrderRowHtml(s){
+  const o = s.shirt_order;
+  return `
+  <div class="approval-row" data-id="${s.id}" style="cursor:default;">
+    <div>
+      <strong>${esc(s.full_name)}</strong>
+      <div style="margin-top:4px; font-size:.85rem; color:var(--ink-soft);">${esc(o.type_name)} · מידה ${esc(o.size)} · ${esc(fmtCost(o.price))}</div>
+    </div>
+    <div class="a-actions" style="align-items:center; gap:10px;">
+      <label style="display:flex; align-items:center; gap:6px; font-size:.85rem;">
+        <input type="checkbox" class="shirt-paid-cb" data-id="${s.id}" ${o.paid?'checked':''}> שולם
+      </label>
+      <select class="shirt-method-sel" data-id="${s.id}" style="max-width:130px;">
+        <option value="">אופן תשלום</option>
+        ${SHIRT_PAYMENT_METHODS.map(m=>`<option value="${m.id}" ${o.payment_method===m.id?'selected':''}>${m.label}</option>`).join('')}
+      </select>
+      <input class="shirt-method-other" data-id="${s.id}" placeholder="פירוט (אם 'אחר')" value="${esc(o.payment_method_other||'')}" style="max-width:130px; display:${o.payment_method==='other'?'':'none'};">
+    </div>
+  </div>`;
+}
+/* מקבץ את הזמנות החולצות לפי כיתה, עם כותרת מתקפלת (ז'1, ז'2 וכו') — כך שהמזכירה
+   רואה מיד לאיזו כיתה שייך כל תלמיד/ה בלי לגלול ברשימה שטוחה ארוכה. */
+function renderShirtRowsGrouped(ordered){
+  if (!ordered.length) return '<p style="color:var(--ink-soft); font-size:.9rem;">עדיין לא התקבלו הזמנות.</p>';
+  const byClass = {};
+  ordered.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
+  const classIdsSorted = Object.keys(byClass).sort((a,b)=>{
+    const an = classesCache.find(c=>c.id===a)?.name || '';
+    const bn = classesCache.find(c=>c.id===b)?.name || '';
+    return hebrewGradeValue(an) - hebrewGradeValue(bn) || an.localeCompare(bn, 'he');
+  });
+  return classIdsSorted.map(cid=>{
+    const name = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
+    const classStudents = byClass[cid];
+    const paidInClass = classStudents.filter(s=> s.shirt_order.paid).length;
+    const domId = `shirt-cgb-${cid}`;
+    return `
+      <div class="class-group">
+        <button type="button" class="class-group-toggle" data-cid="${domId}">
+          <span class="cg-title"><span class="cg-chev">${ICON.chevronDown}</span>🏫 ${esc(name)}</span>
+          <span class="cg-summary">${paidInClass} / ${classStudents.length} שילמו</span>
+        </button>
+        <div class="class-group-body" id="${domId}" style="display:none;">
+          ${classStudents.map(shirtOrderRowHtml).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+function renderPaymentRowsGrouped(students, rowHtml, paymentsById, tripId){
+  if (!students.length) return '<p style="color:var(--ink-soft); font-size:.9rem;">אין תלמידים בכיתות המשויכות לטיול.</p>';
+  const byClass = {};
+  students.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
+  const classIds = Object.keys(byClass);
+  if (classIds.length <= 1) return students.map(rowHtml).join('');
+  const classIdsSorted = classIds.sort((a,b)=>{
+    const an = classesCache.find(c=>c.id===a)?.name || '';
+    const bn = classesCache.find(c=>c.id===b)?.name || '';
+    return hebrewGradeValue(an) - hebrewGradeValue(bn) || an.localeCompare(bn, 'he');
+  });
+  return classIdsSorted.map(cid=>{
+    const name = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
+    const classStudents = byClass[cid];
+    const paidInClass = classStudents.filter(s=> !!paymentsById[s.id]).length;
+    const domId = `cgb-${tripId}-${cid}`;
+    return `
+      <div class="class-group">
+        <button type="button" class="class-group-toggle" data-cid="${domId}">
+          <span class="cg-title"><span class="cg-chev">${ICON.chevronDown}</span>🏫 ${esc(name)}</span>
+          <span class="cg-summary">${paidInClass} / ${classStudents.length} שילמו</span>
+        </button>
+        <div class="class-group-body" id="${domId}" style="display:none;">
+          ${classStudents.map(rowHtml).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
 function parseCost(costStr){
   if (!costStr) return 0;
   const n = parseFloat(String(costStr).replace(/[^\d.]/g, ''));
@@ -2886,31 +2984,12 @@ async function renderShirtsPanel(panel){
     <div class="card card-pad">
       <h3 style="margin-top:0;">הזמנות שהתקבלו (${ordered.length})</h3>
       <div id="shirtOrdersList">
-        ${ordered.length ? ordered.map(s=>{
-          const o = s.shirt_order;
-          const className = classesCache.find(c=>c.id===s.class_id)?.name || '';
-          return `
-          <div class="approval-row" data-id="${s.id}" style="cursor:default;">
-            <div>
-              <strong>${esc(s.full_name)}</strong> <span class="badge" style="background:var(--paper-2); color:var(--steel);">${esc(className)}</span>
-              <div style="margin-top:4px; font-size:.85rem; color:var(--ink-soft);">${esc(o.type_name)} · מידה ${esc(o.size)} · ${esc(fmtCost(o.price))}</div>
-            </div>
-            <div class="a-actions" style="align-items:center; gap:10px;">
-              <label style="display:flex; align-items:center; gap:6px; font-size:.85rem;">
-                <input type="checkbox" class="shirt-paid-cb" data-id="${s.id}" ${o.paid?'checked':''}> שולם
-              </label>
-              <select class="shirt-method-sel" data-id="${s.id}" style="max-width:130px;">
-                <option value="">אופן תשלום</option>
-                ${SHIRT_PAYMENT_METHODS.map(m=>`<option value="${m.id}" ${o.payment_method===m.id?'selected':''}>${m.label}</option>`).join('')}
-              </select>
-              <input class="shirt-method-other" data-id="${s.id}" placeholder="פירוט (אם 'אחר')" value="${esc(o.payment_method_other||'')}" style="max-width:130px; display:${o.payment_method==='other'?'':'none'};">
-            </div>
-          </div>`;
-        }).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">עדיין לא התקבלו הזמנות.</p>'}
+        ${renderShirtRowsGrouped(ordered)}
       </div>
     </div>`;
 
   panel.innerHTML = renderCatalog() + renderSendSection() + renderOrdersTable();
+  wireClassGroupToggles(panel);
 
   panel.querySelector('#addShirtTypeBtn').addEventListener('click', async ()=>{
     const name = document.getElementById('newShirtName').value.trim();
@@ -3034,7 +3113,8 @@ async function renderTripPaymentsPanel(panel, trip){
       </div>
       <div class="pay-edit-box" id="pay-edit-${s.id}" style="display:none; margin:0 0 10px;"></div>`;
   };
-  rowsEl.innerHTML = students.map(rowHtml).join('') || '<p style="color:var(--ink-soft); font-size:.9rem;">אין תלמידים בכיתות המשויכות לטיול.</p>';
+  rowsEl.innerHTML = renderPaymentRowsGrouped(students, rowHtml, paymentsById, trip.id);
+  wireClassGroupToggles(rowsEl);
 
   rowsEl.querySelectorAll('.record-payment').forEach(btn=>{
     btn.addEventListener('click', ()=>{
