@@ -169,7 +169,7 @@ function fmtCost(v){
    ישירות מהדפדפן בלי לחשוף את ה-API secret). */
 const CLOUDINARY_CLOUD_NAME = 'dfyxbiogx';
 const CLOUDINARY_UPLOAD_PRESET = 'Yeshiva';
-function openCloudinaryWidget(onSuccess){
+function openCloudinaryWidget(onSuccess, opts={}){
   if (!window.cloudinary || CLOUDINARY_CLOUD_NAME.indexOf('PASTE_') === 0){
     toast('חיבור Cloudinary עדיין לא הוגדר במערכת');
     return;
@@ -177,9 +177,12 @@ function openCloudinaryWidget(onSuccess){
   const widget = cloudinary.createUploadWidget({
     cloudName: CLOUDINARY_CLOUD_NAME,
     uploadPreset: CLOUDINARY_UPLOAD_PRESET,
-    folder: 'yeshiva-gallery',
+    folder: opts.folder || 'yeshiva-gallery',
+    resourceType: opts.resourceType || 'image',
+    clientAllowedFormats: opts.allowedFormats || undefined,
+    maxFileSize: opts.maxFileSize || undefined,
     multiple: false,
-    sources: ['local','camera','url'],
+    sources: opts.sources || ['local','camera','url'],
     language: 'he',
   }, (error, result)=>{
     if (!error && result && result.event === 'success') onSuccess(result.info);
@@ -2334,47 +2337,33 @@ async function renderTripCertificateCard(card, trip, canUpload){
             <div style="font-size:.8rem; color:var(--ink-soft);">צורף ע״י ${esc(cert.uploaded_by||'')} ${cert.uploaded_at?.toDate ? '· ' + cert.uploaded_at.toDate().toLocaleDateString('he-IL') : ''}</div>
           </div>
           <div style="display:flex; gap:8px;">
-            <a class="btn btn-outline btn-sm" href="${cert.data}" download="${esc(cert.filename||'אישור-טיול')}">${ICON.download} הורדה</a>
-            ${canUpload ? `<button class="btn btn-outline btn-sm" id="certRemoveBtn" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} הסרה</button>` : ''}
+            <a class="btn btn-outline btn-sm" href="${cert.url}" target="_blank" rel="noopener">${ICON.download} הורדה / צפייה</a>
+            ${canUpload ? `<button type="button" class="btn btn-outline btn-sm" id="certRemoveBtn" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} הסרה</button>` : ''}
           </div>
         </div>
         ${canUpload ? `<div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
-          <label style="font-size:.82rem; color:var(--ink-soft); display:block; margin-bottom:6px;">להחלפת הקובץ:</label>
-          <input type="file" id="certFileInput" accept="application/pdf,image/*">
+          <button type="button" class="btn btn-outline btn-sm" id="certUploadBtn">${ICON.upload} החלפת הקובץ</button>
         </div>` : ''}
       ` : `
-        <p style="color:var(--ink-soft); font-size:.88rem;">${canUpload ? 'טרם צורף אישור טיול. ניתן לצרף כאן קובץ (PDF או תמונה, עד 700KB).' : 'טרם צורף אישור טיול על ידי רכזת הטיולים.'}</p>
-        ${canUpload ? `<input type="file" id="certFileInput" accept="application/pdf,image/*">` : ''}
+        <p style="color:var(--ink-soft); font-size:.88rem;">${canUpload ? 'טרם צורף אישור טיול. ניתן לצרף כאן קובץ (PDF או תמונה — גם קבצים גדולים, אין מגבלת 700KB יותר).' : 'טרם צורף אישור טיול על ידי רכזת הטיולים.'}</p>
+        ${canUpload ? `<button type="button" class="btn btn-outline btn-sm" id="certUploadBtn">${ICON.upload} העלאת קובץ</button>` : ''}
       `}
       <div id="certUploadMsg" style="margin-top:8px; font-size:.82rem;"></div>`;
 
-    const fileInput = card.querySelector('#certFileInput');
-    if (fileInput){
-      fileInput.addEventListener('change', async ()=>{
-        const file = fileInput.files[0];
-        if (!file) return;
-        const msgEl = card.querySelector('#certUploadMsg');
-        if (file.size > TRIP_CERT_MAX_BYTES){
-          msgEl.innerHTML = `<span style="color:var(--danger);">הקובץ גדול מדי (${Math.round(file.size/1024)}KB). המגבלה היא 700KB — נא לצרף סריקה/צילום בקובץ קטן יותר, או לדחוס את ה-PDF.</span>`;
-          fileInput.value = '';
-          return;
-        }
-        msgEl.textContent = 'מעלה…';
-        const reader = new FileReader();
-        reader.onload = async ()=>{
-          try{
-            await certRef.set({
-              data: reader.result, filename: file.name,
-              uploaded_by: myProfile.full_name, uploaded_at: firebase.firestore.FieldValue.serverTimestamp(),
-            });
-            notifyPush('trip_certificate_uploaded', 'אישור טיול הועלה', `${myProfile.full_name} העלה/תה אישור עבור "${trip.title}"`);
-            toast('אישור הטיול צורף בהצלחה');
-            await renderTripCertificateCard(card, trip, canUpload);
-          }catch(err){ msgEl.innerHTML = `<span style="color:var(--danger);">שגיאה: ${esc(err.message)}</span>`; }
-        };
-        reader.readAsDataURL(file);
-      });
-    }
+    card.querySelector('#certUploadBtn')?.addEventListener('click', ()=>{
+      const msgEl = card.querySelector('#certUploadMsg');
+      openCloudinaryWidget(async (info)=>{
+        try{
+          await certRef.set({
+            url: info.secure_url, filename: info.original_filename + (info.format ? '.'+info.format : ''),
+            bytes: info.bytes, uploaded_by: myProfile.full_name, uploaded_at: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+          notifyPush('trip_certificate_uploaded', 'אישור טיול הועלה', `${myProfile.full_name} העלה/תה אישור עבור "${trip.title}"`);
+          toast('אישור הטיול צורף בהצלחה');
+          await renderTripCertificateCard(card, trip, canUpload);
+        }catch(err){ if (msgEl) msgEl.innerHTML = `<span style="color:var(--danger);">שגיאה: ${esc(err.message)}</span>`; }
+      }, { folder:'yeshiva-trip-certificates', resourceType:'auto', sources:['local','camera'] });
+    });
     card.querySelector('#certRemoveBtn')?.addEventListener('click', async ()=>{
       if (!(await confirmDialog('להסיר את אישור הטיול המצורף?'))) return;
       try{ await certRef.delete(); await renderTripCertificateCard(card, trip, canUpload); }
