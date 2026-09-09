@@ -701,6 +701,20 @@ table.data tr:last-child td{ border-bottom:none; }
 .as-count-sm .as-num{ font-size:1.05rem; }
 .as-count-sm .as-lbl{ font-size:.68rem; }
 .admin-trip-row:hover, .dash-trip-row:hover{ background:var(--paper-2); }
+
+/* ---------- class-group collapsible (ניהול אישורים / ניהול תשלומים — קיפול לפי כיתה) ---------- */
+.class-group{ margin-top:14px; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; }
+.class-group-toggle{
+  display:flex; align-items:center; justify-content:space-between; width:100%; gap:10px;
+  background:var(--paper-2); border:none; padding:13px 16px; cursor:pointer; text-align:inherit; font:inherit;
+  color:inherit; transition:background .15s ease;
+}
+.class-group-toggle:hover{ background:#e7edf6; }
+.class-group-toggle .cg-title{ display:flex; align-items:center; gap:8px; font-family:'Rubik',sans-serif; font-weight:700; color:var(--navy); font-size:1rem; }
+.class-group-toggle .cg-chev{ display:inline-flex; transition:transform .2s ease; color:var(--ink-soft); flex:none; }
+.class-group-toggle.open .cg-chev{ transform:rotate(180deg); }
+.class-group-toggle .cg-summary{ font-size:.82rem; color:var(--ink-soft); font-weight:600; white-space:nowrap; }
+.class-group-body{ padding:14px 16px; }
 .as-bar-wrap{ flex:1; }
 .as-bar{ height:12px; border-radius:999px; background:var(--wait-bg); overflow:hidden; }
 .as-bar-fill{ height:100%; background:linear-gradient(90deg, var(--teal-2), var(--ok)); border-radius:999px; transition:width .4s ease; }
