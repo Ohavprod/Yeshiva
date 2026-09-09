@@ -38,8 +38,8 @@ const ALL_PERMISSIONS = [
 // "ראש הישיבה" ו"מזכירה" מקבלים את כל ההרשאות, כולל ניהול תשלומים —
 // כך שגם ראש הישיבה חשוף לתשלומים וגם למזכירה יש את כל מה שיש לראש הישיבה.
 const ROLE_PRESETS = {
-  'מחנך':        { manage_class_roster:true, create_trips:true, edit_trip_details:true },
-  'ראש הישיבה':  Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
+  'מחנך':        { manage_class_roster:true },
+  'ראש הישיבה':  { ...Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])), manage_trip_certificates:false },
   'רכז חברתי':   { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_announcements:true, manage_events:true, manage_trip_logistics:true },
   'מורה מקצועי': {},
   'מזכירה':      Object.fromEntries(ALL_PERMISSIONS.map(p=>[p.key, true])),
