@@ -315,6 +315,12 @@ table.data th{ text-align:right; color:var(--ink-soft); font-weight:600; font-si
 table.data td{ padding:13px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
 table.data tr:last-child td{ border-bottom:none; }
 
+/* ---------- push-prefs table: עמודת הכותרת (סוג התראה) נשארת מוצמדת בגלילה אופקית במובייל ---------- */
+.push-prefs-table th:first-child, .push-prefs-table td:first-child{
+  position:sticky; right:0; background:var(--surface); z-index:2; text-align:right; box-shadow:-1px 0 0 var(--line);
+}
+.push-prefs-table thead th:first-child{ background:var(--surface); z-index:3; }
+
 .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:.8rem; font-weight:600; }
 .badge-ok{ background:var(--ok-bg); color:var(--ok); }
 .badge-wait{ background:var(--wait-bg); color:var(--wait); }
@@ -700,12 +706,12 @@ table.data tr:last-child td{ border-bottom:none; }
 .as-count-sm .as-icon svg{ width:12px; height:12px; }
 .as-count-sm .as-num{ font-size:1.05rem; }
 .as-count-sm .as-lbl{ font-size:.68rem; }
-.admin-trip-row:hover, .dash-trip-row:hover{ background:var(--paper-2); }
+.admin-trip-row, .dash-trip-row{ transition:background .15s ease; }
 
 /* ---------- class-group collapsible (ניהול אישורים / ניהול תשלומים — קיפול לפי כיתה) ---------- */
 .class-group{ margin-top:14px; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; }
 .class-group-toggle{
-  display:flex; align-items:center; justify-content:space-between; width:100%; gap:10px;
+  display:flex; align-items:center; justify-content:space-between; width:100%; gap:10px; flex-wrap:wrap;
   background:var(--paper-2); border:none; padding:13px 16px; cursor:pointer; text-align:inherit; font:inherit;
   color:inherit; transition:background .15s ease;
 }
@@ -824,7 +830,7 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
 }
 .more-actions-btn:hover{ border-color:var(--steel); color:var(--steel); }
 .more-actions-menu{
-  position:absolute; inset-inline-end:0; top:calc(100% + 6px); z-index:30; min-width:220px;
+  position:absolute; inset-inline-end:0; top:calc(100% + 6px); z-index:30; min-width:220px; max-width:calc(100vw - 24px);
   background:var(--surface); border:1.5px solid var(--line); border-radius:12px; box-shadow:var(--shadow);
   padding:6px; display:none;
 }
