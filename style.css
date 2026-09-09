@@ -75,8 +75,10 @@ html{
   scroll-behavior:smooth;
   /* גודל גופן בסיס מוגדל — כל הגדלים היחסיים (rem) בכל הדפים גדלים איתו */
   font-size:19px;
+  overflow-x:hidden;
 }
 body{
+  overflow-x:hidden;
   margin:0;
   font-family:'Assistant',sans-serif;
   background:var(--paper);
@@ -232,18 +234,20 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .about-wrap{ grid-template-columns:1fr; }
   .gallery-grid{ grid-template-columns:repeat(2,1fr); }
   .nav-links{ display:none; }
-  .site-nav .container{ height:60px; }
-  .site-nav .brand img{ height:38px; width:38px; }
+  .site-nav .container{ height:60px; gap:10px; }
+  .site-nav .brand{ min-width:0; flex:1 1 auto; overflow:hidden; }
+  .site-nav .brand .t1{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.92rem; }
+  .site-nav .brand img{ height:38px; width:38px; flex:none; }
   .site-nav .brand .t2{ display:none; }
-  .site-nav .btn{ padding:8px 14px; font-size:.8rem; }
+  .site-nav .btn{ padding:8px 12px; font-size:.74rem; flex:none; white-space:nowrap; }
   .contact-grid{ grid-template-columns:1fr; }
 
   /* ---------- index.html: כותרת עליונה, עדכונים וגלריה במובייל ---------- */
-  .hero{ padding:56px 0 72px; }
+  .hero{ padding:40px 0 56px; }
   .hero-actions{ width:100%; }
   .hero-actions .btn{ width:100%; }
-  section{ padding:56px 0; }
-  .section-head{ margin-bottom:32px; }
+  section{ padding:40px 0; }
+  .section-head{ margin-bottom:24px; }
 
   .ticker-bar{ display:flex; flex-direction:column; }
   .ticker-bar .label{ position:static; box-shadow:none; padding:10px 16px; width:100%; justify-content:center; }
@@ -255,6 +259,11 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   footer.site-footer .container{ flex-direction:column; text-align:center; }
   footer.site-footer .brand{ justify-content:center; }
   footer.site-footer .cols{ justify-content:center; gap:40px; }
+}
+
+@media (max-width:480px){
+  /* בטלפונים צרים גודל הגופן הבסיסי (19px) הופך הכל גדול מדי — מקטינים חזרה לסטנדרט */
+  html{ font-size:16px; }
 }
 
 /* ---------- contact section ---------- */
@@ -684,6 +693,14 @@ table.data tr:last-child td{ border-bottom:none; }
 .as-count.as-wait .as-num{ color:var(--wait); }
 .as-lbl{ font-size:.76rem; color:var(--ink-soft); font-weight:600; }
 .as-count .as-text{ display:flex; flex-direction:column; align-items:flex-start; }
+
+/* גרסה קומפקטית לשימוש ברשימות (לוח הבקרה — כמה טיולים ברצף) */
+.as-count-sm{ padding:6px 12px; gap:8px; min-width:auto; border-radius:12px; }
+.as-count-sm .as-icon{ width:22px; height:22px; }
+.as-count-sm .as-icon svg{ width:12px; height:12px; }
+.as-count-sm .as-num{ font-size:1.05rem; }
+.as-count-sm .as-lbl{ font-size:.68rem; }
+.admin-trip-row:hover, .dash-trip-row:hover{ background:var(--paper-2); }
 .as-bar-wrap{ flex:1; }
 .as-bar{ height:12px; border-radius:999px; background:var(--wait-bg); overflow:hidden; }
 .as-bar-fill{ height:100%; background:linear-gradient(90deg, var(--teal-2), var(--ok)); border-radius:999px; transition:width .4s ease; }
