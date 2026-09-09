@@ -412,6 +412,7 @@ const ICON = {
   upload: fIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>', 15),
   folder: fIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>', 15),
   chevronDown: fIcon('<polyline points="6 9 12 15 18 9"></polyline>', 16),
+  bus: fIcon('<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"></path><path d="M4 12h16"></path><circle cx="7.5" cy="19" r="1.6"></circle><circle cx="16.5" cy="19" r="1.6"></circle>', 15),
 };
 
 /* נתיב הבסיס לקישורים ציבוריים (approve.html) — עמיד גם מול Netlify Clean URLs
@@ -2383,6 +2384,212 @@ async function renderTripCertificateCard(card, trip, canUpload){
   renderView();
 }
 
+/* ============================================================
+   TRIP LOGISTICS — ניהול טיול: הוצאות ואוטובוסים/אחראים.
+   זמין רק למי שיש לו הרשאת manage_trip_logistics (בברירת מחדל: ראש הישיבה,
+   מזכירה, רכז חברתי). נשמר תחת trips/{id}/logistics/data.
+   ============================================================ */
+async function renderTripLogisticsCard(card, trip){
+  const logRef = db.collection('trips').doc(trip.id).collection('logistics').doc('data');
+  let logSnap;
+  try{ logSnap = await logRef.get(); }
+  catch(err){ card.innerHTML = `<p style="color:var(--danger); font-size:.85rem;">שגיאה בטעינת ניהול הטיול: ${esc(err.message)}</p>`; return; }
+  const data = logSnap.exists ? logSnap.data() : {};
+  const expenses = data.expenses || [];
+  const buses = data.buses || [];
+
+  if (!window._staffListCache){
+    const usersSnap = await db.collection('users').orderBy('full_name').get();
+    window._staffListCache = usersSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  }
+  const staffList = window._staffListCache;
+
+  const render = () => {
+    const totalExpenses = expenses.reduce((sum,e)=> sum + (Number(e.amount)||0), 0);
+    card.innerHTML = `
+      <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.wallet}</span> ניהול טיול</h3>
+
+      <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.wallet}</span><span>הוצאות הטיול</span><span class="ms-sub">סה"כ: ${fmtCost(totalExpenses)}</span></div>
+        <div id="expensesList">
+          ${expenses.length ? expenses.map((e,i)=>`
+            <div class="task-row" data-idx="${i}">
+              <div style="flex:1;">${esc(e.label)}${e.note?` — <span style="color:var(--ink-soft);">${esc(e.note)}</span>`:''}</div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <b>${fmtCost(e.amount)}</b>
+                <button type="button" class="icon-btn call del-expense" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+              </div>
+            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין הוצאות רשומות.</p>'}
+        </div>
+        <div class="form-grid" style="margin-top:12px;">
+          <div class="field"><label>תיאור ההוצאה</label><input id="exp_label" placeholder="לדוגמה: דלק, כניסה לאתר"></div>
+          <div class="field"><label>סכום (₪)</label><input type="number" step="0.01" id="exp_amount"></div>
+          <div class="field" style="grid-column:1/-1;"><label>הערה (רשות)</label><input id="exp_note"></div>
+          <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addExpenseBtn">${ICON.plus} הוספת הוצאה</button></div>
+        </div>
+      </div>
+
+      <div class="meeting-section">
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.bus}</span><span>אוטובוסים ואחראים</span></div>
+        <div id="busesList">
+          ${buses.length ? buses.map((b,i)=>`
+            <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <b style="display:flex; align-items:center; gap:6px;">${ICON.bus} ${esc(b.name||'אוטובוס')}</b>
+                <button type="button" class="icon-btn call del-bus" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+              </div>
+              <div style="font-size:.88rem; color:var(--ink-soft); margin-top:6px;">
+                אחראי: ${esc(b.captain_name||'לא נבחר')}${b.captain_phone?` · ${esc(b.captain_phone)}`:''}${b.driver_phone?` · נהג: ${esc(b.driver_phone)}`:''}
+              </div>
+              ${b.notes ? `<div style="font-size:.88rem; margin-top:6px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+              ${b.captain_phone ? `<button type="button" class="btn btn-outline btn-sm send-bus-wa" data-idx="${i}" style="margin-top:10px;">${WA_ICON_SVG} שליחת הנחיות בוואטסאפ</button>` : ''}
+            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין אוטובוסים מוגדרים.</p>'}
+        </div>
+        <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
+          <div class="field"><label>שם/מספר אוטובוס</label><input id="bus_name" placeholder="לדוגמה: אוטובוס 1"></div>
+          <div class="field"><label>אחראי מהצוות</label>
+            <select id="bus_captain">
+              <option value="">בחירת איש/אשת צוות</option>
+              ${staffList.map(u=>`<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>טלפון האחראי</label><input id="bus_captain_phone" placeholder="05X-XXXXXXX"></div>
+          <div class="field"><label>טלפון הנהג</label><input id="bus_driver_phone" placeholder="05X-XXXXXXX"></div>
+          <div class="field" style="grid-column:1/-1;"><label>הנחיות שיישלחו לאחראי (מסמכים, מה לקחת וכו')</label><textarea id="bus_notes" placeholder="לדוגמה: לקחת ערכת עזרה ראשונה, רשימת תלמידים חתומה..."></textarea></div>
+          <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addBusBtn">${ICON.plus} הוספת אוטובוס</button></div>
+        </div>
+      </div>`;
+
+    card.querySelector('#addExpenseBtn').addEventListener('click', async ()=>{
+      const label = document.getElementById('exp_label').value.trim();
+      const amount = document.getElementById('exp_amount').value;
+      const note = document.getElementById('exp_note').value.trim();
+      if (!label || !amount){ toast('יש למלא תיאור וסכום'); return; }
+      expenses.push({ label, amount: Number(amount), note });
+      await saveLogistics();
+    });
+    card.querySelectorAll('.del-expense').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ expenses.splice(Number(btn.dataset.idx), 1); await saveLogistics(); });
+    });
+    card.querySelector('#addBusBtn').addEventListener('click', async ()=>{
+      const name = document.getElementById('bus_name').value.trim();
+      const captainSel = document.getElementById('bus_captain');
+      const captainUid = captainSel.value;
+      const captainName = captainUid ? (captainSel.selectedOptions[0]?.textContent||'') : '';
+      const captainPhone = document.getElementById('bus_captain_phone').value.trim();
+      const driverPhone = document.getElementById('bus_driver_phone').value.trim();
+      const notes = document.getElementById('bus_notes').value.trim();
+      if (!name){ toast('יש להזין שם/מספר לאוטובוס'); return; }
+      buses.push({ id: genToken().slice(0,8), name, captain_uid: captainUid||null, captain_name: captainName, captain_phone: captainPhone, driver_phone: driverPhone, notes });
+      await saveLogistics();
+    });
+    card.querySelectorAll('.del-bus').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ buses.splice(Number(btn.dataset.idx), 1); await saveLogistics(); });
+    });
+    card.querySelectorAll('.send-bus-wa').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const b = buses[Number(btn.dataset.idx)];
+        const lines = [
+          `שלום ${b.captain_name||''}, הנחיות ל${b.name} בטיול "${trip.title}":`,
+          trip.trip_date ? `תאריך: ${new Date(trip.trip_date).toLocaleDateString('he-IL')}` : '',
+          trip.departure_time ? `שעת יציאה: ${trip.departure_time}` : '',
+          b.driver_phone ? `טלפון הנהג: ${b.driver_phone}` : '',
+          b.notes ? `\n${b.notes}` : '',
+        ].filter(Boolean).join('\n');
+        window.open(`https://wa.me/${(b.captain_phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(lines)}`, '_blank');
+      });
+    });
+  };
+
+  async function saveLogistics(){
+    try{
+      await logRef.set({ expenses, buses }, { merge:true });
+      // ה-uid-ים של אחראי האוטובוסים נשמרים גם על מסמך הטיול עצמו, כדי שכללי
+      // האבטחה יוכלו לבדוק בזול מי מורשה לסמן נוכחות (בלי get מקונן ל-logistics).
+      await db.collection('trips').doc(trip.id).update({ bus_captain_uids: buses.map(b=>b.captain_uid).filter(Boolean) });
+      toast('נשמר');
+      render();
+    }catch(err){ toast('שגיאה: '+err.message); }
+  }
+
+  render();
+}
+
+/* ============================================================
+   TRIP ATTENDANCE — נוכחות ביום הטיול (יציאה + חזרה), מתוך התלמידים
+   המאושרים בלבד. זמין למחנך/ת הכיתה, לאחראי אוטובוס שהוגדר בטיול,
+   ולמי שיש לו/ה הרשאת ניהול לוגיסטי (רואים את כל העדכונים).
+   ============================================================ */
+async function renderTripAttendanceCard(card, trip, students, approvedStudents, tripClassIds, canManage){
+  const p = myProfile.permissions || {};
+  const isCaptain = (trip.bus_captain_uids||[]).includes(me.uid);
+  const canAccess = canManage || isCaptain || p.manage_trip_logistics;
+  if (!canAccess || !approvedStudents.length){ card.innerHTML = ''; return; }
+
+  const attSnap = await db.collection('trips').doc(trip.id).collection('attendance').get().catch(()=>({docs:[]}));
+  const attById = {};
+  attSnap.docs.forEach(d=> attById[d.id] = d.data());
+
+  let activeLeg = 'departure';
+  const legField = () => activeLeg === 'departure' ? 'departure_present' : 'return_present';
+
+  const renderList = () => {
+    const field = legField();
+    const markedCount = approvedStudents.filter(s=> attById[s.id]?.[field] === true).length;
+    card.querySelector('#attSummary').textContent = `${markedCount} / ${approvedStudents.length} סומנו כנוכחים`;
+    const listEl = card.querySelector('#attList');
+    listEl.innerHTML = approvedStudents.map(s=>{
+      const val = attById[s.id]?.[field];
+      return `
+      <div class="approval-row" data-student="${s.id}" style="cursor:default;">
+        <div><strong>${esc(s.full_name)}</strong></div>
+        <div class="a-actions" style="gap:8px;">
+          <button type="button" class="btn btn-sm att-btn ${val===true?'btn-primary':'btn-outline'}" data-id="${s.id}" data-val="true">${ICON.check} נכח/ה</button>
+          <button type="button" class="btn btn-sm att-btn ${val===false?'btn-primary':'btn-outline'}" data-id="${s.id}" data-val="false" style="${val===false?'background:var(--danger); border-color:var(--danger); color:#fff;':''}">✕ חסר/ה</button>
+        </div>
+      </div>`;
+    }).join('');
+    listEl.querySelectorAll('.att-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const sid = btn.dataset.id;
+        const val = btn.dataset.val === 'true';
+        const legPrefix = activeLeg;
+        try{
+          await db.collection('trips').doc(trip.id).collection('attendance').doc(sid).set({
+            [field]: val, [`${legPrefix}_marked_by`]: myProfile.full_name,
+            [`${legPrefix}_marked_at`]: firebase.firestore.FieldValue.serverTimestamp(),
+          }, { merge:true });
+          attById[sid] = { ...(attById[sid]||{}), [field]: val };
+          renderList();
+        }catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+  };
+
+  card.innerHTML = `
+    <div class="meeting-section" style="margin-top:16px; border-top:1px solid var(--line); padding-top:18px;">
+      <div class="meeting-section-head">
+        <span class="ms-icon">${ICON.bus}</span><span>נוכחות ביום הטיול</span>
+        <span class="ms-sub" id="attSummary"></span>
+      </div>
+      <div class="tabbar" style="margin-bottom:14px;">
+        <button type="button" class="att-leg-btn active" data-leg="departure">יציאה לטיול</button>
+        <button type="button" class="att-leg-btn" data-leg="return">חזרה מהטיול</button>
+      </div>
+      <div id="attList"></div>
+    </div>`;
+
+  card.querySelectorAll('.att-leg-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      activeLeg = btn.dataset.leg;
+      card.querySelectorAll('.att-leg-btn').forEach(b=> b.classList.toggle('active', b===btn));
+      renderList();
+    });
+  });
+
+  renderList();
+}
+
 async function renderTripDetail(panel, trip){
   const p = myProfile.permissions || {};
   const tripClassIds = trip.class_ids || (trip.class_id ? [trip.class_id] : []);
@@ -2430,6 +2637,8 @@ async function renderTripDetail(panel, trip){
     ${summaryHtml}
     ${cityStatsHtml}
     ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
+    ${p.manage_trip_logistics ? `<div class="card card-pad" id="tripLogisticsCard" style="margin-bottom:16px;">טוען ניהול טיול…</div>` : ''}
+    <div id="tripAttendanceCard"></div>
     ${canManage ? `<div style="margin-bottom:16px; display:flex; justify-content:flex-end;">
       <div class="more-actions-wrap">
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
@@ -2442,6 +2651,8 @@ async function renderTripDetail(panel, trip){
     <div id="approvalRows"></div>`;
 
   if (canViewCert) renderTripCertificateCard(panel.querySelector('#tripCertCard'), trip, !!p.manage_trip_certificates);
+  if (p.manage_trip_logistics) renderTripLogisticsCard(panel.querySelector('#tripLogisticsCard'), trip);
+  renderTripAttendanceCard(panel.querySelector('#tripAttendanceCard'), trip, students, approvedStudents, tripClassIds, canManage);
 
   const rowsEl = panel.querySelector('#approvalRows');
   const moreBtn = panel.querySelector('#tripMoreActionsBtn');
@@ -2726,6 +2937,7 @@ async function renderPayments(body){
           <div class="field"><label>טיול</label><select id="exp_trip">${tripsWithCost.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('') || '<option value="">אין עדיין טיולים עם מחיר</option>'}</select></div>
           <div class="field"><label>תלמיד/ה</label><select id="exp_student"><option value="">טוען…</option></select></div>
           <div class="field" style="display:flex; gap:10px; grid-column:1/-1; flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" id="exportTripFullBtn">${ICON.download} ייצוא דוח מלא לטיול זה (כל התלמידים)</button>
             <button class="btn btn-outline btn-sm" id="exportStudentTripBtn">📤 תשלום התלמיד/ה בטיול זה</button>
             <button class="btn btn-outline btn-sm" id="exportStudentHistoryBtn">📤 היסטוריית תשלומים של התלמיד/ה (כל הטיולים)</button>
           </div>
@@ -2775,6 +2987,27 @@ async function renderPayments(body){
     }
     if (rows.length === 1){ toast('לא נמצאו תשלומים בטווח התאריכים שנבחר'); return; }
     exportTable(rows, `תשלומים ${from} עד ${to}`, exportFormat());
+  });
+
+  document.getElementById('exportTripFullBtn').addEventListener('click', async ()=>{
+    const trip = tripsWithCost.find(t=>t.id===tripSelect.value);
+    if (!trip){ toast('יש לבחור טיול'); return; }
+    const classIds = trip.class_ids || (trip.class_id ? [trip.class_id] : []);
+    const [studentDocs, paymentsSnap] = await Promise.all([
+      fetchStudentDocsForClassIds(classIds),
+      db.collection('trips').doc(trip.id).collection('payments').get(),
+    ]);
+    const studs = studentDocs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> a.full_name.localeCompare(b.full_name,'he'));
+    const paymentsById = {};
+    paymentsSnap.docs.forEach(d=> paymentsById[d.id] = { id:d.id, ...d.data() });
+    const rows = [['תלמיד/ה','כיתה','סטטוס','סכום','תאריך תשלום','אופן תשלום']];
+    studs.forEach(s=>{
+      const pay = paymentsById[s.id];
+      const className = classesCache.find(c=>c.id===s.class_id)?.name || '';
+      rows.push([s.full_name, className, pay?'שולם':'טרם שולם', pay?.amount||'', pay?.payment_date||'', pay?methodLabel(pay.payment_method):'']);
+    });
+    if (rows.length === 1){ toast('אין תלמידים בכיתות המשויכות לטיול'); return; }
+    exportTable(rows, `דוח תשלומים - ${trip.title}`, exportFormat());
   });
 
   document.getElementById('exportStudentTripBtn').addEventListener('click', async ()=>{
@@ -3977,22 +4210,28 @@ async function renderPushPrefs(body){
   const rolesInUse = new Set(usersSnap.docs.map(d=>d.data().role).filter(Boolean));
   Object.keys(ROLE_PRESETS).forEach(r=> rolesInUse.add(r));
   const roles = Array.from(rolesInUse).sort((a,b)=>a.localeCompare(b,'he'));
+  // "__all__" הוא תפקיד וירטואלי: כאשר מסומן, הכוונה היא "כולם", כולל משתמשים
+  // עם תפקיד מותאם אישית שאין להם עמודה משלהם. הסקריפט החיצוני ששולח את ההתראות
+  // צריך לבדוק גם תנאי זה (roles.includes('__all__')) בנוסף לבדיקת התפקיד הרגילה.
+  const allRoles = ['__all__', ...roles];
+  const roleLabel = (r) => r === '__all__' ? 'כולם (גם תפקיד מותאם)' : r;
 
   body.innerHTML = `
     <div class="card card-pad">
       <h3 style="margin-top:0;">🔔 הגדרות התראות פוש</h3>
       <p style="color:var(--ink-soft); font-size:.88rem;">
         בחרו אילו תפקידים יקבלו התראת פוש על כל סוג אירוע. שינויים נשמרים אוטומטית לכל תיבה.
+        עמודת "כולם" מסמנת שליחה לכולם ללא תלות בתפקיד, כולל מי שיש לו תפקיד מותאם אישית.
         השליחה בפועל מתבצעת דרך הסקריפט החיצוני (ראו הוראות ההתקנה) — כל עוד הוא לא מותקן, ההגדרות כאן לא יגרמו לשליחת התראות.
       </p>
-      <div style="overflow-x:auto;">
-        <table class="data" style="min-width:${360 + roles.length*90}px;">
-          <thead><tr><th style="text-align:right;">סוג התראה</th>${roles.map(r=>`<th style="text-align:center;">${esc(r)}</th>`).join('')}</tr></thead>
+      <div class="push-prefs-scroll" style="overflow-x:auto;">
+        <table class="data push-prefs-table" style="min-width:${360 + allRoles.length*90}px;">
+          <thead><tr><th style="text-align:right;">סוג התראה</th>${allRoles.map(r=>`<th style="text-align:center;">${esc(roleLabel(r))}</th>`).join('')}</tr></thead>
           <tbody>
             ${PUSH_NOTIFICATION_TYPES.map(t=>`
               <tr>
                 <td>${esc(t.label)}</td>
-                ${roles.map(r=>`<td style="text-align:center;"><input type="checkbox" class="push-pref-cb" data-type="${t.key}" data-role="${esc(r)}" ${(prefs[t.key]?.roles||[]).includes(r)?'checked':''}></td>`).join('')}
+                ${allRoles.map(r=>`<td style="text-align:center;"><input type="checkbox" class="push-pref-cb" data-type="${t.key}" data-role="${esc(r)}" ${(prefs[t.key]?.roles||[]).includes(r)?'checked':''}></td>`).join('')}
               </tr>`).join('')}
           </tbody>
         </table>
