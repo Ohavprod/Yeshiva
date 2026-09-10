@@ -2745,9 +2745,8 @@ async function exportTripRosterPdf(trip, approvedStudents){
 /* בונה אלמנט DOM של "מסמך פרטים נלווים" לטיול — הוצאות, אוטובוסים/אחראים, חובשים/מע"רים —
    בדיוק כמו שהם מוצגים במסך "ניהול טיול", אבל מעוצבים לדף PDF. זהו העמוד השני בקובץ
    המאוחד (עמוד ראשון הוא אישור הטיול המצורף עצמו, ר' exportTripFullPdf). */
-function buildTripLogisticsDocElement(trip, expenses, buses, medics){
+function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
   const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
-  const totalExpenses = expenses.reduce((sum,e)=> sum + (Number(e.amount)||0), 0);
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
   const section = (title, bodyHtml) => `
@@ -2755,19 +2754,12 @@ function buildTripLogisticsDocElement(trip, expenses, buses, medics){
       <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#16223d; border-bottom:2px solid #1c7a7a; padding-bottom:6px; margin-bottom:10px;">${esc(title)}</div>
       ${bodyHtml}
     </div>`;
-  const expensesHtml = expenses.length ? `
-    <table style="width:100%; border-collapse:collapse;">
-      ${expenses.map(e=>`
-        <tr>
-          <td style="padding:8px 6px; border-bottom:1px solid #dde4ee; font-size:14px;">${esc(e.label)}${e.note?` — <span style="color:#4b566d;">${esc(e.note)}</span>`:''}</td>
-          <td style="padding:8px 6px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; text-align:left; white-space:nowrap;">${esc(fmtCost(e.amount))}</td>
-        </tr>`).join('')}
-      <tr><td style="padding:10px 6px; font-size:14px; font-weight:800;">סה"כ</td><td style="padding:10px 6px; font-size:14px; font-weight:800; text-align:left;">${esc(fmtCost(totalExpenses))}</td></tr>
-    </table>` : `<p style="color:#4b566d; font-size:13px; margin:0;">אין הוצאות רשומות.</p>`;
+  const notesHtml = generalNotes ? `<p style="font-size:14px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:13px; margin:0;">אין הערות נוספות.</p>`;
   const busesHtml = buses.length ? buses.map(b=>`
     <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
       <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
-      <div style="font-size:13px; color:#4b566d; margin-top:4px;">אחראי: ${esc(b.captain_name||'לא נבחר')}${b.captain_phone?` · ${esc(b.captain_phone)}`:''}${b.driver_name?` · נהג: ${esc(b.driver_name)}`:''}${b.driver_phone?` (${esc(b.driver_phone)})`:''}</div>
+      <div style="font-size:13px; margin-top:4px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס${b.captain_phone?` · ${esc(b.captain_phone)}`:''}</div>
+      ${b.driver_name || b.driver_phone ? `<div style="font-size:13px; margin-top:2px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג${b.driver_phone?` · ${esc(b.driver_phone)}`:''}</div>` : ''}
       ${b.notes ? `<div style="font-size:13px; margin-top:4px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
     </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   const medicsHtml = medics.length ? medics.map(m=>`
@@ -2785,7 +2777,7 @@ function buildTripLogisticsDocElement(trip, expenses, buses, medics){
       <div style="font-size:13px; color:#4b566d; margin-bottom:24px;">
         ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
       </div>
-      ${section('הוצאות הטיול', expensesHtml)}
+      ${section('הערות נוספות', notesHtml)}
       ${section('אוטובוסים ואחראים', busesHtml)}
       ${section('חובשים ומע"רים', medicsHtml)}
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
@@ -2808,7 +2800,7 @@ async function exportTripFullPdf(trip){
     ]);
     const cert = certSnap && certSnap.exists ? certSnap.data() : null;
     const logData = logSnap && logSnap.exists ? logSnap.data() : {};
-    const expenses = logData.expenses || [];
+    const generalNotes = logData.general_notes || '';
     const buses = logData.buses || [];
     const medics = logData.medics || [];
 
@@ -2835,7 +2827,7 @@ async function exportTripFullPdf(trip){
       }
     }
 
-    const node = buildTripLogisticsDocElement(trip, expenses, buses, medics);
+    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes);
     const logisticsBlob = await renderNodeToPdfBlob(node);
     const logisticsBytes = await logisticsBlob.arrayBuffer();
     const logisticsDoc = await PDFDocument.load(logisticsBytes);
@@ -3034,7 +3026,6 @@ async function renderTripLogisticsCard(card, trip){
   try{ logSnap = await logRef.get(); }
   catch(err){ card.innerHTML = `<p style="color:var(--danger); font-size:.85rem;">שגיאה בטעינת ניהול הטיול: ${esc(err.message)}</p>`; return; }
   const data = logSnap.exists ? logSnap.data() : {};
-  const expenses = data.expenses || [];
   const buses = data.buses || [];
   const medics = data.medics || [];
 
@@ -3045,28 +3036,13 @@ async function renderTripLogisticsCard(card, trip){
   const staffList = window._staffListCache;
 
   const render = () => {
-    const totalExpenses = expenses.reduce((sum,e)=> sum + (Number(e.amount)||0), 0);
     card.innerHTML = `
       <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.wallet}</span> ניהול טיול</h3>
 
       <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
-        <div class="meeting-section-head"><span class="ms-icon">${ICON.wallet}</span><span>הוצאות הטיול</span><span class="ms-sub">סה"כ: ${fmtCost(totalExpenses)}</span></div>
-        <div id="expensesList">
-          ${expenses.length ? expenses.map((e,i)=>`
-            <div class="task-row" data-idx="${i}">
-              <div style="flex:1;">${esc(e.label)}${e.note?` — <span style="color:var(--ink-soft);">${esc(e.note)}</span>`:''}</div>
-              <div style="display:flex; align-items:center; gap:10px;">
-                <b>${fmtCost(e.amount)}</b>
-                <button type="button" class="icon-btn call del-expense" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
-              </div>
-            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין הוצאות רשומות.</p>'}
-        </div>
-        <div class="form-grid" style="margin-top:12px;">
-          <div class="field"><label>תיאור ההוצאה</label><input id="exp_label" placeholder="לדוגמה: דלק, כניסה לאתר"></div>
-          <div class="field"><label>סכום (₪)</label><input type="number" step="0.01" id="exp_amount"></div>
-          <div class="field" style="grid-column:1/-1;"><label>הערה (רשות)</label><input id="exp_note"></div>
-          <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addExpenseBtn">${ICON.plus} הוספת הוצאה</button></div>
-        </div>
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>הערות נוספות</span></div>
+        <div class="field" style="grid-column:1/-1;"><textarea id="logistics_notes" placeholder="הערות כלליות לטיול...">${esc(data.general_notes||'')}</textarea></div>
+        <button type="button" class="btn btn-outline btn-sm" id="saveLogisticsNotesBtn" style="margin-top:8px;">${ICON.check} שמירת הערות</button>
       </div>
 
       <div class="meeting-section">
@@ -3078,8 +3054,9 @@ async function renderTripLogisticsCard(card, trip){
                 <b style="display:flex; align-items:center; gap:6px;">${ICON.bus} ${esc(b.name||'אוטובוס')}</b>
                 <button type="button" class="icon-btn call del-bus" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
               </div>
-              <div style="font-size:.88rem; color:var(--ink-soft); margin-top:6px;">
-                אחראי: ${esc(b.captain_name||'לא נבחר')}${b.captain_phone?` · ${esc(b.captain_phone)}`:''}${b.driver_name?` · נהג: ${esc(b.driver_name)}`:''}${b.driver_phone?` (${esc(b.driver_phone)})`:''}
+              <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
+                <div style="font-size:.92rem;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b><span style="color:var(--ink-soft); font-size:.82rem;"> · אחראי אוטובוס</span>${b.captain_phone?` · ${esc(b.captain_phone)}`:''}</div>
+                ${b.driver_name || b.driver_phone ? `<div style="font-size:.92rem;"><b>${esc(b.driver_name||'נהג')}</b><span style="color:var(--ink-soft); font-size:.82rem;"> · נהג</span>${b.driver_phone?` · ${esc(b.driver_phone)}`:''}</div>` : ''}
               </div>
               ${b.notes ? `<div style="font-size:.88rem; margin-top:6px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
               ${b.captain_phone ? `<button type="button" class="btn btn-outline btn-sm send-bus-wa" data-idx="${i}" style="margin-top:10px;">${WA_ICON_SVG} שליחת הנחיות בוואטסאפ</button>` : ''}
@@ -3123,16 +3100,9 @@ async function renderTripLogisticsCard(card, trip){
         </div>
       </div>`;
 
-    card.querySelector('#addExpenseBtn').addEventListener('click', async ()=>{
-      const label = document.getElementById('exp_label').value.trim();
-      const amount = document.getElementById('exp_amount').value;
-      const note = document.getElementById('exp_note').value.trim();
-      if (!label || !amount){ toast('יש למלא תיאור וסכום'); return; }
-      expenses.push({ label, amount: Number(amount), note });
+    card.querySelector('#saveLogisticsNotesBtn').addEventListener('click', async ()=>{
+      data.general_notes = document.getElementById('logistics_notes').value.trim();
       await saveLogistics();
-    });
-    card.querySelectorAll('.del-expense').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{ expenses.splice(Number(btn.dataset.idx), 1); await saveLogistics(); });
     });
     card.querySelector('#bus_captain').addEventListener('change', (e)=>{
       document.getElementById('bus_captain_custom_wrap').style.display = e.target.value === '__custom__' ? '' : 'none';
@@ -3189,7 +3159,9 @@ async function renderTripLogisticsCard(card, trip){
 
   async function saveLogistics(){
     try{
-      await logRef.set({ expenses, buses, medics }, { merge:true });
+      // בלי "expenses" כאן בכוונה — merge:true שומר על נתוני עבר בלי לגעת בהם,
+      // גם שההוצאות הוסרו מהממשק.
+      await logRef.set({ buses, medics, general_notes: data.general_notes||'' }, { merge:true });
       // ה-uid-ים של אחראי האוטובוסים נשמרים גם על מסמך הטיול עצמו, כדי שכללי
       // האבטחה יוכלו לבדוק בזול מי מורשה לסמן נוכחות (בלי get מקונן ל-logistics).
       await db.collection('trips').doc(trip.id).update({ bus_captain_uids: buses.map(b=>b.captain_uid).filter(Boolean) });
@@ -3245,8 +3217,9 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
       });
     });
     tabsEl.querySelector('#attAddLegBtn').addEventListener('click', async ()=>{
-      const label = (prompt('שם נקודת הבדיקה (לדוגמה: עצירה בדרך, אמצע הטיול)') || '').trim();
-      if (!label) return;
+      // כותרת אוטומטית ("בדיקה 1", "בדיקה 2"...) במקום prompt() — אין צורך להטריד
+      // את המשתמש/ת בשאלה על שם בכל הוספה.
+      const label = `בדיקה ${customLegs.length + 1}`;
       const id = 'cp_' + Date.now().toString(36);
       customLegs.push({ id, label });
       try{ await db.collection('trips').doc(trip.id).update({ attendance_checkpoints: customLegs }); }
@@ -3279,22 +3252,29 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
         const val = btn.dataset.val === 'true';
         const legPrefix = activeLegId;
         const legLbl = activeLeg().label;
+        const classStudents = approvedStudents.filter(s=> s.class_id === approvedStudents.find(x=>x.id===sid)?.class_id);
+        const wasAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
+        // עדכון מקומי מיידי, לפני ה-await: כשמסמנים כמה תלמידים ברצף מהיר, בלי זה
+        // כל קליק היה בודק מצב מקומי ישן (עוד לא התעדכן מהקליקים הקודמים שעדיין
+        // ב-Firestore), וה"מעבר" לכל-הכיתה-נוכחת לא היה נתפס אף פעם.
+        attById[sid] = { ...(attById[sid]||{}), [field]: val };
+        const isNowAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
         try{
-          const classStudents = approvedStudents.filter(s=> s.class_id === approvedStudents.find(x=>x.id===sid)?.class_id);
-          const wasAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
           await db.collection('trips').doc(trip.id).collection('attendance').doc(sid).set({
             [field]: val, [`${legPrefix}_marked_by`]: myProfile.full_name,
             [`${legPrefix}_marked_at`]: firebase.firestore.FieldValue.serverTimestamp(),
           }, { merge:true });
-          attById[sid] = { ...(attById[sid]||{}), [field]: val };
           // התראת פוש כשכל תלמידי הכיתה סומנו נוכחים בנקודת הבדיקה הנוכחית (רק במעבר, לא בכל לחיצה נוספת)
-          const isNowAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
           if (val && isNowAllPresent && !wasAllPresent){
             const className = classesCache.find(c=>c.id===classStudents[0].class_id)?.name || '';
             notifyPush('class_all_present', 'כל הכיתה נוכחת', `כל תלמידי כיתה ${className} סומנו נוכחים — ${legLbl} ("${trip.title}")`);
           }
           renderList();
-        }catch(err){ toast('שגיאה: '+err.message); }
+        }catch(err){
+          attById[sid] = { ...(attById[sid]||{}), [field]: !val };
+          toast('שגיאה: '+err.message);
+          renderList();
+        }
       });
     });
   };
