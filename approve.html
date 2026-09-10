@@ -240,7 +240,7 @@ async function load(){
      על שליחה: אם לא תואם, מוצגת שגיאה במקום; אם תואם, האישור נשמר מיד. */
   function renderTripAndApprovalForm(){
   let mainHtml = `
-    ${studentName ? `<div class="match-confirm">מאשרים עבור: ${esc(studentName)}${className ? ' · כיתה ' + esc(className) : ''}</div>` : ''}
+    ${studentName ? `<div class="match-confirm">אישור טיול עבור: ${esc(studentName)}${className ? ' · כיתה ' + esc(className) : ''}</div>` : ''}
     <div class="trip-card">
       <div class="section-eyebrow">פרטי הטיול</div>
       <h2 class="trip-title">${esc(trip.title)}</h2>
@@ -334,7 +334,7 @@ async function load(){
         <div class="field">
           <label class="consent-check">
             <input type="checkbox" id="consentCheck">
-            <span>אני מאשר לבני לצאת ולהשתתף בטיול</span>
+            <span>אני מאשר/ת לבני לצאת ולהשתתף בטיול</span>
           </label>
         </div>
         <div class="field">
