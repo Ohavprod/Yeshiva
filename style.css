@@ -514,6 +514,12 @@ table.data tr:last-child td{ border-bottom:none; }
   .approval-row .a-actions{ width:100%; flex-direction:column; align-items:stretch; gap:8px; }
   .approval-row .a-actions .parent-contact-group{ width:100%; justify-content:space-between; }
   .approval-row .a-actions > .icon-btn{ align-self:flex-start; }
+
+  /* נוכחות ביום הטיול: שני כפתורים (נכח/ה, חסר/ה) לצד תלמיד/ה — נשארים באותה שורה
+     במקום אחד מעל השני, כדי שהרשימה לא תתארך לחינם. */
+  #attList .approval-row{ flex-direction:row; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; }
+  #attList .approval-row .a-actions{ width:auto; flex-direction:row; align-items:center; gap:6px; }
+  #attList .approval-row .att-btn{ padding:8px 10px; font-size:.8rem; }
   .parent-contact-group{ padding:6px 10px; }
   .parent-label{ font-size:.8rem; }
   .icon-btn{ width:44px; height:44px; }
