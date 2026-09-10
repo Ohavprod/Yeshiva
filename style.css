@@ -285,16 +285,16 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
 .app-shell{ min-height:100vh; display:flex; }
 .app-side{
   width:250px; flex:none; background:var(--navy); color:#dbe4f2;
-  padding:24px 18px; display:flex; flex-direction:column; gap:6px;
+  padding:18px 18px; display:flex; flex-direction:column; gap:4px;
   position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto;
 }
-.app-side .brand{ margin-bottom:20px; padding:0 6px; }
+.app-side .brand{ margin-bottom:12px; padding:0 6px; }
 .app-side .role-pill{
   font-size:.72rem; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
-  padding:4px 10px; border-radius:999px; display:inline-block; margin:0 6px 18px;
+  padding:4px 10px; border-radius:999px; display:inline-block; margin:0 6px 10px;
 }
 .side-link{
-  display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:10px;
+  display:flex; align-items:center; gap:10px; padding:8px 14px; border-radius:10px;
   text-decoration:none; color:#c7d4ea; font-size:.92rem; font-weight:500;
 }
 .side-link:hover{ background:rgba(255,255,255,.06); color:#fff; }
@@ -490,8 +490,14 @@ table.data tr:last-child td{ border-bottom:none; }
   .trip-summary{ flex-direction:column; align-items:stretch !important; }
   .trip-summary h3.c-title{ font-size:1.1rem; }
   /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — עמודה אחת מסודרת וברוחב
-     אחיד בנייד (במקום רשת שגורמת לכפתורים ארוכים להישבר לכמה שורות באמצע) */
-  .trip-summary > div:last-child{ display:flex; flex-direction:column; align-items:stretch; gap:8px !important; width:100%; }
+     אחיד בנייד (במקום רשת שגורמת לכפתורים ארוכים להישבר לכמה שורות באמצע).
+     !important על flex-direction/align-items כי האלמנט מקבל style inline (display/gap/
+     align-items/flex-wrap) מ-JS כשנפתח, שבלי זה היה גובר על הכללים האלה ומשאיר את
+     הכפתורים מיושרים למרכז ברוחבים שונים במקום עמודה אחידה. */
+  .trip-summary > div:last-child{
+    display:flex !important; flex-direction:column !important; align-items:stretch !important;
+    flex-wrap:nowrap !important; gap:8px !important; width:100%;
+  }
   .trip-summary > div:last-child .btn{ width:100%; }
   .btn-manage-approvals{ width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
 
@@ -950,7 +956,7 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
 }
 
 /* ---------- school year switcher (sidebar) ---------- */
-.year-switcher{ display:flex; align-items:center; gap:6px; margin:10px 0 14px; }
+.year-switcher{ display:flex; align-items:center; gap:6px; margin:6px 0 10px; }
 .year-switcher select{
   flex:1; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:#e7ecf5;
   font-size:.82rem; padding:8px 10px; border-radius:10px; font-family:inherit;
