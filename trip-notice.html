@@ -119,6 +119,8 @@ function toast(msg){
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
+function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -226,6 +228,14 @@ async function load(){
     </div>`;
   }
 
+  if (trip.equipment){
+    mainHtml += `
+    <div class="trip-card">
+      <div class="section-eyebrow">ציוד נדרש</div>
+      <p style="margin:0; color:var(--ink); white-space:pre-line;">${esc(trip.equipment)}</p>
+    </div>`;
+  }
+
   if (trip.notes){
     mainHtml += `
     <div class="trip-card">
@@ -266,16 +276,20 @@ async function load(){
           </select>
         </div>
         <div class="field">
-          <label>שם התלמיד (הבן)</label>
-          <input id="studentNameInput" placeholder="שם פרטי ומשפחה">
+          <label>שם התלמיד (הבן) — מספיק שם פרטי</label>
+          <input id="studentNameInput" placeholder="שם פרטי, או פרטי ומשפחה">
         </div>
         <div class="field">
           <label>שם ההורה/ת המאשר/ת</label>
-          <input id="approverName" placeholder="שם מלא">
+          <input id="approverName" placeholder="שם מלא (מספיק שם פרטי)">
+        </div>
+        <div class="field">
+          <label>טלפון ההורה/ת המאשר/ת</label>
+          <input id="approverPhone" type="tel" inputmode="tel" placeholder="05X-XXXXXXX">
         </div>
         <div class="field">
           <label>ת.ז ההורה/ת המאשר/ת</label>
-          <input id="approverId" placeholder="מספר תעודת זהות" inputmode="numeric">
+          <input id="approverId" placeholder="מספר תעודת זהות" inputmode="numeric" maxlength="9">
         </div>
         <div class="field">
           <label class="consent-check">
@@ -310,28 +324,33 @@ async function load(){
     const classId = document.getElementById('classSelect').value;
     const studentName = cleanText(document.getElementById('studentNameInput').value);
     const approverName = cleanText(document.getElementById('approverName').value);
-    const approverId = cleanText(document.getElementById('approverId').value);
+    const approverPhone = document.getElementById('approverPhone').value;
+    const approverId = cleanText(document.getElementById('approverId').value).replace(/\D/g,'');
 
     if (!classId){ toast('יש לבחור כיתה'); return; }
     if (!studentName){ toast('יש להזין את שם התלמיד'); return; }
     if (!approverName){ toast('יש להזין את שמך'); return; }
+    if (!approverPhone){ toast('יש להזין מספר טלפון'); return; }
     if (!approverId){ toast('יש להזין מספר תעודת זהות'); return; }
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
 
-    // הצלבה: כיתה + שם תלמיד + (שם הורה + ת.ז) — לא משנה אם ההורה הוא האם או האב.
-    // ההשוואה מתבצעת מול גיבוב חד-כיווני שנשמר מראש על מסמך הטיול (roster_snapshot),
-    // ולא מול שם/ת.ז גולמיים — כך שמסמך הטיול הציבורי לא חושף פרטי הורים.
-    const normId = (s) => (s||'').toString().replace(/\D/g,'');
-    const candidateHash = await sha256Hex(`${norm(approverName)}|${normId(approverId)}`);
+    // הצלבה: כיתה + שם תלמיד (מספיק שם פרטי) + (שם פרטי של ההורה + טלפון) — לא משנה אם
+    // ההורה הוא האם או האב. ההשוואה מתבצעת מול גיבוב חד-כיווני שנשמר מראש על מסמך הטיול
+    // (roster_snapshot), ולא מול שם/טלפון גולמיים — כך שמסמך הטיול הציבורי לא חושף פרטי הורים.
+    // ת.ז היא שדה חובה בטופס אבל אינה חלק מההצלבה (לרוב ההורים היא עדיין לא רשומה במערכת).
+    const candidateHash = await sha256Hex(`${firstNameOf(approverName)}|${normPhoneDigits(approverPhone)}`);
+    let matchedSlot = null;
     const candidates = roster.filter(r => {
       if (r.class_id !== classId) return false;
-      if (norm(r.full_name) !== norm(studentName)) return false;
-      return (r.verify_hashes||[]).includes(candidateHash);
+      if (firstNameOf(r.full_name) !== firstNameOf(studentName)) return false;
+      const match = (r.verify_hashes||[]).find(h => h.hash === candidateHash);
+      if (match) matchedSlot = match.slot;
+      return !!match;
     });
 
     if (candidates.length !== 1){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">אחד מהפרטים שהוזנו שגוי. יש לוודא שהפרטים נכונים (כיתה, ת.ז, שם הורה ושם תלמיד) ולנסות שוב.</p>`;
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">אחד מהפרטים שהוזנו שגוי. יש לוודא שהפרטים נכונים (כיתה, שם הורה, טלפון ושם תלמיד) ולנסות שוב.</p>`;
       return;
     }
 
@@ -359,6 +378,12 @@ async function load(){
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
+      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
+      // (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
+      if (matchedSlot){
+        const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
+        db.collection('students').doc(studentId).update({ [field]: approverId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
+      }
       document.getElementById('formArea').style.display = 'none';
       document.getElementById('resultArea').innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="margin:0;">האישור נקלט, תודה!</p></div>`;
     }catch(err){
