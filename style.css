@@ -467,10 +467,11 @@ table.data tr:last-child td{ border-bottom:none; }
 
   .trip-summary{ flex-direction:column; align-items:stretch !important; }
   .trip-summary h3.c-title{ font-size:1.1rem; }
-  /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — טור אחיד ומסודר במקום שורות שבורות */
-  .trip-summary > div:last-child{ flex-direction:column; align-items:stretch; width:100%; gap:8px !important; }
-  .trip-summary > div:last-child .btn{ width:100%; }
-  .btn-manage-approvals{ width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
+  /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — פיזור ברשת של כמה טורים
+     במקום טור אחד ארוך שהכל בו אחד מעל השני; ניהול אישורים תמיד ברוחב מלא */
+  .trip-summary > div:last-child{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px !important; width:100%; }
+  .trip-summary > div:last-child .btn{ width:auto; }
+  .btn-manage-approvals{ grid-column:1 / -1; width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
 
   .approval-row{ flex-direction:column; align-items:stretch; gap:10px; padding:14px 16px; }
   .approval-row .a-actions{ width:100%; flex-direction:column; align-items:stretch; gap:8px; }
@@ -490,9 +491,21 @@ table.data tr:last-child td{ border-bottom:none; }
 
   .class-group-head{ font-size:1.05rem; margin:20px 0 10px; }
 
-  .approval-summary{ padding:14px; gap:14px; }
+  /* המד (בר ההתקדמות) נדחס מדי כשהוא לצד הספירות בשורה אחת בנייד — עובר לעמודה
+     כדי שהבר עצמו יקבל רוחב מלא וברור, בכל מקום שבו approval-summary מופיע */
+  .approval-summary{ flex-direction:column; align-items:stretch; padding:14px; gap:14px; }
+  .as-counts{ width:100%; justify-content:space-between; }
+  .as-bar-wrap{ width:100%; }
   .as-num{ font-size:1.7rem; }
   .as-lbl{ font-size:.82rem; }
+
+  /* אותה בעיה בבר ההתקדמות לפי כיתה (פירוט טיול בלוח הבקרה) — הבר נדחס לצד
+     השם והמספרים; עובר לשורה נפרדת ברוחב מלא בנייד */
+  .atb-class-row{ flex-wrap:wrap; row-gap:8px; }
+  .atb-class-row .atb-name{ flex:1 1 auto; }
+  .atb-class-row .atb-bar{ order:3; flex:1 1 100%; }
+  .atb-class-row .atb-nums{ order:2; }
+  .atb-class-row .chev{ order:2; }
 
   .roster-row-head{ padding:15px 16px; }
   .roster-row-name{ font-size:1.08rem; }
@@ -549,6 +562,18 @@ table.data tr:last-child td{ border-bottom:none; }
 .archive-toggle.open .chev{ transform:rotate(180deg); }
 .archive-list{ margin-top:12px; opacity:.9; }
 .archive-list .card{ background:var(--paper); }
+
+/* ---------- section-toggle: כותרת מתקפלת "מלאה" (במקום מקווקו) — לפעולות
+   הוספה/ניהול (יצירת טיול, ניהול טיול, הוספת משימה, ישיבה, כיתה) ---------- */
+.section-toggle{
+  display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+  background:linear-gradient(135deg, var(--steel), var(--teal)); border:none; border-radius:var(--radius-sm);
+  padding:14px 18px; margin-top:24px; color:#fff; font-weight:700; font-size:.92rem;
+  box-shadow:0 6px 14px -6px rgba(28,122,122,.5); transition:filter .15s ease, box-shadow .15s ease;
+}
+.section-toggle:hover{ filter:brightness(1.06); box-shadow:0 8px 18px -6px rgba(28,122,122,.6); }
+.section-toggle .chev{ transition:transform .2s; }
+.section-toggle.open .chev{ transform:rotate(180deg); }
 
 .approval-row{
   display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
@@ -856,6 +881,16 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
 .atb-class-row .atb-bar{ flex:1.4; height:9px; border-radius:999px; background:var(--wait-bg); overflow:hidden; }
 .atb-class-row .atb-bar-fill{ height:100%; background:linear-gradient(90deg, var(--teal-2), var(--ok)); }
 .atb-class-row .atb-nums{ flex:none; font-size:.82rem; color:var(--ink-soft); font-weight:700; min-width:56px; text-align:left; }
+.atb-class-row:hover{ background:var(--surface); }
+.atb-class-row .chev{ flex:none; color:var(--ink-soft); transition:transform .2s; }
+.atb-class-row.open .chev{ transform:rotate(180deg); }
+.atb-class-detail{ padding:2px 12px 12px; margin-top:-6px; margin-bottom:8px; }
+.atb-student-list{ background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:4px 12px; }
+.atb-student-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:8px 0; font-size:.86rem; border-bottom:1px dashed var(--line);
+}
+.atb-student-row:last-child{ border-bottom:none; }
 
 /* ---------- verification gate (approve.html) ---------- */
 .verify-box{ display:flex; flex-direction:column; gap:14px; }
