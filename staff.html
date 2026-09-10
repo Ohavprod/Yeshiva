@@ -173,7 +173,10 @@ function fmtCost(v){
    "Unsigned" שיוצרים תחת Settings > Upload > Upload presets (כדי שהעלאה תעבוד
    ישירות מהדפדפן בלי לחשוף את ה-API secret). */
 const CLOUDINARY_CLOUD_NAME = 'dfyxbiogx';
-const CLOUDINARY_UPLOAD_PRESET = 'Yeshiva-Tiyol';
+/* שני presets נפרדים ב-Cloudinary, כל אחד מעלה אוטומטית לתיקייה הייעודית שלו:
+   Yeshiva-Tiyol — אישורי טיול (certificates), Yeshiva-Gallery — תמונות גלריה */
+const CLOUDINARY_PRESET_TRIP = 'Yeshiva-Tiyol';
+const CLOUDINARY_PRESET_GALLERY = 'Yeshiva-Gallery';
 /* פותח את בורר הקבצים המובנה של הדפדפן (לא חלון חיצוני של קלאודינרי) ומחזיר
    Promise שמתמלא עם הקובץ שנבחר, או null אם המשתמש ביטל. */
 function promptFileUpload(accept){
@@ -199,10 +202,10 @@ function promptFileUpload(accept){
 /* מעלה קובץ ישירות ל-Cloudinary דרך ה-API הגולמי (POST רגיל), בלי הווידג'ט הרשמי
    של קלאודינרי (שנטען כספרייה חיצונית ומציג ממשק באנגלית) — כך שכל חוויית
    ההעלאה נשארת בתוך העיצוב של המערכת עצמה, בעברית. */
-async function uploadToCloudinary(file, folder){
+async function uploadToCloudinary(file, folder, preset){
   const form = new FormData();
   form.append('file', file);
-  form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  form.append('upload_preset', preset || CLOUDINARY_PRESET_TRIP);
   if (folder) form.append('folder', folder);
   const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, { method:'POST', body: form });
   const data = await res.json();
@@ -210,13 +213,14 @@ async function uploadToCloudinary(file, folder){
   return data;
 }
 /* עוזר נוח: פותח בורר קבצים, מעלה לתיקייה שצוינה, ומריץ onSuccess(info) — עם
-   toast מובנה של המערכת בזמן ההעלאה ובמקרה שגיאה. msgEl אופציונלי לתצוגת הודעה מקומית. */
-async function pickAndUploadToCloudinary({ accept, folder, onSuccess, msgEl }){
+   toast מובנה של המערכת בזמן ההעלאה ובמקרה שגיאה. msgEl אופציונלי לתצוגת הודעה מקומית.
+   preset אופציונלי — ברירת המחדל היא ה-preset של אישורי טיול. */
+async function pickAndUploadToCloudinary({ accept, folder, preset, onSuccess, msgEl }){
   const file = await promptFileUpload(accept);
   if (!file) return;
   if (msgEl) msgEl.textContent = 'מעלה…'; else toast('מעלה…');
   try{
-    const info = await uploadToCloudinary(file, folder);
+    const info = await uploadToCloudinary(file, folder, preset);
     if (msgEl) msgEl.textContent = '';
     await onSuccess(info);
   }catch(err){
@@ -866,10 +870,13 @@ async function renderHome(body){
         const approvedIds = new Set(approvalsSnap.docs.filter(d=>d.data().status==='approved').map(d=>d.id));
         const byClass = {};
         studentDocs.forEach(d=>{
-          const cid = d.data().class_id;
-          byClass[cid] = byClass[cid] || { approved:0, total:0 };
+          const sd = d.data();
+          const cid = sd.class_id;
+          byClass[cid] = byClass[cid] || { approved:0, total:0, students:[] };
           byClass[cid].total++;
-          if (approvedIds.has(d.id)) byClass[cid].approved++;
+          const isApproved = approvedIds.has(d.id);
+          if (isApproved) byClass[cid].approved++;
+          byClass[cid].students.push({ id:d.id, full_name: sd.full_name, approved: isApproved });
         });
         const totalStudents = studentDocs.length;
         const approvedCount = Math.min(approvedIds.size, totalStudents);
@@ -1062,23 +1069,42 @@ async function renderHome(body){
   wireEventsUi(body, events, canManageEvents);
 }
 
-/* פירוט לפי כיתה: אילו כיתות כבר השלימו את כל האישורים לטיול, ואילו עדיין חסרות */
+/* פירוט לפי כיתה: אילו כיתות כבר השלימו את כל האישורים לטיול, ואילו עדיין חסרות —
+   לחיצה על כיתה פותחת רשימת תלמידים ומראה מי אישר ומי עדיין לא */
 function renderAdminTripBreakdown(el, byClassMap, classesList){
   const entries = Object.entries(byClassMap).map(([cid,v])=>({
     cid, name: classesList.find(c=>c.id===cid)?.name || 'ללא כיתה', ...v,
   }));
   entries.sort((a,b)=> hebrewGradeValue(a.name) - hebrewGradeValue(b.name) || a.name.localeCompare(b.name,'he'));
-  const rowHtml = (e) => {
+  const studentsListHtml = (students) => {
+    const sorted = [...(students||[])].sort((a,b)=> (a.full_name||'').localeCompare(b.full_name||'','he'));
+    return `<div class="atb-student-list">${sorted.map(s=>`
+      <div class="atb-student-row">
+        <span>${s.approved ? '✅' : '⏳'} ${esc(s.full_name)}</span>
+        <span style="color:${s.approved ? 'var(--ok)' : 'var(--wait)'}; font-size:.78rem; font-weight:600;">${s.approved ? 'אישר/ה' : 'ממתין/ה'}</span>
+      </div>`).join('') || '<div style="color:var(--ink-soft); font-size:.85rem; padding:8px 0;">אין תלמידים בכיתה זו.</div>'}</div>`;
+  };
+  const rowHtml = (e, i) => {
     const pct = e.total ? Math.round((e.approved/e.total)*100) : 0;
     const isDone = e.total>0 && e.approved===e.total;
     return `
-    <div class="atb-class-row">
+    <div class="atb-class-row" data-cidx="${i}" style="cursor:pointer;">
       <div class="atb-name">${isDone ? '✅' : '⏳'} ${esc(e.name)}</div>
       <div class="atb-bar"><div class="atb-bar-fill" style="width:${pct}%;"></div></div>
       <div class="atb-nums" style="color:${isDone ? 'var(--ok)' : 'var(--wait)'};">${e.approved}/${e.total}</div>
-    </div>`;
+      <span class="chev">⌄</span>
+    </div>
+    <div class="atb-class-detail" id="${el.id}-cd-${i}" style="display:none;">${studentsListHtml(e.students)}</div>`;
   };
   el.innerHTML = `<div class="admin-trip-breakdown-inner">${entries.map(rowHtml).join('') || '<div style="color:var(--ink-soft); font-size:.85rem;">אין נתונים</div>'}</div>`;
+  el.querySelectorAll('.atb-class-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const detail = document.getElementById(`${el.id}-cd-${row.dataset.cidx}`);
+      const opening = detail.style.display === 'none';
+      detail.style.display = opening ? '' : 'none';
+      row.classList.toggle('open', opening);
+    });
+  });
 }
 
 /* ============================================================
@@ -1637,7 +1663,7 @@ async function renderTrips(body){
 
   body.innerHTML = `
     ${canCreate ? `
-    <div class="archive-toggle" id="newTripToggleBtn" style="margin-bottom:14px;">
+    <div class="section-toggle" id="newTripToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.plus} יצירת טיול חדש</span><span class="chev">⌄</span>
     </div>
     <div class="card card-pad" id="newTripCard" style="margin-bottom:24px; display:none;">
@@ -2309,6 +2335,78 @@ async function exportApprovalsZip(trip, students, approvalsById){
   }catch(err){ toast('שגיאה בהכנת קובץ ה-ZIP: '+err.message); }
 }
 
+/* בונה אלמנט DOM של טבלת נוכחות מסודרת לפי כיתה: לכל כיתה כותרת עם שם הכיתה
+   ושם המחנך/ת, ומתחתיה כל התלמידים המאושרים היוצאים לטיול. מצולם ל-PDF אמיתי
+   (html2canvas+jsPDF) בדיוק כמו טבלאות האישור האישיות. */
+function buildTripRosterDocElement(trip, groupedByClass){
+  const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:700px; z-index:-1; background:#fff;';
+  const classSectionsHtml = groupedByClass.map(g => `
+    <div style="margin-bottom:22px;">
+      <div style="background:#eef2f8; border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:700; font-size:15px; color:#16223d;">${esc(g.className)}</span>
+        <span style="font-size:13px; color:#4b566d;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
+      </div>
+      <table style="width:100%; border-collapse:collapse;">
+        <tbody>
+          ${g.students.map((s,i)=>`
+            <tr>
+              <td style="padding:7px 6px; border-bottom:1px solid #dde4ee; width:34px; color:#4b566d; font-size:13px;">${i+1}</td>
+              <td style="padding:7px 6px; border-bottom:1px solid #dde4ee; font-size:14px;">${esc(s.full_name)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+  wrap.innerHTML = `
+    <div style="width:700px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:13px; color:#4b566d; margin-top:2px;">רשימת נוכחות לטיול — לפי כיתה</div>
+        </div>
+      </div>
+      <h1 style="font-size:23px; margin:0 0 10px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
+      <div style="font-size:13px; color:#4b566d; margin-bottom:22px;">
+        ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
+      </div>
+      ${classSectionsHtml}
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
+      </div>
+    </div>`;
+  return wrap;
+}
+/* מוריד PDF אחד לכל הטיול: טבלה מסודרת לפי כיתה, עם שם המחנך/ת וכל התלמידים
+   שאושרו ואמורים לצאת. משמש גם את ההנהלה וגם כל מחנך/ת ישירות מתוך פרטי הטיול. */
+async function exportTripRosterPdf(trip, approvedStudents){
+  if (!approvedStudents.length){ toast('אין עדיין תלמידים מאושרים לטיול זה'); return; }
+  toast('מכין PDF…');
+  try{
+    const usersSnap = await db.collection('users').get().catch(()=>({docs:[]}));
+    const teacherNameFor = (classId) => {
+      const t = usersSnap.docs?.find?.(d=>d.data().class_id===classId);
+      return t ? t.data().full_name : null;
+    };
+    const byClass = {};
+    approvedStudents.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
+    const grouped = Object.keys(byClass).map(cid => ({
+      classId: cid,
+      className: classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה',
+      teacherName: teacherNameFor(cid),
+      students: byClass[cid].sort((a,b)=> (a.full_name||'').localeCompare(b.full_name||'','he')),
+    }));
+    grouped.sort((a,b)=> hebrewGradeValue(a.className) - hebrewGradeValue(b.className) || a.className.localeCompare(b.className,'he'));
+    const node = buildTripRosterDocElement(trip, grouped);
+    const blob = await renderNodeToPdfBlob(node);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `רשימת נוכחות - ${trip.title}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  }catch(err){ toast('שגיאה ביצירת PDF: '+err.message); }
+}
+
 /* חלון "שליחה לכל הממתינים" — לא באמת אוטומטי (וואטסאפ מחייב אישור שליחה ידני בכל הודעה),
    אבל מרכז את כל מי שממתין במקום אחד כדי לעבור עליהם אחד-אחד בלי לחפש בתפריט */
 function showBulkSendModal(trip, students, approvalsById){
@@ -2444,7 +2542,7 @@ async function renderTripCertificateCard(card, trip, canUpload){
     card.querySelector('#certUploadBtn')?.addEventListener('click', ()=>{
       const msgEl = card.querySelector('#certUploadMsg');
       pickAndUploadToCloudinary({
-        accept: 'application/pdf,image/*', folder: 'yeshiva-trip-certificates',
+        accept: 'application/pdf,image/*', folder: 'yeshiva-trip-certificates', preset: CLOUDINARY_PRESET_TRIP,
         msgEl,
         onSuccess: async (info)=>{
           await certRef.set({
@@ -2606,6 +2704,8 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
   const p = myProfile.permissions || {};
   const isCaptain = (trip.bus_captain_uids||[]).includes(me.uid);
   const canAccess = canManage || isCaptain || p.manage_trip_logistics;
+  /* הנוכחות ביום הטיול מוצגת רק לתלמידים שההורה שלהם אישר הגעה — מי שלא אישר לא
+     אמור לצאת בטיול, ולכן לא נכלל ברשימת הנוכחות של האוטובוס. */
   if (!canAccess || !approvedStudents.length){ card.innerHTML = ''; return; }
 
   const attSnap = await db.collection('trips').doc(trip.id).collection('attendance').get().catch(()=>({docs:[]}));
@@ -2722,7 +2822,7 @@ async function renderTripDetail(panel, trip){
     ${summaryHtml}
     ${cityStatsHtml}
     ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
-    ${p.manage_trip_logistics ? `<div class="archive-toggle" id="tripLogisticsToggleBtn" style="margin-bottom:14px;">
+    ${p.manage_trip_logistics ? `<div class="section-toggle" id="tripLogisticsToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.wallet} ניהול טיול</span><span class="chev">⌄</span>
     </div>
     <div class="card card-pad" id="tripLogisticsCard" style="margin-bottom:16px; display:none;">טוען ניהול טיול…</div>` : ''}
@@ -2732,6 +2832,7 @@ async function renderTripDetail(panel, trip){
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
         <div class="more-actions-menu" id="tripMoreActionsMenu">
           <button id="bulkSendBtn">${ICON.send} שליחה לכל הממתינים</button>
+          <button id="exportRosterPdfBtn">${ICON.download} רשימת נוכחות לפי כיתה (PDF)</button>
           <button id="exportApprovalsZipBtn">${ICON.archive} ייצוא כל האישורים ל-ZIP</button>
         </div>
       </div>
@@ -2831,6 +2932,7 @@ async function renderTripDetail(panel, trip){
   });
 
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); showBulkSendModal(trip, students, approvalsById); });
+  panel.querySelector('#exportRosterPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripRosterPdf(trip, approvedStudents); });
   panel.querySelector('#exportApprovalsZipBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportApprovalsZip(trip, students, approvalsById); });
 
   /* לחיצה על כל המשבצת (לא רק על תגית הסטטוס) פותחת את פרטי התלמיד/ה — גם למאושרים וגם לממתינים */
@@ -3544,7 +3646,7 @@ async function renderMyTasks(body){
           </div>`).join('')}
       </div>
     </div>` : ''}
-    <div class="archive-toggle" id="addTaskToggleBtn" style="margin-bottom:14px;">
+    <div class="section-toggle" id="addTaskToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.plus} הוספת משימה</span><span class="chev">⌄</span>
     </div>
     <div class="card card-pad" id="addTaskCard" style="margin-bottom:24px; display:none;">
@@ -3665,7 +3767,7 @@ async function renderMeetings(body){
 
   body.innerHTML = `
     ${canManage ? `
-    <div class="archive-toggle" id="newMeetingToggleBtn" style="margin-bottom:14px;">
+    <div class="section-toggle" id="newMeetingToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.plus} ישיבת צוות חדשה</span><span class="chev">⌄</span>
     </div>
     <div class="card card-pad" id="newMeetingCard" style="margin-bottom:24px; display:none;">
@@ -4116,7 +4218,7 @@ async function renderAnnouncements(body){
     });
     listEl.querySelectorAll('.gallery-replace').forEach(btn=>{
       btn.addEventListener('click', ()=> pickAndUploadToCloudinary({
-        accept: 'image/*', folder: 'yeshiva-gallery',
+        accept: 'image/*', folder: 'yeshiva-gallery', preset: CLOUDINARY_PRESET_GALLERY,
         onSuccess: async (info)=>{
           try{
             await db.collection('gallery_images').doc(btn.dataset.id).update({ url: info.secure_url, public_id: info.public_id });
@@ -4129,7 +4231,7 @@ async function renderAnnouncements(body){
 
   document.getElementById('uploadGalleryImgBtn').addEventListener('click', ()=>{
     pickAndUploadToCloudinary({
-      accept: 'image/*', folder: 'yeshiva-gallery',
+      accept: 'image/*', folder: 'yeshiva-gallery', preset: CLOUDINARY_PRESET_GALLERY,
       onSuccess: async (info)=>{
         const maxOrder = galleryItems.length ? Math.max(...galleryItems.map(g=>g.order||0)) : 0;
         try{
@@ -4240,7 +4342,7 @@ async function renderClasses(body){
   };
   body.innerHTML = `
     ${p.manage_classes ? `
-    <div class="archive-toggle" id="newClassToggleBtn" style="margin-bottom:14px;">
+    <div class="section-toggle" id="newClassToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.plus} כיתה חדשה</span><span class="chev">⌄</span>
     </div>
     <div class="card card-pad" id="newClassCard" style="margin-bottom:24px; display:none;">
