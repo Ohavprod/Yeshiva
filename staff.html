@@ -2115,6 +2115,9 @@ function showGroupSendModal(groups, text){
 function renderTripsList(container, trips){
   const p = myProfile.permissions || {};
   const canEditInfo = !!p.edit_trip_details;
+  // נדרש כאן גם (לא רק ב-renderTrips) כי טופס "עריכת טיול" מציג/מסנן לפי כיתות שנת הלימודים
+  // הנוכחית — בלעדיו הייתה נזרקת שגיאה (ReferenceError) בלחיצה על עריכה, וחלון העריכה לא נפתח.
+  const currentYearClasses = classesCache.filter(inCurrentYear);
   if (trips.length === 0){
     container.innerHTML = `<div class="card card-pad" style="color:var(--ink-soft);">אין עדיין טיולים רשומים.</div>`;
     return;
