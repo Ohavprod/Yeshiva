@@ -4618,17 +4618,21 @@ async function renderMeetings(body){
     </div>`;
   }).join('');
 
+  // ההערות האישיות של כל המשתמש/ת בכל הישיבות מאוחדות עכשיו במסמך אחד —
+  // user_meeting_notes/{uid} עם מפה { [meetingId]: text } — במקום מסמך נפרד לכל ישיבה
+  // (meetings/{id}/personal_notes/{uid}). קריאה אחת בלבד בכל טעינת דף, בלי קשר לכמה
+  // ישיבות מוצגות, במקום קריאה נפרדת לכל ישיבה בנפרד.
+  const myNotesSnap = await db.collection('user_meeting_notes').doc(me.uid).get().catch(()=>null);
+  const myNotesMap = (myNotesSnap && myNotesSnap.exists) ? (myNotesSnap.data().notes || {}) : {};
   for (const m of meetings){
-    const noteSnap = await db.collection('meetings').doc(m.id).collection('personal_notes').doc(me.uid).get().catch(()=>null);
-    const noteText = (noteSnap && noteSnap.exists) ? (noteSnap.data().text || '') : '';
     const ta = document.getElementById(`note-${m.id}`);
-    if (ta) ta.value = noteText;
+    if (ta) ta.value = myNotesMap[m.id] || '';
     document.getElementById(`note-save-${m.id}`)?.addEventListener('click', async ()=>{
       try{
-        await db.collection('meetings').doc(m.id).collection('personal_notes').doc(me.uid).set({
-          text: document.getElementById(`note-${m.id}`).value.trim(),
+        await db.collection('user_meeting_notes').doc(me.uid).set({
+          [`notes.${m.id}`]: document.getElementById(`note-${m.id}`).value.trim(),
           updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-        });
+        }, { merge:true });
         toast('ההערה האישית נשמרה');
       }catch(err){ toast('שגיאה: '+err.message); }
     });
