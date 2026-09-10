@@ -763,27 +763,42 @@ async function deleteTripCascade(tripId){
 /* מוחק את כל הנתונים המשויכים לשנת לימודים נתונה (טיולים ותתי-האוספים שלהם, משימות
    אישיות, משימות משויכות, וישיבות צוות) ומסירה את השנה מרשימת השנים. */
 async function deleteSchoolYearData(year){
+  const failures = [];
+  const safeDelete = async (label, ref) => {
+    try{ await ref.delete(); }
+    catch(err){ failures.push(`${label}: ${err.message}`); }
+  };
   const tripsSnap = await db.collection('trips').where('school_year','==', year).get();
-  for (const d of tripsSnap.docs) await deleteTripCascade(d.id);
+  for (const d of tripsSnap.docs){
+    try{ await deleteTripCascade(d.id); }
+    catch(err){ failures.push(`טיול ${d.data().title||d.id}: ${err.message}`); }
+  }
   for (const colName of ['personal_tasks','meetings','assigned_tasks']){
     const snap = await db.collection(colName).where('school_year','==', year).get();
-    for (const doc of snap.docs) await logDeletion(colName, doc.id, doc.data());
-    await Promise.all(snap.docs.map(doc=> doc.ref.delete()));
+    for (const doc of snap.docs){
+      await logDeletion(colName, doc.id, doc.data());
+      await safeDelete(colName, doc.ref);
+    }
   }
   // כיתות ותלמידים של אותה שנה — לפני מחיקת כיתה שומרים גיבוי גם של כל תלמידיה
   const classesSnap = await db.collection('classes').where('school_year','==', year).get();
   for (const classDoc of classesSnap.docs){
     const studentsSnap = await db.collection('students').where('class_id','==', classDoc.id).get();
-    for (const s of studentsSnap.docs) await logDeletion('students', s.id, s.data());
-    await Promise.all(studentsSnap.docs.map(s=> s.ref.delete()));
+    for (const s of studentsSnap.docs){
+      await logDeletion('students', s.id, s.data());
+      await safeDelete(`תלמיד/ה ${s.data().full_name||s.id}`, s.ref);
+    }
     await logDeletion('classes', classDoc.id, classDoc.data());
-    await classDoc.ref.delete();
+    await safeDelete(`כיתה ${classDoc.data().name||classDoc.id}`, classDoc.ref);
   }
   schoolYears = schoolYears.filter(y=> y!==year);
   await db.collection('settings').doc('global').set({ school_years: schoolYears }, { merge:true });
   if (currentSchoolYear === year){
     currentSchoolYear = schoolYears[schoolYears.length-1];
     localStorage.setItem('yeshiva_school_year', currentSchoolYear);
+  }
+  if (failures.length){
+    throw new Error(`השנה הוסרה מהרשימה, אך ${failures.length} פריטים לא נמחקו מחוסר הרשאה: ${failures.slice(0,3).join(' · ')}${failures.length>3?'…':''}`);
   }
 }
 /* מחיקת שנת לימודים — זמינה רק לתפקיד "מנהל מערכת" (ראה renderYearSwitcher). דורשת
@@ -1806,8 +1821,8 @@ function buildTripNoticePreviewHtml(vals){
       </div>` : ''}
       <div class="meta-badges">
         ${vals.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(vals.location)}</div></div>` : ''}
-        ${vals.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה</div><div class="m-value">${esc(vals.departure_time)}</div></div>` : ''}
-        ${vals.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה</div><div class="m-value">${esc(vals.return_time)}</div></div>` : ''}
+        ${vals.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">שעת יציאה</div><div class="m-value">${esc(vals.departure_time)}</div></div>` : ''}
+        ${vals.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">שעת חזרה</div><div class="m-value">${esc(vals.return_time)}</div></div>` : ''}
         ${vals.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(vals.cost))}</div></div>` : ''}
       </div>
     </div>`;
@@ -2129,8 +2144,8 @@ function renderTripsList(container, trips){
           </div>
         </div>
         <div id="trip-actions-${t.id}" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
-          ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit}</button>` : ''}
-          ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash}</button>` : ''}
+          ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
+          ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} פרטי הטיול המלאים</button>
@@ -2420,6 +2435,28 @@ async function ensureApprovalDoc(tripId, student){
   }
   return ref;
 }
+/* מרענן את verify_hashes (ואת roster_snapshot של הטיול) לכל התלמידים בטיול — נחוץ לטיולים
+   שנוצרו/נשלחו לפני שהאימות עודכן לפורמט טלפון+שם פרטי (במקום ת.ז), כדי שקישורי אישור
+   שכבר נשלחו יתחילו להשתמש בכלל האימות המעודכן בלי לשלוח קישורים חדשים. */
+async function refreshTripVerifyHashes(trip, students){
+  toast('מרענן נתוני אימות…');
+  try{
+    const batch = db.batch();
+    for (const s of students){
+      const className = classesCache.find(c=>c.id===s.class_id)?.name || '';
+      const ref = db.collection('trips').doc(trip.id).collection('approvals').doc(s.id);
+      batch.set(ref, { verify_hashes: await buildVerifyHashes(s, className) }, { merge:true });
+    }
+    await batch.commit();
+    const rosterDocs = await fetchStudentDocsForClassIds(trip.class_ids || (trip.class_id ? [trip.class_id] : []));
+    const roster_snapshot = await Promise.all(rosterDocs.map(async d=>{
+      const sd = d.data();
+      return { id: d.id, full_name: sd.full_name, class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
+    }));
+    await db.collection('trips').doc(trip.id).update({ roster_snapshot });
+    toast('נתוני האימות עודכנו לכל התלמידים בטיול');
+  }catch(err){ toast('שגיאה בריענון: '+err.message); }
+}
 
 /* חלון קטן לצפייה בפרטי אישור הורה (שם + תאריך + חתימה) */
 /* מודאל פרטים על תלמיד/ה בתוך ניהול אישורים — נפתח בלחיצה על כל המשבצת (גם ממתינים, לא רק מאושרים) */
@@ -2515,8 +2552,8 @@ function buildApprovalDocElement(trip, studentName, studentClassName, approval){
         ${(trip.hebrew_date || gregDate) ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תאריך הטיול</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}</td></tr>` : ''}
         ${trip.location ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">יעד</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(trip.location)}</td></tr>` : ''}
         <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">אושר על ידי</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(approval.approved_by_name||'')}</td></tr>
-        <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">ת.ז שהוכנס ברישום</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(approval.approved_by_id||'—')}</td></tr>
-        <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">אישור השתתפות</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px; color:#1c8a5a; font-weight:700;">${approval.consent ? '✓ כן — אושרה יציאת הבן/בת' : ''}</td></tr>
+        <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">ת.ז הורה</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(approval.approved_by_id||'—')}</td></tr>
+        <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">אישור השתתפות</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px; color:#1c8a5a; font-weight:700;">${approval.consent ? '✓ כן — אושרה יציאת הבן' : ''}</td></tr>
         <tr><td style="padding:10px 0; color:#4b566d; font-size:14px;">תאריך אישור</td><td style="padding:10px 0; font-size:15px;">${approvedDate ? approvedDate.toLocaleString('he-IL') : ''}</td></tr>
       </table>
       ${approval.signature ? `<div><div style="color:#4b566d; font-size:13px; margin-bottom:8px;">חתימה:</div><img src="${approval.signature}" style="max-width:280px; border:1px solid #dde4ee; border-radius:8px;"></div>` : ''}
@@ -2598,25 +2635,34 @@ async function exportApprovalsZip(trip, students, approvalsById){
 function buildTripRosterDocElement(trip, groupedByClass){
   const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:700px; z-index:-1; background:#fff;';
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
+  const parentLine = (s) => {
+    const parts = [];
+    if (s.mother_name) parts.push(`אמא: ${s.mother_name}${s.mother_phone ? ' · ' + s.mother_phone : ''}`);
+    if (s.father_name) parts.push(`אבא: ${s.father_name}${s.father_phone ? ' · ' + s.father_phone : ''}`);
+    return parts.join(' · ');
+  };
   const classSectionsHtml = groupedByClass.map(g => `
-    <div style="margin-bottom:22px;">
-      <div style="background:#eef2f8; border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:700; font-size:15px; color:#16223d;">${esc(g.className)}</span>
-        <span style="font-size:13px; color:#4b566d;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
+    <div style="margin-bottom:26px;">
+      <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(g.className)}</span>
+        <span style="font-size:14px; color:#cfd9ec; font-weight:600;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
       </div>
       <table style="width:100%; border-collapse:collapse;">
         <tbody>
           ${g.students.map((s,i)=>`
             <tr>
-              <td style="padding:7px 6px; border-bottom:1px solid #dde4ee; width:34px; color:#4b566d; font-size:13px;">${i+1}</td>
-              <td style="padding:7px 6px; border-bottom:1px solid #dde4ee; font-size:14px;">${esc(s.full_name)}</td>
+              <td style="padding:10px 8px; border-bottom:1px solid #dde4ee; width:38px; color:#16223d; font-size:17px; font-weight:800; text-align:center;">${i+1}</td>
+              <td style="padding:10px 8px; border-bottom:1px solid #dde4ee;">
+                <div style="font-size:17px; font-weight:700; color:#16203a;">${esc(s.full_name)}</div>
+                ${parentLine(s) ? `<div style="font-size:12.5px; color:#4b566d; margin-top:2px;">${esc(parentLine(s))}</div>` : ''}
+              </td>
             </tr>`).join('')}
         </tbody>
       </table>
     </div>`).join('');
   wrap.innerHTML = `
-    <div style="width:700px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+    <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
         <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
         <div>
@@ -3053,11 +3099,20 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
         const val = btn.dataset.val === 'true';
         const legPrefix = activeLeg;
         try{
+          const classStudents = approvedStudents.filter(s=> s.class_id === approvedStudents.find(x=>x.id===sid)?.class_id);
+          const wasAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
           await db.collection('trips').doc(trip.id).collection('attendance').doc(sid).set({
             [field]: val, [`${legPrefix}_marked_by`]: myProfile.full_name,
             [`${legPrefix}_marked_at`]: firebase.firestore.FieldValue.serverTimestamp(),
           }, { merge:true });
           attById[sid] = { ...(attById[sid]||{}), [field]: val };
+          // התראת פוש כשכל תלמידי הכיתה סומנו נוכחים (רק במעבר, לא בכל לחיצה נוספת)
+          const isNowAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
+          if (val && isNowAllPresent && !wasAllPresent){
+            const className = classesCache.find(c=>c.id===classStudents[0].class_id)?.name || '';
+            const legLabel = legPrefix === 'departure' ? 'ביציאה לטיול' : 'בחזרה מהטיול';
+            notifyPush('class_all_present', 'כל הכיתה נוכחת', `כל תלמידי כיתה ${className} סומנו נוכחים ${legLabel} "${trip.title}"`);
+          }
           renderList();
         }catch(err){ toast('שגיאה: '+err.message); }
       });
@@ -3065,9 +3120,11 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
   };
 
   card.innerHTML = `
-    <div class="meeting-section" style="margin-top:16px; border-top:1px solid var(--line); padding-top:18px;">
-      <div class="meeting-section-head">
-        <span class="ms-icon">${ICON.bus}</span><span>נוכחות ביום הטיול</span>
+    <div class="section-toggle" id="attToggleBtn" style="margin-top:16px;">
+      <span>${ICON.bus} נוכחות ביום הטיול</span><span class="chev">⌄</span>
+    </div>
+    <div class="card card-pad" id="attBody" style="margin-top:14px; display:none;">
+      <div class="meeting-section-head" style="margin-top:0; border-top:none; padding-top:0;">
         <span class="ms-sub" id="attSummary"></span>
       </div>
       <div class="tabbar" style="margin-bottom:14px;">
@@ -3076,6 +3133,13 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
       </div>
       <div id="attList"></div>
     </div>`;
+
+  card.querySelector('#attToggleBtn').addEventListener('click', (e)=>{
+    const box = card.querySelector('#attBody');
+    const opening = box.style.display === 'none';
+    box.style.display = opening ? '' : 'none';
+    e.currentTarget.classList.toggle('open', opening);
+  });
 
   card.querySelectorAll('.att-leg-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -3137,17 +3201,20 @@ async function renderTripDetail(panel, trip){
   panel.innerHTML = `
     ${summaryHtml}
     ${cityStatsHtml}
-    ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
-    ${p.manage_trip_logistics ? `<div class="section-toggle" id="tripLogisticsToggleBtn" style="margin-bottom:14px;">
+    ${(p.manage_trip_logistics || canViewCert) ? `<div class="section-toggle" id="tripLogisticsToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.wallet} ניהול טיול</span><span class="chev">⌄</span>
     </div>
-    <div class="card card-pad" id="tripLogisticsCard" style="margin-bottom:16px; display:none;">טוען ניהול טיול…</div>` : ''}
+    <div id="tripLogisticsCard" style="margin-bottom:16px; display:none;">
+      ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
+      ${p.manage_trip_logistics ? `<div class="card card-pad" id="tripLogisticsInner">טוען ניהול טיול…</div>` : ''}
+    </div>` : ''}
     <div id="tripAttendanceCard"></div>
     ${canManage ? `<div style="margin-bottom:16px; display:flex; justify-content:flex-end;">
       <div class="more-actions-wrap">
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
         <div class="more-actions-menu" id="tripMoreActionsMenu">
           <button id="bulkSendBtn">${ICON.send} שליחה לכל הממתינים</button>
+          <button id="refreshVerifyBtn">${ICON.check} רענון נתוני אימות (לקישורים ישנים)</button>
           <button id="exportRosterPdfBtn">${ICON.download} רשימת נוכחות לפי כיתה (PDF)</button>
           <button id="exportApprovalsZipBtn">${ICON.archive} ייצוא כל האישורים ל-ZIP</button>
         </div>
@@ -3155,14 +3222,18 @@ async function renderTripDetail(panel, trip){
     </div>` : ''}
     <div id="approvalRows"></div>`;
 
-  if (canViewCert) renderTripCertificateCard(panel.querySelector('#tripCertCard'), trip, !!p.manage_trip_certificates);
-  if (p.manage_trip_logistics){
-    renderTripLogisticsCard(panel.querySelector('#tripLogisticsCard'), trip);
+  let logisticsLoaded = false;
+  if (p.manage_trip_logistics || canViewCert){
     panel.querySelector('#tripLogisticsToggleBtn').addEventListener('click', (e)=>{
       const box = panel.querySelector('#tripLogisticsCard');
       const opening = box.style.display === 'none';
       box.style.display = opening ? '' : 'none';
       e.currentTarget.classList.toggle('open', opening);
+      if (opening && !logisticsLoaded){
+        logisticsLoaded = true;
+        if (canViewCert) renderTripCertificateCard(panel.querySelector('#tripCertCard'), trip, !!p.manage_trip_certificates);
+        if (p.manage_trip_logistics) renderTripLogisticsCard(panel.querySelector('#tripLogisticsInner'), trip);
+      }
     });
   }
   renderTripAttendanceCard(panel.querySelector('#tripAttendanceCard'), trip, students, approvedStudents, tripClassIds, canManage);
@@ -3207,7 +3278,9 @@ async function renderTripDetail(panel, trip){
       </div>`;
   };
 
-  if (true){
+  // קיבוץ לפי כיתה עם לשונית נפתחת — רק למי שחשוף לכמה כיתות (view_all_classes). מחנך/ת
+  // שרואה תמיד רק את הכיתה שלו/ה לא צריך/ה לשונית כיתה מיותרת; מציגים את התלמידים ישירות.
+  if (p.view_all_classes){
     const byClass = {};
     students.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
     const classIdsSorted = Object.keys(byClass).sort((a,b)=>{
@@ -3253,6 +3326,7 @@ async function renderTripDetail(panel, trip){
   });
 
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); showBulkSendModal(trip, students, approvalsById); });
+  panel.querySelector('#refreshVerifyBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); refreshTripVerifyHashes(trip, students); });
   panel.querySelector('#exportRosterPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripRosterPdf(trip, approvedStudents); });
   panel.querySelector('#exportApprovalsZipBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportApprovalsZip(trip, students, approvalsById); });
 
@@ -3736,7 +3810,7 @@ async function renderShirtsPanel(panel){
       <h3 style="margin-top:0;">שליחת קישור להורים</h3>
       <div class="form-grid">
         <div class="field"><label>כיתה</label><select id="shirtSendClass">${classesCache.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="field"><button class="btn btn-outline btn-sm" type="button" id="shirtSendBtn">📨 שליחת קישור לכיתה שנבחרה</button></div>
+        <div class="field" style="align-self:flex-end;"><button class="btn btn-outline btn-sm" type="button" id="shirtSendBtn" style="width:100%;">${ICON.send} שליחת קישור לכיתה שנבחרה</button></div>
       </div>
     </div>`;
 
@@ -4178,7 +4252,7 @@ async function renderMeetings(body){
       <div class="meeting-section">
         <div class="meeting-section-head">
           <span class="ms-icon">${ICON.folder}</span><span>נושאים שעלו</span>
-          <button class="btn btn-outline btn-sm add-topic" data-id="${m.id}" style="margin-inline-start:auto;">${ICON.plus} הוספת נושא</button>
+          ${canManage ? `<button class="btn btn-outline btn-sm add-topic" data-id="${m.id}" style="margin-inline-start:auto;">${ICON.plus} הוספת נושא</button>` : ''}
         </div>
         <div class="topics-list" id="topics-${m.id}">
           ${topics.map(t=>`
@@ -4188,7 +4262,7 @@ async function renderMeetings(body){
                 ${t.notes ? `<div class="topic-notes">${esc(t.notes)}</div>` : ''}
                 <div style="display:flex; gap:8px; margin-top:8px;">
                   <button class="btn btn-outline btn-sm edit-topic" data-mid="${m.id}" data-tid="${t.id}">${ICON.edit} עריכה</button>
-                  <button class="btn btn-outline btn-sm del-topic" data-mid="${m.id}" data-tid="${t.id}" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash}</button>
+                  ${canManage ? `<button class="btn btn-outline btn-sm del-topic" data-mid="${m.id}" data-tid="${t.id}" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash}</button>` : ''}
                 </div>
               </div>
               <div class="topic-edit" id="topic-edit-${t.id}" style="display:none;"></div>
@@ -4230,7 +4304,7 @@ async function renderMeetings(body){
           <span class="ms-sub">גלויות רק לך</span>
         </div>
         <textarea class="notes-box" id="note-${m.id}" placeholder="הערה אישית לעצמך על ישיבה זו..."></textarea>
-        <button class="btn btn-outline btn-sm" id="note-save-${m.id}" style="margin-top:10px;">${ICON.save} שמירת הערה</button>
+        <button class="btn btn-primary btn-sm" id="note-save-${m.id}" style="margin-top:10px;">${ICON.save} שמירת הערה</button>
       </div>
     </div>`;
   }).join('');
@@ -4741,6 +4815,7 @@ const PUSH_NOTIFICATION_TYPES = [
   { key:'new_meeting', label:'נקבעה ישיבת צוות חדשה' },
   { key:'task_assigned', label:'שויכה משימה חדשה למורה' },
   { key:'new_staff_announcement', label:'עדכון פנימי חדש לצוות' },
+  { key:'class_all_present', label:'כל תלמידי כיתה סומנו נוכחים ביום הטיול' },
 ];
 async function renderPushPrefs(body){
   const [prefsSnap, usersSnap] = await Promise.all([
@@ -4947,6 +5022,9 @@ async function renderRestoreHistory(body){
       כל מחיקה של טיול, תלמיד/ה, כיתה או משתמש נשמרת כאן (100 הפעולות האחרונות) וניתן לשחזר אותה בלחיצה.
       שחזור טיול משחזר את פרטי הטיול עצמו בלבד — לא את האישורים/התשלומים/הנוכחות שהיו רשומים תחתיו.
     </p>
+    ${entries.length ? `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+      <button class="btn btn-outline btn-sm" id="clearAuditLogBtn" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקת כל ההיסטוריה</button>
+    </div>` : ''}
     <div class="card card-pad">
       ${entries.length ? entries.map(e=>`
         <div class="task-row" data-id="${e.id}" style="align-items:flex-start;">
@@ -4960,6 +5038,35 @@ async function renderRestoreHistory(body){
           ${!e.restored_at ? `<button class="btn btn-outline btn-sm restore-entry" data-id="${e.id}">${ICON.check} שחזור</button>` : `<span class="badge badge-ok">שוחזר</span>`}
         </div>`).join('') : '<p style="color:var(--ink-soft);">אין עדיין פעולות מחיקה מתועדות.</p>'}
     </div>`;
+
+  document.getElementById('clearAuditLogBtn')?.addEventListener('click', async ()=>{
+    const sure = await confirmDialog(
+      'פעולה זו תמחק לצמיתות את כל היסטוריית המחיקות — לא יהיה ניתן לשחזר פעולות מחיקה ישנות יותר לאחר מכן. הפעולה עצמה (מחיקת ההיסטוריה) בלתי הפיכה. להמשיך?',
+      { title:'מחיקת כל היסטוריית המחיקות', confirmText:'כן, אני מבין/ה — להמשיך', cancelText:'ביטול', danger:true }
+    );
+    if (!sure) return;
+    const password = await promptDialog('לאימות הזהות, יש להזין שוב את סיסמת ההתחברות שלך למערכת:', { title:'אימות סיסמה למחיקה', placeholder:'סיסמה', inputType:'password', confirmText:'אימות ומחיקה' });
+    if (!password) return;
+    toast('מאמת סיסמה…');
+    try{
+      const cred = firebase.auth.EmailAuthProvider.credential(me.email, password);
+      await me.reauthenticateWithCredential(cred);
+    }catch(err){
+      toast('הסיסמה שגויה — המחיקה בוטלה');
+      return;
+    }
+    toast('מוחק את כל ההיסטוריה…');
+    try{
+      const allSnap = await db.collection('audit_log').get();
+      for (let i=0; i<allSnap.docs.length; i+=400){
+        const batch = db.batch();
+        allSnap.docs.slice(i, i+400).forEach(d=> batch.delete(d.ref));
+        await batch.commit();
+      }
+      toast('היסטוריית המחיקות נמחקה');
+      goto('restore');
+    }catch(err){ toast('שגיאה במחיקת ההיסטוריה: '+err.message); }
+  });
 
   body.querySelectorAll('.restore-entry').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
