@@ -1065,10 +1065,10 @@ async function renderHome(body){
 
     statsHtml = `
     <div class="stat-row">
-      <div class="stat" data-goto="classes"><div class="num">${classSnap.size}</div><div class="lbl">כיתות</div></div>
-      <div class="stat" data-goto="classes"><div class="num">${studentSnap.size}</div><div class="lbl">תלמידים</div></div>
-      <div class="stat" data-goto="trips"><div class="num">${allTripsList.length}</div><div class="lbl">טיולים</div></div>
-      <div class="stat" data-goto="trips"><div class="num">${pendingCount}</div><div class="lbl">אישורים ממתינים</div></div>
+      <div class="stat stat-classes" data-goto="classes"><div class="stat-icon">${ICON.building}</div><div class="num">${classSnap.size}</div><div class="lbl">כיתות</div></div>
+      <div class="stat stat-students" data-goto="classes"><div class="stat-icon">${ICON.user}</div><div class="num">${studentSnap.size}</div><div class="lbl">תלמידים</div></div>
+      <div class="stat stat-trips" data-goto="trips"><div class="stat-icon">${ICON.compass}</div><div class="num">${allTripsList.length}</div><div class="lbl">טיולים</div></div>
+      <div class="stat stat-pending" data-goto="trips"><div class="stat-icon">${ICON.clock}</div><div class="num">${pendingCount}</div><div class="lbl">אישורים ממתינים</div></div>
     </div>`;
 
     if (tripSummaries.length){
@@ -1387,7 +1387,7 @@ async function showEventFullDetails(ev){
           <h3 style="margin:0;">חוזר הטיול</h3>
           <button class="btn btn-outline btn-sm ev-close">סגירה</button>
         </div>
-        ${buildTripNoticePreviewHtml(trip)}
+        <div class="notice-preview" style="position:static;">${buildTripNoticePreviewHtml(trip)}</div>
       </div>`;
     document.body.appendChild(overlay);
     overlay.querySelector('.ev-close').addEventListener('click', ()=> overlay.remove());
@@ -4522,9 +4522,28 @@ async function renderMeetings(body){
    ANNOUNCEMENTS
    ============================================================ */
 async function renderAnnouncements(body){
-  const snap = await db.collection('announcements').orderBy('created_at','desc').get();
+  const [snap, infoCardsSnap] = await Promise.all([
+    db.collection('announcements').orderBy('created_at','desc').get(),
+    db.collection('settings').doc('public_info_cards').get(),
+  ]);
   const data = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const defaultCards = [
+    { title:'סדר יום ולוח שיעורים', description:'מידע על סדרי הלימוד, זמני תפילות ולוח החופשות מתעדכן כאן באופן שוטף.' },
+    { title:'טיולים ופעילויות', description:'אישורי טיולים והודעות על פעילויות חוץ בית-ספריות נשלחים ישירות להורים על ידי המחנך.' },
+    { title:'יצירת קשר', description:'לכל שאלה או בירור ניתן לפנות למזכירות הישיבה או למחנך הכיתה ישירות.' },
+  ];
+  const infoCards = (infoCardsSnap.exists && infoCardsSnap.data().cards?.length === 3) ? infoCardsSnap.data().cards : defaultCards;
   body.innerHTML = `
+    <div class="card card-pad" style="margin-bottom:24px;">
+      <h3 style="margin-top:0;">כרטיסי "מידע שימושי" בעמוד הבית</h3>
+      <p style="color:var(--ink-soft); font-size:.85rem; margin-top:-6px;">שלושת הכרטיסים בעמוד הראשי של האתר הציבורי (מתחת לגלריה). האייקונים קבועים — ניתן לערוך כאן רק את הכותרת והתיאור של כל כרטיס.</p>
+      ${infoCards.map((c,i)=>`
+        <div class="form-grid" style="margin-top:${i?'14px':'0'}; ${i?'border-top:1px dashed var(--line); padding-top:14px;':''}">
+          <div class="field"><label>כותרת כרטיס ${i+1}</label><input id="ic_title_${i}" value="${esc(c.title||'')}"></div>
+          <div class="field" style="grid-column:1/-1;"><label>תיאור כרטיס ${i+1}</label><textarea id="ic_desc_${i}">${esc(c.description||'')}</textarea></div>
+        </div>`).join('')}
+      <button class="btn btn-primary btn-sm" id="saveInfoCardsBtn" style="margin-top:10px;">${ICON.save} שמירת הכרטיסים</button>
+    </div>
     <div class="card card-pad" style="margin-bottom:24px;">
       <h3 style="margin-top:0;">עדכון חדש</h3>
       <form id="newAnnForm" style="display:flex; gap:10px;">
@@ -4549,6 +4568,17 @@ async function renderAnnouncements(body){
         </tbody>
       </table>
     </div>`;
+
+  document.getElementById('saveInfoCardsBtn').addEventListener('click', async ()=>{
+    const cards = [0,1,2].map(i=>({
+      title: document.getElementById(`ic_title_${i}`).value.trim(),
+      description: document.getElementById(`ic_desc_${i}`).value.trim(),
+    }));
+    try{
+      await db.collection('settings').doc('public_info_cards').set({ cards }, { merge:true });
+      toast('הכרטיסים נשמרו');
+    }catch(err){ toast('שגיאה: '+err.message); }
+  });
 
   document.getElementById('newAnnForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
@@ -4610,10 +4640,11 @@ async function renderAnnouncements(body){
     galleryItems = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     const listEl = document.getElementById('galleryAdminList');
     listEl.innerHTML = galleryItems.map(g=>`
-      <div class="approval-row" data-id="${g.id}" style="cursor:default; align-items:center;">
-        <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+      <div class="approval-row" data-id="${g.id}" style="cursor:default; align-items:center; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0; flex-wrap:wrap;">
           <img src="${esc(g.url)}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; flex:none;">
-          <input class="gallery-caption" data-id="${g.id}" value="${esc(g.caption||'')}" placeholder="כיתוב לתמונה" style="flex:1; min-width:0; padding:8px 10px; border:1.5px solid var(--line); border-radius:8px;">
+          <input class="gallery-caption" data-id="${g.id}" value="${esc(g.caption||'')}" placeholder="כיתוב לתמונה" style="flex:1; min-width:120px; padding:8px 10px; border:1.5px solid var(--line); border-radius:8px;">
+          <input class="gallery-category" data-id="${g.id}" value="${esc(g.category||'')}" placeholder="קטגוריה (לדוגמה: טיול סליחות לצפת)" style="flex:1; min-width:140px; padding:8px 10px; border:1.5px solid var(--line); border-radius:8px;">
           <input class="gallery-order" data-id="${g.id}" type="number" value="${g.order ?? 0}" title="סדר הופעה" style="width:60px; padding:8px; border:1.5px solid var(--line); border-radius:8px;">
         </div>
         <div class="a-actions">
@@ -4625,6 +4656,12 @@ async function renderAnnouncements(body){
     listEl.querySelectorAll('.gallery-caption').forEach(inp=>{
       inp.addEventListener('change', async ()=>{
         try{ await db.collection('gallery_images').doc(inp.dataset.id).update({ caption: inp.value.trim() }); toast('נשמר'); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+    listEl.querySelectorAll('.gallery-category').forEach(inp=>{
+      inp.addEventListener('change', async ()=>{
+        try{ await db.collection('gallery_images').doc(inp.dataset.id).update({ category: inp.value.trim() }); toast('נשמר'); }
         catch(err){ toast('שגיאה: '+err.message); }
       });
     });
@@ -4661,7 +4698,7 @@ async function renderAnnouncements(body){
         const maxOrder = galleryItems.length ? Math.max(...galleryItems.map(g=>g.order||0)) : 0;
         try{
           await db.collection('gallery_images').add({
-            url: info.secure_url, public_id: info.public_id, caption:'', order: maxOrder+1,
+            url: info.secure_url, public_id: info.public_id, caption:'', category:'', order: maxOrder+1,
             created_at: firebase.firestore.FieldValue.serverTimestamp(),
           });
           loadGalleryAdmin();
