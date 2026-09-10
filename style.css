@@ -441,7 +441,10 @@ table.data tr:last-child td{ border-bottom:none; }
 @media (max-width:900px){
   /* גודל בסיס מוגדל במובייל — פחות "כיווץ" ביחס לדסקטופ, לקריאות וברור טובים יותר */
   html{ font-size:18px; }
-  .trip-form-grid{ grid-template-columns:1fr; }
+  /* !important נחוץ כאן: הכלל הלא-מותנה .trip-form-grid (בהמשך הקובץ) מגדיר grid-template-columns
+     משלו, ומכיוון שהוא מופיע *אחרי* הכלל הזה בקובץ, הוא מנצח אותו תמיד ללא תלות ברוחב המסך —
+     זו הייתה הסיבה שטופס "יצירת טיול" נשאר בשתי עמודות וגלש החוצה בנייד. */
+  .trip-form-grid{ grid-template-columns:1fr !important; }
   .notice-preview{ position:static; margin-top:20px; }
   .app-shell{ flex-direction:column; min-height:auto; }
 
@@ -488,9 +491,12 @@ table.data tr:last-child td{ border-bottom:none; }
   .btn{ padding:12px 22px; font-size:.98rem; }
   .btn-sm{ padding:9px 16px; font-size:.88rem; }
 
-  /* טבלת ההרשאות-לפי-תפקיד (מטריצה רחבה, קשה לתייג משמעותית) — נשארת בגלילה אופקית */
-  table.push-prefs-table{ display:block; overflow-x:auto; white-space:nowrap; font-size:.92rem; }
-  table.push-prefs-table thead, table.push-prefs-table tbody, table.push-prefs-table tr{ display:table; width:100%; table-layout:fixed; }
+  /* טבלת ההרשאות-לפי-תפקיד (מטריצה רחבה) — נשארת טבלה רגילה (לא display:block) בתוך
+     המעטפת הגלילה (.push-prefs-scroll), עם העמודה הראשונה מוצמדת (sticky). הצירוף
+     הקודם של display:block על הטבלה יחד עם display:table על thead/tbody/tr בנפרד
+     שבר את חלוקת הרוחב בין העמודות (כל שורה "חישבה" את עצמה כטבלה נפרדת) — זו
+     הייתה הסיבה שהמסך נראה שבור/מחורבש בנייד. */
+  table.push-prefs-table{ font-size:.92rem; }
 
   /* שאר הטבלאות (משתמשים/כיתות/עדכונים) — כרטיסים מסודרים במקום טבלה שנשברת/נגללת */
   table.data:not(.push-prefs-table){ display:block; border:none; }
@@ -511,6 +517,19 @@ table.data tr:last-child td{ border-bottom:none; }
 
   .trip-summary{ flex-direction:column; align-items:stretch !important; }
   .trip-summary h3.c-title{ font-size:1.1rem; }
+
+  /* בנייד: מסתירים את הפעולות המשניות (עריכה/מחיקה/קישור/ניהול אישורים) ומעבירים
+     אותן לתפריט "⋮" — שליחת חוזר/פרטי הטיול/נוכחות נשארות גלויות תמיד. */
+  .desktop-only-actions{ display:none; }
+  .kebab-menu{ display:inline-block; position:relative; }
+  .kebab-menu > summary{ list-style:none; cursor:pointer; }
+  .kebab-menu > summary::-webkit-details-marker{ display:none; }
+  .kebab-panel{
+    position:absolute; left:0; top:calc(100% + 6px); background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius-sm); box-shadow:var(--shadow); padding:8px; display:flex; flex-direction:column;
+    gap:6px; z-index:30; min-width:190px;
+  }
+  .kebab-panel .btn{ width:100%; justify-content:flex-start; }
   /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — עמודה אחת מסודרת וברוחב
      אחיד בנייד (במקום רשת שגורמת לכפתורים ארוכים להישבר לכמה שורות באמצע).
      !important על flex-direction/align-items כי האלמנט מקבל style inline (display/gap/
@@ -609,6 +628,21 @@ table.data tr:last-child td{ border-bottom:none; }
 .btn-manage-approvals .chev{ transition:transform .2s; }
 .btn-manage-approvals.open{ background:linear-gradient(135deg, var(--navy), var(--navy-2)); box-shadow:0 6px 16px -7px rgba(22,34,61,.55); }
 .btn-manage-approvals.open .chev{ transform:rotate(180deg); }
+
+/* ---------- כפתורי פעולה של טיול: בדסקטופ כולם גלויים בשורה; בנייד רק שליחת חוזר/
+   פרטי הטיול/נוכחות נשארים גלויים, ושאר הפעולות (עריכה/מחיקה/קישור/ניהול אישורים)
+   עוברות לתפריט "⋮" כדי לא להציף את השורה ---------- */
+.desktop-only-actions{ display:contents; }
+.kebab-menu{ display:none; }
+
+/* ---------- נקודות בדיקה בנוכחות יום הטיול: כפתור מחיקה קטן צמוד לכל נקודה מותאמת
+   אישית (לא ליציאה/חזרה הקבועות) ---------- */
+.att-leg-btn-wrap{ position:relative; }
+.att-leg-del{
+  border:none; background:transparent; color:var(--ink-soft); cursor:pointer; font-size:.8rem;
+  width:20px; height:20px; margin-inline-start:-6px; border-radius:50%; line-height:1;
+}
+.att-leg-del:hover{ color:var(--danger); background:rgba(198,64,64,.1); }
 
 /* ---------- archive toggle (past trips) ---------- */
 .archive-toggle{
