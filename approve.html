@@ -320,15 +320,15 @@ async function load(){
       <div id="formArea" style="display:none;">
         <div id="verifyErrorBox"></div>
         <div class="field">
-          <label>שם ההורה המאשר</label>
+          <label>שם ההורה/ת המאשר/ת</label>
           <input placeholder="שם מלא" id="approverName">
         </div>
         <div class="field">
-          <label>טלפון ההורה המאשר</label>
+          <label>טלפון ההורה/ת המאשר/ת</label>
           <input placeholder="05X-XXXXXXX" id="approverPhone" type="tel" inputmode="tel">
         </div>
         <div class="field">
-          <label>ת.ז ההורה המאשר</label>
+          <label>ת.ז ההורה/ת המאשר/ת</label>
           <input placeholder="מספר תעודת זהות" id="approverId" inputmode="numeric" maxlength="9">
         </div>
         <div class="field">
@@ -386,14 +386,17 @@ async function load(){
     const btn = document.getElementById('submitApproval');
     btn.disabled = true; btn.textContent = 'שולח…';
     try{
-      await approvalRef.update({
+      // set(..., {merge:true}) ולא update(): אם מסמך האישור נמחק בעבר (למשל תלמיד
+      // שהוסר מהכיתה וחזר), update() היה נכשל כי אין מסמך לעדכן — וההודעה
+      // "אירעה שגיאה" הייתה מוסתרת מכל התהליך, כולל שליחת ה-notifyPush למטה.
+      await approvalRef.set({
         status: 'approved',
         approved_by_name: name,
         approved_by_id: idDigits,
         consent: true,
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
-      });
+      }, { merge: true });
       // שמירת הת.ז שהוזנה לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה באימות (אמא/אבא), ורק אם
       // עדיין ריק שם (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
       if (matchedSlot){
