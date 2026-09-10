@@ -923,6 +923,17 @@ async function setupPushNotifications(){
       await db.collection('users').doc(myProfile.id).update({ fcm_token: token });
       myProfile.fcm_token = token;
     }
+    // הודעות שמגיעות כשהטאב פתוח ופעיל (בפוקוס) לא עוברות דרך ה-Service Worker בכלל —
+    // ה-SDK מטפל בהן ישירות בעמוד עצמו דרך onMessage. בלי המאזין הזה, לא קורה שום
+    // דבר במקרה הזה (לא מוצג כלום, לא בדפדפן ולא באפליקציה) — זו הייתה הבעיה.
+    // מוגן מפני רישום כפול (setupPushNotifications עלול לרוץ יותר מפעם אחת בסשן).
+    if (!window._fgMessagingBound){
+      window._fgMessagingBound = true;
+      messaging.onMessage((payload) => {
+        const data = payload.data || {};
+        toast(`🔔 ${data.title || 'עדכון חדש'}${data.body ? ' — ' + data.body : ''}`);
+      });
+    }
   }catch(err){ console.warn('push setup failed:', err); }
 }
 
@@ -2233,7 +2244,7 @@ function renderTripsList(container, trips){
     btn.addEventListener('click', ()=>{
       const trip = trips.find(t=>t.id===btn.dataset.id);
       const link = `${siteBaseUrl()}trip-notice.html?t=${trip.id}`;
-      const text = `חוזר טיול — ${trip.title}\nכל הפרטים לצפייה כאן:\n${link}`;
+      const text = `שלום, זהו אישור טיול "${trip.title}"\nלצפייה בכל פרטי הטיול ולחתימה על האישור: ${link}`;
       const groups = classIdsOf(trip)
         .map(cid=>({ name: classesCache.find(c=>c.id===cid)?.name, link: classesCache.find(c=>c.id===cid)?.whatsapp_group_link }))
         .filter(g=> g.link);
@@ -2758,12 +2769,17 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
   const busesHtml = buses.length ? buses.map(b=>`
     <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
       <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
-      <div style="font-size:13px; margin-top:4px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס${b.captain_phone?` · ${esc(b.captain_phone)}`:''}</div>
-      ${b.driver_name || b.driver_phone ? `<div style="font-size:13px; margin-top:2px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג${b.driver_phone?` · ${esc(b.driver_phone)}`:''}</div>` : ''}
-      ${b.notes ? `<div style="font-size:13px; margin-top:4px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+      <div style="font-size:13px; margin-top:6px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
+      ${b.captain_phone ? `<div style="font-size:18px; font-weight:800; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+      ${b.driver_name || b.driver_phone ? `<div style="font-size:13px; margin-top:6px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג</div>` : ''}
+      ${b.driver_phone ? `<div style="font-size:18px; font-weight:800; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
+      ${b.notes ? `<div style="font-size:13px; margin-top:8px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
     </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   const medicsHtml = medics.length ? medics.map(m=>`
-    <div style="font-size:14px; padding:6px 0; border-bottom:1px solid #eef1f6;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}${m.phone?` · ${esc(m.phone)}`:''}</div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
+    <div style="padding:8px 0; border-bottom:1px solid #eef1f6;">
+      <span style="font-size:14px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
+      ${m.phone ? `<div style="font-size:18px; font-weight:800; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
+    </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
@@ -2777,9 +2793,9 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
       <div style="font-size:13px; color:#4b566d; margin-bottom:24px;">
         ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
       </div>
-      ${section('הערות נוספות', notesHtml)}
       ${section('אוטובוסים ואחראים', busesHtml)}
       ${section('חובשים ומע"רים', medicsHtml)}
+      ${section('הערות נוספות', notesHtml)}
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
         הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
       </div>
@@ -2924,11 +2940,19 @@ function matchedSensitivities(notes){
   return n.trim() ? ['רגישות אחרת'] : [];
 }
 /* בונה HTML של סטטיסטיקת מקום מגורים + רגישויות עבור קבוצת תלמידים מאושרים נתונה */
+// מציגים רק את הערים הרלוונטיות בפועל לישיבה — שאר הערים (בודדות, לא מייצגות) לא
+// מוצגות כלל בסטטיסטיקה, כדי לא להציף אותה בערכים של תלמיד אחד-שניים מכל מיני מקומות.
+const RELEVANT_CITIES = ['עפולה','חריש','טל מנשה','חיננית','יקנעם'];
+function matchedCity(city){
+  const c = (city||'').trim();
+  return RELEVANT_CITIES.find(rc => c.includes(rc)) || null;
+}
 function buildCityAndSensitivityStatsHtml(approvedStudents, heading){
   if (!approvedStudents.length) return '';
   const cityCounts = {};
   approvedStudents.forEach(s=>{
-    const city = (s.city||'').trim() || 'לא צוינה עיר';
+    const city = matchedCity(s.city);
+    if (!city) return;
     cityCounts[city] = (cityCounts[city]||0) + 1;
   });
   const sensCounts = {};
@@ -3040,12 +3064,6 @@ async function renderTripLogisticsCard(card, trip){
       <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.wallet}</span> ניהול טיול</h3>
 
       <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
-        <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>הערות נוספות</span></div>
-        <div class="field" style="grid-column:1/-1;"><textarea id="logistics_notes" placeholder="הערות כלליות לטיול...">${esc(data.general_notes||'')}</textarea></div>
-        <button type="button" class="btn btn-outline btn-sm" id="saveLogisticsNotesBtn" style="margin-top:8px;">${ICON.check} שמירת הערות</button>
-      </div>
-
-      <div class="meeting-section">
         <div class="meeting-section-head"><span class="ms-icon">${ICON.bus}</span><span>אוטובוסים ואחראים</span></div>
         <div id="busesList">
           ${buses.length ? buses.map((b,i)=>`
@@ -3054,11 +3072,17 @@ async function renderTripLogisticsCard(card, trip){
                 <b style="display:flex; align-items:center; gap:6px;">${ICON.bus} ${esc(b.name||'אוטובוס')}</b>
                 <button type="button" class="icon-btn call del-bus" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
               </div>
-              <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
-                <div style="font-size:.92rem;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b><span style="color:var(--ink-soft); font-size:.82rem;"> · אחראי אוטובוס</span>${b.captain_phone?` · ${esc(b.captain_phone)}`:''}</div>
-                ${b.driver_name || b.driver_phone ? `<div style="font-size:.92rem;"><b>${esc(b.driver_name||'נהג')}</b><span style="color:var(--ink-soft); font-size:.82rem;"> · נהג</span>${b.driver_phone?` · ${esc(b.driver_phone)}`:''}</div>` : ''}
+              <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+                <div>
+                  <div style="font-size:.98rem;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b><span style="color:var(--ink-soft); font-size:.8rem;"> · אחראי אוטובוס</span></div>
+                  ${b.captain_phone ? `<div style="font-size:1.25rem; font-weight:800; color:var(--navy); margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+                </div>
+                ${b.driver_name || b.driver_phone ? `<div>
+                  <div style="font-size:.98rem;"><b>${esc(b.driver_name||'נהג')}</b><span style="color:var(--ink-soft); font-size:.8rem;"> · נהג</span></div>
+                  ${b.driver_phone ? `<div style="font-size:1.25rem; font-weight:800; color:var(--navy); margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
+                </div>` : ''}
               </div>
-              ${b.notes ? `<div style="font-size:.88rem; margin-top:6px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+              ${b.notes ? `<div style="font-size:.88rem; margin-top:10px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
               ${b.captain_phone ? `<button type="button" class="btn btn-outline btn-sm send-bus-wa" data-idx="${i}" style="margin-top:10px;">${WA_ICON_SVG} שליחת הנחיות בוואטסאפ</button>` : ''}
             </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין אוטובוסים מוגדרים.</p>'}
         </div>
@@ -3084,8 +3108,11 @@ async function renderTripLogisticsCard(card, trip){
         <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>חובשים ומע"רים</span></div>
         <div id="medicsList">
           ${medics.length ? medics.map((m,i)=>`
-            <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-              <div><b>${esc(m.name)}</b>${m.role?` <span style="color:var(--ink-soft); font-size:.82rem;">· ${esc(m.role)}</span>`:''}${m.phone?` · ${esc(m.phone)}`:''}</div>
+            <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="font-size:.98rem;"><b>${esc(m.name)}</b>${m.role?` <span style="color:var(--ink-soft); font-size:.82rem;">· ${esc(m.role)}</span>`:''}</div>
+                ${m.phone ? `<div style="font-size:1.25rem; font-weight:800; color:var(--navy); margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
+              </div>
               <div style="display:flex; gap:6px;">
                 ${m.phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(m.phone)}" target="_blank" title="וואטסאפ">${WA_ICON_SVG}</a>` : ''}
                 <button type="button" class="icon-btn call del-medic" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
@@ -3098,6 +3125,12 @@ async function renderTripLogisticsCard(card, trip){
           <div class="field"><label>טלפון</label><input id="medic_phone" placeholder="05X-XXXXXXX"></div>
           <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addMedicBtn">${ICON.plus} הוספת חובש/מע"ר</button></div>
         </div>
+      </div>
+
+      <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>הערות נוספות</span></div>
+        <div class="field" style="grid-column:1/-1;"><textarea id="logistics_notes" placeholder="הערות כלליות לטיול...">${esc(data.general_notes||'')}</textarea></div>
+        <button type="button" class="btn btn-outline btn-sm" id="saveLogisticsNotesBtn" style="margin-top:8px;">${ICON.check} שמירת הערות</button>
       </div>`;
 
     card.querySelector('#saveLogisticsNotesBtn').addEventListener('click', async ()=>{
@@ -3201,6 +3234,44 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
   ];
   let customLegs = (trip.attendance_checkpoints || []).slice();
   const allLegs = () => baseLegs.concat(customLegs);
+
+  /* מנהל מערכת / ראש הישיבה: תצוגת בקרה בלבד — טבלת כיתה × נקודת בדיקה, בלי אפשרות
+     לסמן בעצמם (הם לא אחראי האוטובוס/המחנך שמדווח בפועל, רק מפקחים על הדיווח). */
+  const isOversightRole = myProfile.role === 'מנהל מערכת' || myProfile.role === 'ראש הישיבה';
+  if (isOversightRole && !isCaptain){
+    const byClass = {};
+    approvedStudents.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
+    const classIdsSorted = Object.keys(byClass).sort((a,b)=>{
+      const an = classesCache.find(c=>c.id===a)?.name || '';
+      const bn = classesCache.find(c=>c.id===b)?.name || '';
+      return hebrewGradeValue(an) - hebrewGradeValue(bn) || an.localeCompare(bn, 'he');
+    });
+    const legs = allLegs();
+    card.innerHTML = `
+      <div class="card card-pad">
+        <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.bus}</span> נוכחות ביום הטיול — תצוגת בקרה</h3>
+        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:-6px;">תצוגה בלבד: כך מדווחים המחנכים/אחראי האוטובוס בפועל בכל כיתה ובכל נקודת בדיקה.</p>
+        <div style="overflow-x:auto;">
+          <table class="data" style="min-width:${360 + legs.length*140}px;">
+            <thead><tr><th style="text-align:right;">כיתה</th>${legs.map(l=>`<th style="text-align:center;">${esc(l.label)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${classIdsSorted.map(cid=>{
+                const classStudents = byClass[cid];
+                const className = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
+                return `<tr><td>${esc(className)}</td>${legs.map(l=>{
+                  const field = `${l.id}_present`;
+                  const marked = classStudents.filter(s=> attById[s.id]?.[field] === true).length;
+                  const allDone = marked === classStudents.length && classStudents.length > 0;
+                  return `<td style="text-align:center;"><span class="badge ${allDone?'badge-ok':'badge-wait'}">${marked} / ${classStudents.length}</span></td>`;
+                }).join('')}</tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    return;
+  }
+
   let activeLegId = 'departure';
   const activeLeg = () => allLegs().find(l=>l.id===activeLegId) || baseLegs[0];
   const legField = () => `${activeLegId}_present`;
@@ -4995,7 +5066,7 @@ async function renderClasses(body){
    ששולח את ההתראות בפועל (ראו הסבר נפרד) — כאן רק ההגדרות עצמן.
    ============================================================ */
 const PUSH_NOTIFICATION_TYPES = [
-  { key:'trip_approved', label:'הורה אישר טיול עבור תלמיד' },
+  { key:'trip_approved', label:'הורה אישר טיול עבור תלמיד/ה' },
   { key:'trip_certificate_uploaded', label:'רכזת הטיולים העלתה אישור טיול (קובץ)' },
   { key:'shirt_order_submitted', label:'הורה מילא הזמנת חולצה' },
   { key:'new_trip', label:'נוצר טיול חדש' },
