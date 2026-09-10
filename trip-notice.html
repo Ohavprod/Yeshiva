@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>חוזר טיול — ישיבה תיכונית עפולה</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ישיבה תיכונית עפולה">
+<meta property="og:title" content="חוזר טיול — ישיבה תיכונית עפולה">
+<meta property="og:description" content="כל פרטי הטיול ואישור השתתפות ההורים, ישירות מהנייד.">
+<meta property="og:image" content="https://ytafula.netlify.app/assets/img/logo.png">
+<meta name="twitter:card" content="summary">
 <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
 <link rel="stylesheet" href="style.css">
 <style>
@@ -208,8 +214,8 @@ async function load(){
       </div>` : ''}
       <div class="meta-badges">
         ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
-        ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">יציאה מהישיבה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
-        ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">חזרה לישיבה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
+        ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">שעת יציאה מהישיבה</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
+        ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">שעת חזרה לישיבה</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
         ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(trip.cost))}</div></div>` : ''}
       </div>
     </div>`;
@@ -276,12 +282,12 @@ async function load(){
           </select>
         </div>
         <div class="field">
-          <label>שם התלמיד (הבן) — מספיק שם פרטי</label>
-          <input id="studentNameInput" placeholder="שם פרטי, או פרטי ומשפחה">
+          <label>שם התלמיד</label>
+          <input id="studentNameInput" placeholder="שם פרטי ומשפחה">
         </div>
         <div class="field">
           <label>שם ההורה/ת המאשר/ת</label>
-          <input id="approverName" placeholder="שם מלא (מספיק שם פרטי)">
+          <input id="approverName" placeholder="שם מלא">
         </div>
         <div class="field">
           <label>טלפון ההורה/ת המאשר/ת</label>
