@@ -461,9 +461,26 @@ table.data tr:last-child td{ border-bottom:none; }
   .btn{ padding:12px 22px; font-size:.98rem; }
   .btn-sm{ padding:9px 16px; font-size:.88rem; }
 
-  /* שאר הטבלאות (משתמשים/כיתות/סוגי טיולים) — גלילה אופקית במקום שבירה מכוערת */
-  table.data{ display:block; overflow-x:auto; white-space:nowrap; font-size:.92rem; }
-  table.data thead, table.data tbody, table.data tr{ display:table; width:100%; table-layout:fixed; }
+  /* טבלת ההרשאות-לפי-תפקיד (מטריצה רחבה, קשה לתייג משמעותית) — נשארת בגלילה אופקית */
+  table.push-prefs-table{ display:block; overflow-x:auto; white-space:nowrap; font-size:.92rem; }
+  table.push-prefs-table thead, table.push-prefs-table tbody, table.push-prefs-table tr{ display:table; width:100%; table-layout:fixed; }
+
+  /* שאר הטבלאות (משתמשים/כיתות/עדכונים) — כרטיסים מסודרים במקום טבלה שנשברת/נגללת */
+  table.data:not(.push-prefs-table){ display:block; border:none; }
+  table.data:not(.push-prefs-table) thead{ display:none; }
+  table.data:not(.push-prefs-table) tbody{ display:block; }
+  table.data:not(.push-prefs-table) tr{
+    display:block; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:var(--paper-2);
+  }
+  table.data:not(.push-prefs-table) td{
+    display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:left;
+    padding:7px 0; border-bottom:1px dashed var(--line); font-size:.92rem; white-space:normal;
+  }
+  table.data:not(.push-prefs-table) td:last-child{ border-bottom:none; }
+  table.data:not(.push-prefs-table) td[data-label]::before{
+    content: attr(data-label); font-weight:700; color:var(--ink-soft); font-size:.76rem; flex:none; margin-inline-end:10px;
+  }
+  table.data:not(.push-prefs-table) td:not([data-label]){ justify-content:flex-end; padding-top:10px; }
 
   .trip-summary{ flex-direction:column; align-items:stretch !important; }
   .trip-summary h3.c-title{ font-size:1.1rem; }
@@ -589,6 +606,7 @@ table.data tr:last-child td{ border-bottom:none; }
 .itinerary-row{ display:flex; gap:8px; margin-bottom:8px; }
 .itinerary-row input{
   padding:10px 12px; border:1.5px solid var(--line); border-radius:var(--radius-sm); font-size:.92rem; background:var(--surface-2);
+  min-width:0; /* מונע מהשדה עם flex:1 (activity) לכפות רוחב מינימלי מובנה של הדפדפן ולגרום לשורה לחרוג מרוחב המסך בנייד */
 }
 .icon-btn{
   width:46px; height:46px; border-radius:50%; border:1.5px solid var(--line); background:var(--surface);
@@ -792,7 +810,7 @@ html[data-theme="dark"] h3.panel-title{ box-shadow:0 6px 14px -6px rgba(0,0,0,.6
 .roster-row-head:hover .chev{ opacity:.9; }
 
 /* ---------- inline stroke icon sizing (nav + toolbar SVG icon set) ---------- */
-.nav-icon{ width:18px; height:18px; flex:none; }
+.nav-icon{ width:18px; height:18px; flex:none; vertical-align:middle; margin-top:-2px; }
 .side-link{ }
 .icon-inline{ display:inline-flex; align-items:center; vertical-align:-4px; }
 
