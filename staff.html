@@ -2672,38 +2672,17 @@ async function exportApprovalsZip(trip, students, approvalsById){
   }catch(err){ toast('שגיאה בהכנת קובץ ה-ZIP: '+err.message); }
 }
 
-/* בונה אלמנט DOM של טבלת נוכחות מסודרת לפי כיתה: לכל כיתה כותרת עם שם הכיתה
-   ושם המחנך/ת, ומתחתיה כל התלמידים המאושרים היוצאים לטיול. מצולם ל-PDF אמיתי
-   (html2canvas+jsPDF) בדיוק כמו טבלאות האישור האישיות. */
-function buildTripRosterDocElement(trip, groupedByClass){
-  const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
+/* בונה אלמנט DOM של עמוד נוכחות לכיתה אחת בלבד — כולל כותרת הישיבה/הטיול ואז טבלת
+   התלמידים של הכיתה הזו. כל כיתה מקבלת עמוד PDF נפרד (ר' exportTripRosterPdf) —
+   בלי זה, טבלה ארוכה הייתה "נחתכת" בין כיתות באמצע העמוד בלי גבול ברור. */
+function buildClassRosterPageElement(trip, g, gregDate){
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
-  const parentLine = (s) => {
-    const parts = [];
-    if (s.mother_name) parts.push(`אמא: ${s.mother_name}${s.mother_phone ? ' · ' + s.mother_phone : ''}`);
-    if (s.father_name) parts.push(`אבא: ${s.father_name}${s.father_phone ? ' · ' + s.father_phone : ''}`);
-    return parts.join(' · ');
-  };
-  const classSectionsHtml = groupedByClass.map(g => `
-    <div style="margin-bottom:26px;">
-      <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(g.className)}</span>
-        <span style="font-size:14px; color:#cfd9ec; font-weight:600;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
-      </div>
-      <table style="width:100%; border-collapse:collapse;">
-        <tbody>
-          ${g.students.map((s,i)=>`
-            <tr>
-              <td style="padding:10px 8px; border-bottom:1px solid #dde4ee; width:38px; color:#16223d; font-size:17px; font-weight:800; text-align:center;">${i+1}</td>
-              <td style="padding:10px 8px; border-bottom:1px solid #dde4ee;">
-                <div style="font-size:17px; font-weight:700; color:#16203a;">${esc(s.full_name)}</div>
-                ${parentLine(s) ? `<div style="font-size:12.5px; color:#4b566d; margin-top:2px;">${esc(parentLine(s))}</div>` : ''}
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`).join('');
+  const parentRow = (label, name, phone) => name ? `
+    <div style="margin-top:4px;">
+      <span style="font-size:13px; color:#4b566d;">${label}: ${esc(name)}</span>
+      ${phone ? `<div style="font-size:19px; font-weight:800; color:#16223d;">📞 ${esc(phone)}</div>` : ''}
+    </div>` : '';
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
@@ -2717,14 +2696,69 @@ function buildTripRosterDocElement(trip, groupedByClass){
       <div style="font-size:13px; color:#4b566d; margin-bottom:22px;">
         ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
       </div>
-      ${classSectionsHtml}
+      <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(g.className)}</span>
+        <span style="font-size:14px; color:#cfd9ec; font-weight:600;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
+      </div>
+      <table style="width:100%; border-collapse:collapse;">
+        <tbody>
+          ${g.students.map((s,i)=>`
+            <tr>
+              <td style="padding:12px 8px; border-bottom:1px solid #dde4ee; width:38px; color:#16223d; font-size:17px; font-weight:800; text-align:center; vertical-align:top;">${i+1}</td>
+              <td style="padding:12px 8px; border-bottom:1px solid #dde4ee;">
+                <div style="font-size:17px; font-weight:700; color:#16203a;">${esc(s.full_name)}</div>
+                ${parentRow('אמא', s.mother_name, s.mother_phone)}
+                ${parentRow('אבא', s.father_name, s.father_phone)}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
         הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
       </div>
     </div>`;
   return wrap;
 }
-/* מוריד PDF אחד לכל הטיול: טבלה מסודרת לפי כיתה, עם שם המחנך/ת וכל התלמידים
+/* מרנדרת רשימת "עמודים" (DOM nodes) לקובץ PDF אחד, כשכל node מתחיל תמיד בעמוד חדש —
+   בשונה מ-renderNodeToPdfBlob הרגילה שמצלמת הכל כרצף אחד וחותכת לפי גובה בלבד. אם node
+   בודד ארוך מעמוד אחד (כיתה גדולה במיוחד) הוא עדיין נגלש כרגיל לעמוד/ים נוספים,
+   אבל שתי כיתות שונות לעולם לא ישתפו אותו עמוד. */
+async function renderNodesToMultiPagePdfBlob(nodes){
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit:'pt', format:'a4' });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 20;
+  let firstPage = true;
+  for (const node of nodes){
+    document.body.appendChild(node);
+    try{
+      await Promise.all(Array.from(node.querySelectorAll('img')).map(img =>
+        img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
+      ));
+      const canvas = await html2canvas(node.firstElementChild, { scale:2, backgroundColor:'#ffffff', useCORS:true });
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = pageWidth - margin*2;
+      const imgHeight = canvas.height * (imgWidth / canvas.width);
+      let heightLeft = imgHeight;
+      let position = margin;
+      if (!firstPage) pdf.addPage();
+      firstPage = false;
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      heightLeft -= (pageHeight - margin*2);
+      while (heightLeft > 0){
+        position = heightLeft - imgHeight + margin;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+        heightLeft -= (pageHeight - margin*2);
+      }
+    } finally {
+      node.remove();
+    }
+  }
+  return pdf.output('blob');
+}
+/* מוריד PDF אחד לכל הטיול: עמוד נפרד לכל כיתה, עם שם המחנך/ת וכל התלמידים
    שאושרו ואמורים לצאת. משמש גם את ההנהלה וגם כל מחנך/ת ישירות מתוך פרטי הטיול. */
 async function exportTripRosterPdf(trip, approvedStudents){
   if (!approvedStudents.length){ toast('אין עדיין תלמידים מאושרים לטיול זה'); return; }
@@ -2744,8 +2778,9 @@ async function exportTripRosterPdf(trip, approvedStudents){
       students: byClass[cid].sort((a,b)=> (a.full_name||'').localeCompare(b.full_name||'','he')),
     }));
     grouped.sort((a,b)=> hebrewGradeValue(a.className) - hebrewGradeValue(b.className) || a.className.localeCompare(b.className,'he'));
-    const node = buildTripRosterDocElement(trip, grouped);
-    const blob = await renderNodeToPdfBlob(node);
+    const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
+    const nodes = grouped.map(g => buildClassRosterPageElement(trip, g, gregDate));
+    const blob = await renderNodesToMultiPagePdfBlob(nodes);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `רשימת נוכחות - ${trip.title}.pdf`; document.body.appendChild(a); a.click(); a.remove();
