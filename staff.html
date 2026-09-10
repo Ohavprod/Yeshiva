@@ -126,6 +126,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
 /* ============================================================
@@ -2152,11 +2153,13 @@ function renderTripsList(container, trips){
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} פרטי הטיול המלאים</button>
+          <button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} נוכחות ביום הטיול</button>
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
         </div>
       </div>
       <div class="trip-edit-box" id="trip-edit-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="notice-preview trip-info" id="trip-info-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
+      <div class="trip-attendance-standalone" id="trip-attendance-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="trip-detail" id="trip-detail-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
     </div>
   `;
@@ -2303,6 +2306,32 @@ function renderTripsList(container, trips){
         }catch(err){
           panel.dataset.loaded = ''; // מאפשר ניסיון חוזר אחרי שהבעיה תתוקן
           panel.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינת אישורי הטיול: ${esc(err.message||err)}</p>`;
+        }
+      }
+    });
+  });
+
+  // נוכחות ביום הטיול מוצגת כאן כאזור עצמאי, מתחת ל"פרטי הטיול המלאים" — לא נטענת
+  // יותר בתוך "ניהול אישורים", כדי שמחנך/ת שרק צריך/ה לסמן נוכחות לא יצטרך/תצטרך
+  // לפתוח את כל מסך ניהול האישורים כדי להגיע אליה.
+  container.querySelectorAll('.toggle-trip-attendance').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.id;
+      const panel = document.getElementById('trip-attendance-'+id);
+      const opening = panel.style.display === 'none';
+      panel.style.display = opening ? '' : 'none';
+      if (opening && !panel.dataset.loaded){
+        panel.dataset.loaded = '1';
+        try{
+          const trip = trips.find(t=>t.id===id);
+          const ctx = await loadTripAttendanceContext(trip);
+          await renderTripAttendanceCard(panel, trip, ctx.students, ctx.approvedStudents, ctx.tripClassIds, ctx.canManage);
+          if (!panel.innerHTML.trim()){
+            panel.innerHTML = `<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין תלמידים מאושרים לטיול זה, או שאין לך הרשאה לראות את הנוכחות כאן.</p>`;
+          }
+        }catch(err){
+          panel.dataset.loaded = '';
+          panel.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינת נוכחות הטיול: ${esc(err.message||err)}</p>`;
         }
       }
     });
@@ -2713,6 +2742,118 @@ async function exportTripRosterPdf(trip, approvedStudents){
   }catch(err){ toast('שגיאה ביצירת PDF: '+err.message); }
 }
 
+/* בונה אלמנט DOM של "מסמך פרטים נלווים" לטיול — הוצאות, אוטובוסים/אחראים, חובשים/מע"רים —
+   בדיוק כמו שהם מוצגים במסך "ניהול טיול", אבל מעוצבים לדף PDF. זהו העמוד השני בקובץ
+   המאוחד (עמוד ראשון הוא אישור הטיול המצורף עצמו, ר' exportTripFullPdf). */
+function buildTripLogisticsDocElement(trip, expenses, buses, medics){
+  const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
+  const totalExpenses = expenses.reduce((sum,e)=> sum + (Number(e.amount)||0), 0);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
+  const section = (title, bodyHtml) => `
+    <div style="margin-bottom:22px;">
+      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#16223d; border-bottom:2px solid #1c7a7a; padding-bottom:6px; margin-bottom:10px;">${esc(title)}</div>
+      ${bodyHtml}
+    </div>`;
+  const expensesHtml = expenses.length ? `
+    <table style="width:100%; border-collapse:collapse;">
+      ${expenses.map(e=>`
+        <tr>
+          <td style="padding:8px 6px; border-bottom:1px solid #dde4ee; font-size:14px;">${esc(e.label)}${e.note?` — <span style="color:#4b566d;">${esc(e.note)}</span>`:''}</td>
+          <td style="padding:8px 6px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; text-align:left; white-space:nowrap;">${esc(fmtCost(e.amount))}</td>
+        </tr>`).join('')}
+      <tr><td style="padding:10px 6px; font-size:14px; font-weight:800;">סה"כ</td><td style="padding:10px 6px; font-size:14px; font-weight:800; text-align:left;">${esc(fmtCost(totalExpenses))}</td></tr>
+    </table>` : `<p style="color:#4b566d; font-size:13px; margin:0;">אין הוצאות רשומות.</p>`;
+  const busesHtml = buses.length ? buses.map(b=>`
+    <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
+      <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
+      <div style="font-size:13px; color:#4b566d; margin-top:4px;">אחראי: ${esc(b.captain_name||'לא נבחר')}${b.captain_phone?` · ${esc(b.captain_phone)}`:''}${b.driver_name?` · נהג: ${esc(b.driver_name)}`:''}${b.driver_phone?` (${esc(b.driver_phone)})`:''}</div>
+      ${b.notes ? `<div style="font-size:13px; margin-top:4px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+    </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
+  const medicsHtml = medics.length ? medics.map(m=>`
+    <div style="font-size:14px; padding:6px 0; border-bottom:1px solid #eef1f6;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}${m.phone?` · ${esc(m.phone)}`:''}</div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
+  wrap.innerHTML = `
+    <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:13px; color:#4b566d; margin-top:2px;">פרטים נלווים לטיול</div>
+        </div>
+      </div>
+      <h1 style="font-size:22px; margin:0 0 8px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
+      <div style="font-size:13px; color:#4b566d; margin-bottom:24px;">
+        ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
+      </div>
+      ${section('הוצאות הטיול', expensesHtml)}
+      ${section('אוטובוסים ואחראים', busesHtml)}
+      ${section('חובשים ומע"רים', medicsHtml)}
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
+      </div>
+    </div>`;
+  return wrap;
+}
+/* מוריד קובץ PDF אחד לטיול, המאחד שני "מסמכים" נפרדים כשני עמודים (או יותר):
+   1) אישור הטיול עצמו — הקובץ שרכזת הטיולים צירפה במסך "ניהול טיול" (PDF או תמונה, כפי שהוא).
+   2) מסמך מרוכז חדש עם כל הפרטים הנלווים — הוצאות, אוטובוסים/אחראים, חובשים/מע"רים.
+   השילוב נעשה עם pdf-lib (טוען/מעתיק עמודי PDF קיימים, או מטמיע תמונה כעמוד) —
+   jsPDF לבדו לא יודע לקרוא קובץ PDF קיים, רק ליצור חדש. */
+async function exportTripFullPdf(trip){
+  toast('מכין PDF…');
+  try{
+    const [certSnap, logSnap] = await Promise.all([
+      db.collection('trips').doc(trip.id).collection('certificate').doc('file').get().catch(()=>null),
+      db.collection('trips').doc(trip.id).collection('logistics').doc('data').get().catch(()=>null),
+    ]);
+    const cert = certSnap && certSnap.exists ? certSnap.data() : null;
+    const logData = logSnap && logSnap.exists ? logSnap.data() : {};
+    const expenses = logData.expenses || [];
+    const buses = logData.buses || [];
+    const medics = logData.medics || [];
+
+    const { PDFDocument } = PDFLib;
+    const mergedPdf = await PDFDocument.create();
+
+    if (cert && cert.url){
+      const res = await fetch(cert.url);
+      const bytes = await res.arrayBuffer();
+      const looksLikePdf = /\.pdf(\?|$)/i.test(cert.filename || cert.url) || (res.headers.get('content-type')||'').includes('pdf');
+      if (looksLikePdf){
+        const certDoc = await PDFDocument.load(bytes).catch(()=>null);
+        if (certDoc){
+          const copiedCertPages = await mergedPdf.copyPages(certDoc, certDoc.getPageIndices());
+          copiedCertPages.forEach(pg=> mergedPdf.addPage(pg));
+        }
+      } else {
+        let img = await mergedPdf.embedJpg(bytes).catch(()=>null);
+        if (!img) img = await mergedPdf.embedPng(bytes).catch(()=>null);
+        if (img){
+          const page = mergedPdf.addPage([img.width, img.height]);
+          page.drawImage(img, { x:0, y:0, width:img.width, height:img.height });
+        }
+      }
+    }
+
+    const node = buildTripLogisticsDocElement(trip, expenses, buses, medics);
+    const logisticsBlob = await renderNodeToPdfBlob(node);
+    const logisticsBytes = await logisticsBlob.arrayBuffer();
+    const logisticsDoc = await PDFDocument.load(logisticsBytes);
+    const copiedLogPages = await mergedPdf.copyPages(logisticsDoc, logisticsDoc.getPageIndices());
+    copiedLogPages.forEach(pg=> mergedPdf.addPage(pg));
+
+    if (mergedPdf.getPageCount() === 0){ toast('אין עדיין מה לייצא — לא צורף אישור טיול ואין פרטי לוגיסטיקה'); return; }
+
+    const finalBytes = await mergedPdf.save();
+    const blob = new Blob([finalBytes], { type:'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `אישור טיול מלא - ${trip.title}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 3000);
+    if (!cert) toast('הקובץ הורד — שימו לב: טרם צורף אישור טיול רשמי, כך שהוא כולל רק את עמוד הפרטים הנלווים');
+  }catch(err){ toast('שגיאה בהכנת ה-PDF המאוחד: '+err.message); }
+}
+
 /* חלון "שליחה לכל הממתינים" — לא באמת אוטומטי (וואטסאפ מחייב אישור שליחה ידני בכל הודעה),
    אבל מרכז את כל מי שממתין במקום אחד כדי לעבור עליהם אחד-אחד בלי לחפש בתפריט */
 function showBulkSendModal(trip, students, approvalsById){
@@ -3061,10 +3202,15 @@ async function renderTripLogisticsCard(card, trip){
 }
 
 /* ============================================================
-   TRIP ATTENDANCE — נוכחות ביום הטיול (יציאה + חזרה), מתוך התלמידים
-   המאושרים בלבד. זמין למחנך/ת הכיתה, לאחראי אוטובוס שהוגדר בטיול,
-   ולמי שיש לו/ה הרשאת ניהול לוגיסטי (רואים את כל העדכונים).
-   ============================================================ */
+   TRIP ATTENDANCE — נוכחות ביום הטיול, מתוך התלמידים המאושרים בלבד.
+   זמין למחנך/ת הכיתה, לאחראי אוטובוס שהוגדר בטיול, ולמי שיש לו/ה
+   הרשאת ניהול לוגיסטי (רואים את כל העדכונים). מוצג כאזור עצמאי
+   מתחת ל"פרטי הטיול המלאים" (ר' renderTrips), לא בתוך ניהול אישורים.
+   מעבר ליציאה/חזרה הקבועות, אפשר להוסיף "נקודות בדיקה" נוספות
+   (למשל עצירה באמצע הטיול) — נשמרות על מסמך הטיול עצמו
+   (attendance_checkpoints) כדי שיהיו זמינות לכולם שרואים את הטיול.
+   בכל נקודת בדיקה, ברגע שכל תלמידי כיתה מסוימת סומנו נוכחים בה,
+   נשלחת התראת פוש אוטומטית. ============================================================ */
 async function renderTripAttendanceCard(card, trip, students, approvedStudents, tripClassIds, canManage){
   const p = myProfile.permissions || {};
   const isCaptain = (trip.bus_captain_uids||[]).includes(me.uid);
@@ -3077,13 +3223,44 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
   const attById = {};
   attSnap.docs.forEach(d=> attById[d.id] = d.data());
 
-  let activeLeg = 'departure';
-  const legField = () => activeLeg === 'departure' ? 'departure_present' : 'return_present';
+  const baseLegs = [
+    { id:'departure', label:'יציאה לטיול' },
+    { id:'return', label:'חזרה מהטיול' },
+  ];
+  let customLegs = (trip.attendance_checkpoints || []).slice();
+  const allLegs = () => baseLegs.concat(customLegs);
+  let activeLegId = 'departure';
+  const activeLeg = () => allLegs().find(l=>l.id===activeLegId) || baseLegs[0];
+  const legField = () => `${activeLegId}_present`;
+
+  const renderTabs = () => {
+    const tabsEl = card.querySelector('#attTabs');
+    tabsEl.innerHTML = allLegs().map(l=>`<button type="button" class="att-leg-btn ${l.id===activeLegId?'active':''}" data-leg="${l.id}">${esc(l.label)}</button>`).join('')
+      + `<button type="button" class="att-leg-btn" id="attAddLegBtn" title="הוספת נקודת בדיקה נוספת (למשל אמצע הטיול)">${ICON.plus} נקודת בדיקה</button>`;
+    tabsEl.querySelectorAll('.att-leg-btn[data-leg]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        activeLegId = btn.dataset.leg;
+        renderTabs();
+        renderList();
+      });
+    });
+    tabsEl.querySelector('#attAddLegBtn').addEventListener('click', async ()=>{
+      const label = (prompt('שם נקודת הבדיקה (לדוגמה: עצירה בדרך, אמצע הטיול)') || '').trim();
+      if (!label) return;
+      const id = 'cp_' + Date.now().toString(36);
+      customLegs.push({ id, label });
+      try{ await db.collection('trips').doc(trip.id).update({ attendance_checkpoints: customLegs }); }
+      catch(err){ toast('שגיאה בשמירת נקודת הבדיקה: '+err.message); }
+      activeLegId = id;
+      renderTabs();
+      renderList();
+    });
+  };
 
   const renderList = () => {
     const field = legField();
     const markedCount = approvedStudents.filter(s=> attById[s.id]?.[field] === true).length;
-    card.querySelector('#attSummary').textContent = `${markedCount} / ${approvedStudents.length} סומנו כנוכחים`;
+    card.querySelector('#attSummary').textContent = `${markedCount} / ${approvedStudents.length} סומנו כנוכחים — ${activeLeg().label}`;
     const listEl = card.querySelector('#attList');
     listEl.innerHTML = approvedStudents.map(s=>{
       const val = attById[s.id]?.[field];
@@ -3100,7 +3277,8 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
       btn.addEventListener('click', async ()=>{
         const sid = btn.dataset.id;
         const val = btn.dataset.val === 'true';
-        const legPrefix = activeLeg;
+        const legPrefix = activeLegId;
+        const legLbl = activeLeg().label;
         try{
           const classStudents = approvedStudents.filter(s=> s.class_id === approvedStudents.find(x=>x.id===sid)?.class_id);
           const wasAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
@@ -3109,12 +3287,11 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
             [`${legPrefix}_marked_at`]: firebase.firestore.FieldValue.serverTimestamp(),
           }, { merge:true });
           attById[sid] = { ...(attById[sid]||{}), [field]: val };
-          // התראת פוש כשכל תלמידי הכיתה סומנו נוכחים (רק במעבר, לא בכל לחיצה נוספת)
+          // התראת פוש כשכל תלמידי הכיתה סומנו נוכחים בנקודת הבדיקה הנוכחית (רק במעבר, לא בכל לחיצה נוספת)
           const isNowAllPresent = classStudents.length > 0 && classStudents.every(s=> attById[s.id]?.[field] === true);
           if (val && isNowAllPresent && !wasAllPresent){
             const className = classesCache.find(c=>c.id===classStudents[0].class_id)?.name || '';
-            const legLabel = legPrefix === 'departure' ? 'ביציאה לטיול' : 'בחזרה מהטיול';
-            notifyPush('class_all_present', 'כל הכיתה נוכחת', `כל תלמידי כיתה ${className} סומנו נוכחים ${legLabel} "${trip.title}"`);
+            notifyPush('class_all_present', 'כל הכיתה נוכחת', `כל תלמידי כיתה ${className} סומנו נוכחים — ${legLbl} ("${trip.title}")`);
           }
           renderList();
         }catch(err){ toast('שגיאה: '+err.message); }
@@ -3123,46 +3300,29 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
   };
 
   card.innerHTML = `
-    <div class="section-toggle" id="attToggleBtn" style="margin-top:16px;">
-      <span>${ICON.bus} נוכחות ביום הטיול</span><span class="chev">⌄</span>
-    </div>
-    <div class="card card-pad" id="attBody" style="margin-top:14px; display:none;">
+    <div class="card card-pad">
+      <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.bus}</span> נוכחות ביום הטיול</h3>
       <div class="meeting-section-head" style="margin-top:0; border-top:none; padding-top:0;">
         <span class="ms-sub" id="attSummary"></span>
       </div>
-      <div class="tabbar" style="margin-bottom:14px;">
-        <button type="button" class="att-leg-btn active" data-leg="departure">יציאה לטיול</button>
-        <button type="button" class="att-leg-btn" data-leg="return">חזרה מהטיול</button>
-      </div>
+      <div class="tabbar" id="attTabs" style="margin-bottom:14px; flex-wrap:wrap;"></div>
       <div id="attList"></div>
     </div>`;
 
-  card.querySelector('#attToggleBtn').addEventListener('click', (e)=>{
-    const box = card.querySelector('#attBody');
-    const opening = box.style.display === 'none';
-    box.style.display = opening ? '' : 'none';
-    e.currentTarget.classList.toggle('open', opening);
-  });
-
-  card.querySelectorAll('.att-leg-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      activeLeg = btn.dataset.leg;
-      card.querySelectorAll('.att-leg-btn').forEach(b=> b.classList.toggle('active', b===btn));
-      renderList();
-    });
-  });
-
+  renderTabs();
   renderList();
 }
 
-async function renderTripDetail(panel, trip){
+/* מחשבת עבור טיול נתון: אילו כיתות המשתמש/ת הנוכחי/ת רואה, אילו תלמידים בהן,
+   ומי מהם מאושר/ת ליציאה. משותפת לפאנל "ניהול אישורים" ולפאנל "נוכחות ביום
+   הטיול" העצמאי, כך שההרשאות (מי רואה איזו כיתה) מחושבות באותו מקום אחד. */
+async function loadTripAttendanceContext(trip){
   const p = myProfile.permissions || {};
   const allTripClassIds = trip.class_ids || (trip.class_id ? [trip.class_id] : []);
   const canManage = p.view_all_classes || (p.manage_class_roster && allTripClassIds.includes(myProfile.class_id));
   // מחנך/ת (בלי view_all_classes) רואה בניהול אישורים רק את הכיתה שלו/ה, גם אם הטיול
   // הוא כלל-ישיבתי (כמה כיתות) — רק מנהל מערכת/מזכירה/ראש הישיבה רואים את כל הכיתות.
   const tripClassIds = p.view_all_classes ? allTripClassIds : allTripClassIds.filter(cid=>cid===myProfile.class_id);
-  const className = tripClassIds.map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
 
   const [studentsSnap, approvalsSnap] = await Promise.all([
     tripClassIds.length ? db.collection('students').where('class_id','in', tripClassIds).orderBy('full_name').get() : Promise.resolve({docs:[]}),
@@ -3171,6 +3331,14 @@ async function renderTripDetail(panel, trip){
   const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
   const approvalsById = {};
   approvalsSnap.docs.forEach(d=> approvalsById[d.id] = { id:d.id, ...d.data() });
+  const approvedStudents = students.filter(s=> approvalsById[s.id]?.status === 'approved');
+  return { students, approvalsById, tripClassIds, canManage, approvedStudents };
+}
+
+async function renderTripDetail(panel, trip){
+  const p = myProfile.permissions || {};
+  const { students, approvalsById, tripClassIds, canManage, approvedStudents } = await loadTripAttendanceContext(trip);
+  const className = tripClassIds.map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
 
   if (students.length === 0){
     panel.innerHTML = `<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין תלמידים רשומים בכיתה זו.</p>`;
@@ -3193,7 +3361,6 @@ async function renderTripDetail(panel, trip){
       </div>
     </div>`;
 
-  const approvedStudents = students.filter(s=> approvalsById[s.id]?.status === 'approved');
   const isMultiClass = tripClassIds.length > 1;
   const cityStatsHtml = isMultiClass
     ? buildCityAndSensitivityStatsHtml(approvedStudents, 'כלל הכיתות בטיול זה')
@@ -3211,7 +3378,6 @@ async function renderTripDetail(panel, trip){
       ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
       ${p.manage_trip_logistics ? `<div class="card card-pad" id="tripLogisticsInner">טוען ניהול טיול…</div>` : ''}
     </div>` : ''}
-    <div id="tripAttendanceCard"></div>
     ${canManage ? `<div style="margin-bottom:16px; display:flex; justify-content:flex-end;">
       <div class="more-actions-wrap">
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
@@ -3219,6 +3385,7 @@ async function renderTripDetail(panel, trip){
           <button id="bulkSendBtn">${ICON.send} שליחה לכל הממתינים</button>
           <button id="refreshVerifyBtn">${ICON.check} רענון נתוני אימות (לקישורים ישנים)</button>
           <button id="exportRosterPdfBtn">${ICON.download} רשימת נוכחות לפי כיתה (PDF)</button>
+          <button id="exportTripFullPdfBtn">${ICON.download} אישור טיול + פרטים נלווים (PDF)</button>
           <button id="exportApprovalsZipBtn">${ICON.archive} ייצוא כל האישורים ל-ZIP</button>
         </div>
       </div>
@@ -3331,6 +3498,7 @@ async function renderTripDetail(panel, trip){
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); showBulkSendModal(trip, students, approvalsById); });
   panel.querySelector('#refreshVerifyBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); refreshTripVerifyHashes(trip, students); });
   panel.querySelector('#exportRosterPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripRosterPdf(trip, approvedStudents); });
+  panel.querySelector('#exportTripFullPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripFullPdf(trip); });
   panel.querySelector('#exportApprovalsZipBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportApprovalsZip(trip, students, approvalsById); });
 
   /* לחיצה על כל המשבצת (לא רק על תגית הסטטוס) פותחת את פרטי התלמיד/ה — גם למאושרים וגם לממתינים */
