@@ -33,7 +33,7 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(title, {
     body,
     icon: '/assets/img/icon-192.png',
-    badge: '/assets/img/icon-192.png',
+    badge: '/assets/img/badge-192.png',
     data: { url: clickUrl },
   });
 });
