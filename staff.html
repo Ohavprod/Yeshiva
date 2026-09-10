@@ -924,14 +924,20 @@ async function setupPushNotifications(){
       myProfile.fcm_token = token;
     }
     // הודעות שמגיעות כשהטאב פתוח ופעיל (בפוקוס) לא עוברות דרך ה-Service Worker בכלל —
-    // ה-SDK מטפל בהן ישירות בעמוד עצמו דרך onMessage. בלי המאזין הזה, לא קורה שום
-    // דבר במקרה הזה (לא מוצג כלום, לא בדפדפן ולא באפליקציה) — זו הייתה הבעיה.
-    // מוגן מפני רישום כפול (setupPushNotifications עלול לרוץ יותר מפעם אחת בסשן).
+    // ה-SDK מטפל בהן ישירות בעמוד עצמו דרך onMessage. משתמשים ב-Notification רגילה
+    // (לא טוסט בתוך האפליקציה) כדי שזה יקפוץ בטלפון בדיוק כמו כשהאתר סגור — כולל
+    // כשהמסך נעול/מוקטן. מוגן מפני רישום כפול (setupPushNotifications עלול לרוץ יותר
+    // מפעם אחת בסשן).
     if (!window._fgMessagingBound){
       window._fgMessagingBound = true;
       messaging.onMessage((payload) => {
         const data = payload.data || {};
-        toast(`🔔 ${data.title || 'עדכון חדש'}${data.body ? ' — ' + data.body : ''}`);
+        const n = new Notification(data.title || 'עדכון חדש', {
+          body: data.body || '',
+          icon: '/assets/img/icon-192.png',
+          badge: '/assets/img/badge-192.png',
+        });
+        n.onclick = () => { window.focus(); n.close(); };
       });
     }
   }catch(err){ console.warn('push setup failed:', err); }
@@ -2159,13 +2165,24 @@ function renderTripsList(container, trips){
           </div>
         </div>
         <div id="trip-actions-${t.id}" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
-          ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
-          ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
-          ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+          <div class="desktop-only-actions">
+            ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
+            ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
+            ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+            <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
+          </div>
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} פרטי הטיול המלאים</button>
           <button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} נוכחות ביום הטיול</button>
-          <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
+          <details class="kebab-menu">
+            <summary class="icon-btn kebab-btn" title="עוד פעולות">⋮</summary>
+            <div class="kebab-panel">
+              ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
+              ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
+              ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+              <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
+            </div>
+          </details>
         </div>
       </div>
       <div class="trip-edit-box" id="trip-edit-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
@@ -2286,6 +2303,16 @@ function renderTripsList(container, trips){
       const opening = actions.style.display === 'none';
       actions.style.display = opening ? 'flex' : 'none';
       head.querySelector('.chev')?.classList.toggle('open', opening);
+      // בקיפול (לא בפתיחה): סוגרים גם כל תת-פאנל פתוח (עריכה/פרטים/נוכחות/ניהול
+      // אישורים) — בלי זה הכרטיס "לא מתקפל" בעין: שורת הכפתורים נעלמת אבל
+      // הפאנל שהיה פתוח מתחתיה נשאר גלוי כאילו שום דבר לא קרה.
+      if (!opening){
+        ['trip-edit-','trip-info-','trip-attendance-','trip-detail-'].forEach(prefix=>{
+          const panel = document.getElementById(prefix+id);
+          if (panel) panel.style.display = 'none';
+        });
+        container.querySelector(`.toggle-trip[data-id="${id}"]`)?.classList.remove('open');
+      }
     });
   });
 
@@ -2678,11 +2705,10 @@ async function exportApprovalsZip(trip, students, approvalsById){
 function buildClassRosterPageElement(trip, g, gregDate){
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
-  const parentRow = (label, name, phone) => name ? `
-    <div style="margin-top:4px;">
-      <span style="font-size:13px; color:#4b566d;">${label}: ${esc(name)}</span>
-      ${phone ? `<div style="font-size:19px; font-weight:800; color:#16223d;">📞 ${esc(phone)}</div>` : ''}
-    </div>` : '';
+  const parentCell = (name, phone) => (name || phone) ? `
+      <div style="font-size:13px; font-weight:700; color:#16203a;">${esc(name||'—')}</div>
+      ${phone ? `<div style="font-size:13px; color:#4b566d; margin-top:1px; direction:ltr; text-align:right;">${esc(phone)}</div>` : ''}
+    ` : `<span style="color:#b7bfcc; font-size:12px;">—</span>`;
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
@@ -2701,15 +2727,21 @@ function buildClassRosterPageElement(trip, g, gregDate){
         <span style="font-size:14px; color:#cfd9ec; font-weight:600;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
       </div>
       <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th style="padding:8px; border-bottom:2px solid #16223d; width:26px;"></th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d;">שם התלמיד/ה</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:150px;">אמא</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:150px;">אבא</th>
+          </tr>
+        </thead>
         <tbody>
           ${g.students.map((s,i)=>`
             <tr>
-              <td style="padding:12px 8px; border-bottom:1px solid #dde4ee; width:38px; color:#16223d; font-size:17px; font-weight:800; text-align:center; vertical-align:top;">${i+1}</td>
-              <td style="padding:12px 8px; border-bottom:1px solid #dde4ee;">
-                <div style="font-size:17px; font-weight:700; color:#16203a;">${esc(s.full_name)}</div>
-                ${parentRow('אמא', s.mother_name, s.mother_phone)}
-                ${parentRow('אבא', s.father_name, s.father_phone)}
-              </td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; color:#16223d; font-size:13px; font-weight:700; text-align:center; vertical-align:top;">${i+1}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(s.full_name)}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; vertical-align:top;">${parentCell(s.mother_name, s.mother_phone)}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; vertical-align:top;">${parentCell(s.father_name, s.father_phone)}</td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -2805,15 +2837,15 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
     <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
       <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
       <div style="font-size:13px; margin-top:6px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
-      ${b.captain_phone ? `<div style="font-size:18px; font-weight:800; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+      ${b.captain_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
       ${b.driver_name || b.driver_phone ? `<div style="font-size:13px; margin-top:6px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג</div>` : ''}
-      ${b.driver_phone ? `<div style="font-size:18px; font-weight:800; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
+      ${b.driver_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
       ${b.notes ? `<div style="font-size:13px; margin-top:8px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
     </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   const medicsHtml = medics.length ? medics.map(m=>`
     <div style="padding:8px 0; border-bottom:1px solid #eef1f6;">
       <span style="font-size:14px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
-      ${m.phone ? `<div style="font-size:18px; font-weight:800; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
+      ${m.phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
     </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
@@ -3110,11 +3142,11 @@ async function renderTripLogisticsCard(card, trip){
               <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
                 <div>
                   <div style="font-size:.98rem;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b><span style="color:var(--ink-soft); font-size:.8rem;"> · אחראי אוטובוס</span></div>
-                  ${b.captain_phone ? `<div style="font-size:1.25rem; font-weight:800; color:var(--navy); margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+                  ${b.captain_phone ? `<div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
                 </div>
                 ${b.driver_name || b.driver_phone ? `<div>
                   <div style="font-size:.98rem;"><b>${esc(b.driver_name||'נהג')}</b><span style="color:var(--ink-soft); font-size:.8rem;"> · נהג</span></div>
-                  ${b.driver_phone ? `<div style="font-size:1.25rem; font-weight:800; color:var(--navy); margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
+                  ${b.driver_phone ? `<div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
                 </div>` : ''}
               </div>
               ${b.notes ? `<div style="font-size:.88rem; margin-top:10px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
@@ -3146,7 +3178,7 @@ async function renderTripLogisticsCard(card, trip){
             <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <div>
                 <div style="font-size:.98rem;"><b>${esc(m.name)}</b>${m.role?` <span style="color:var(--ink-soft); font-size:.82rem;">· ${esc(m.role)}</span>`:''}</div>
-                ${m.phone ? `<div style="font-size:1.25rem; font-weight:800; color:var(--navy); margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
+                ${m.phone ? `<div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
               </div>
               <div style="display:flex; gap:6px;">
                 ${m.phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(m.phone)}" target="_blank" title="וואטסאפ">${WA_ICON_SVG}</a>` : ''}
@@ -3293,11 +3325,11 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
               ${classIdsSorted.map(cid=>{
                 const classStudents = byClass[cid];
                 const className = classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה';
-                return `<tr><td>${esc(className)}</td>${legs.map(l=>{
+                return `<tr><td data-label="כיתה">${esc(className)}</td>${legs.map(l=>{
                   const field = `${l.id}_present`;
                   const marked = classStudents.filter(s=> attById[s.id]?.[field] === true).length;
                   const allDone = marked === classStudents.length && classStudents.length > 0;
-                  return `<td style="text-align:center;"><span class="badge ${allDone?'badge-ok':'badge-wait'}">${marked} / ${classStudents.length}</span></td>`;
+                  return `<td data-label="${esc(l.label)}" style="text-align:center;"><span class="badge ${allDone?'badge-ok':'badge-wait'}">${marked} / ${classStudents.length}</span></td>`;
                 }).join('')}</tr>`;
               }).join('')}
             </tbody>
@@ -3313,11 +3345,30 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
 
   const renderTabs = () => {
     const tabsEl = card.querySelector('#attTabs');
-    tabsEl.innerHTML = allLegs().map(l=>`<button type="button" class="att-leg-btn ${l.id===activeLegId?'active':''}" data-leg="${l.id}">${esc(l.label)}</button>`).join('')
+    tabsEl.innerHTML = baseLegs.map(l=>`<button type="button" class="att-leg-btn ${l.id===activeLegId?'active':''}" data-leg="${l.id}">${esc(l.label)}</button>`).join('')
+      + customLegs.map(l=>`
+          <span class="att-leg-btn-wrap" style="display:inline-flex; align-items:center;">
+            <button type="button" class="att-leg-btn ${l.id===activeLegId?'active':''}" data-leg="${l.id}">${esc(l.label)}</button>
+            <button type="button" class="att-leg-del" data-leg-del="${l.id}" title="מחיקת נקודת הבדיקה">✕</button>
+          </span>`).join('')
       + `<button type="button" class="att-leg-btn" id="attAddLegBtn" title="הוספת נקודת בדיקה נוספת (למשל אמצע הטיול)">${ICON.plus} נקודת בדיקה</button>`;
     tabsEl.querySelectorAll('.att-leg-btn[data-leg]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         activeLegId = btn.dataset.leg;
+        renderTabs();
+        renderList();
+      });
+    });
+    tabsEl.querySelectorAll('[data-leg-del]').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const legId = btn.dataset.legDel;
+        const leg = customLegs.find(l=>l.id===legId);
+        if (!confirm(`למחוק את נקודת הבדיקה "${leg?.label||''}"? הנתונים שסומנו בה יימחקו ולא ניתן יהיה לשחזר אותם.`)) return;
+        customLegs = customLegs.filter(l=>l.id!==legId);
+        try{ await db.collection('trips').doc(trip.id).update({ attendance_checkpoints: customLegs }); }
+        catch(err){ toast('שגיאה במחיקת נקודת הבדיקה: '+err.message); return; }
+        if (activeLegId === legId) activeLegId = 'departure';
         renderTabs();
         renderList();
       });
@@ -3469,7 +3520,6 @@ async function renderTripDetail(panel, trip){
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
         <div class="more-actions-menu" id="tripMoreActionsMenu">
           <button id="bulkSendBtn">${ICON.send} שליחה לכל הממתינים</button>
-          <button id="refreshVerifyBtn">${ICON.check} רענון נתוני אימות (לקישורים ישנים)</button>
           <button id="exportRosterPdfBtn">${ICON.download} רשימת נוכחות לפי כיתה (PDF)</button>
           <button id="exportTripFullPdfBtn">${ICON.download} אישור טיול + פרטים נלווים (PDF)</button>
           <button id="exportApprovalsZipBtn">${ICON.archive} ייצוא כל האישורים ל-ZIP</button>
@@ -3582,7 +3632,6 @@ async function renderTripDetail(panel, trip){
   });
 
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); showBulkSendModal(trip, students, approvalsById); });
-  panel.querySelector('#refreshVerifyBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); refreshTripVerifyHashes(trip, students); });
   panel.querySelector('#exportRosterPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripRosterPdf(trip, approvedStudents); });
   panel.querySelector('#exportTripFullPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripFullPdf(trip); });
   panel.querySelector('#exportApprovalsZipBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportApprovalsZip(trip, students, approvalsById); });
