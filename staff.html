@@ -148,6 +148,21 @@ function show(id){
   });
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* ממקם תפריט "פעולות נוספות" (⋯) ליד הכפתור שנלחץ, עם position:fixed מחושב —
+   כך שהתפריט תמיד נשאר בתוך גבולות המסך בנייד, גם כשהכפתור קרוב לקצה. */
+function positionMoreActionsMenu(btn, menu){
+  const r = btn.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.insetInlineEnd = 'auto';
+  menu.style.top = `${r.bottom + 6}px`;
+  menu.style.left = '0px'; // מדידה ראשונית כדי לקבל רוחב אמיתי, מתוקן מיד למטה
+  const margin = 10;
+  const menuWidth = menu.offsetWidth || 220;
+  let left = r.right - menuWidth;
+  if (left < margin) left = margin;
+  if (left + menuWidth > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - margin - menuWidth);
+  menu.style.left = `${left}px`;
+}
 /* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
    ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
 const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
@@ -455,6 +470,7 @@ const ICON = {
   folder: fIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>', 15),
   chevronDown: fIcon('<polyline points="6 9 12 15 18 9"></polyline>', 16),
   bus: fIcon('<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"></path><path d="M4 12h16"></path><circle cx="7.5" cy="19" r="1.6"></circle><circle cx="16.5" cy="19" r="1.6"></circle>', 15),
+  shirt: fIcon('<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 .55.45 1 1 1h10c.55 0 1-.45 1-1V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>', 15),
 };
 
 /* נתיב הבסיס לקישורים ציבוריים (approve.html) — עמיד גם מול Netlify Clean URLs
@@ -499,6 +515,33 @@ function confirmDialog(message, opts={}){
     overlay.querySelector('.cd-cancel').addEventListener('click', ()=> close(false));
     overlay.querySelector('.cd-confirm').addEventListener('click', ()=> close(true));
     overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(false); });
+  });
+}
+
+/* --- חלון קלט טקסט מעוצב, במקום prompt() המכוער של הדפדפן --- */
+function promptDialog(message, opts={}){
+  const { title='קלט נדרש', placeholder='', confirmText='אישור', cancelText='ביטול', inputType='text' } = opts;
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <h3>${esc(title)}</h3>
+        <p>${esc(message)}</p>
+        <input type="${esc(inputType)}" class="pd-input" placeholder="${esc(placeholder)}" style="width:100%; box-sizing:border-box; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px; font-size:1rem; margin-bottom:20px; background:var(--surface-2); color:var(--ink);">
+        <div class="confirm-actions">
+          <button class="btn btn-outline btn-sm pd-cancel">${esc(cancelText)}</button>
+          <button class="btn btn-primary btn-sm pd-confirm">${esc(confirmText)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('.pd-input');
+    setTimeout(()=> input.focus(), 50);
+    const close = (val)=>{ overlay.remove(); resolve(val); };
+    overlay.querySelector('.pd-cancel').addEventListener('click', ()=> close(null));
+    overlay.querySelector('.pd-confirm').addEventListener('click', ()=> close(input.value.trim() || null));
+    input.addEventListener('keydown', (e)=>{ if (e.key==='Enter'){ e.preventDefault(); close(input.value.trim() || null); } });
+    overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(null); });
   });
 }
 function permissionsCheckboxesHtml(idPrefix, currentPerms){
@@ -672,25 +715,99 @@ async function initSchoolYear(){
   currentSchoolYear = schoolYears.includes(saved) ? saved : schoolYears[schoolYears.length-1];
   renderYearSwitcher();
 }
+/* שומר עותק של מסמך לפני מחיקה, כדי לאפשר שחזור מאוחר יותר דרך מסך
+   "היסטוריית מחיקות ושחזור" (זמין רק למנהל מערכת / ראש הישיבה). */
+async function logDeletion(collectionName, docId, data){
+  try{
+    await db.collection('audit_log').add({
+      action: 'delete', collection: collectionName, doc_id: docId, data: data || null,
+      deleted_by: myProfile?.full_name || '', deleted_by_uid: me?.uid || '',
+      deleted_at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  }catch(err){ console.warn('audit log failed:', err); }
+}
+/* מוחק טיול על כל תת-האוספים שלו (אישורים/תשלומים/נוכחות/אישור-מצורף/ניהול-לוגיסטי) —
+   בשימוש גם למחיקת טיול בודד וגם כחלק ממחיקת שנת לימודים שלמה. שומר גיבוי של מסמך
+   הטיול עצמו לצורך שחזור (לא של תתי-האוספים, כדי לא להעמיס אלפי רשומות גיבוי). */
+async function deleteTripCascade(tripId){
+  const tripRef = db.collection('trips').doc(tripId);
+  const tripSnap = await tripRef.get();
+  if (tripSnap.exists) await logDeletion('trips', tripId, tripSnap.data());
+  for (const name of ['approvals','payments','attendance']){
+    const snap = await tripRef.collection(name).get();
+    await Promise.all(snap.docs.map(d=> d.ref.delete()));
+  }
+  await tripRef.collection('logistics').doc('data').delete().catch(()=>{});
+  await tripRef.collection('certificate').doc('file').delete().catch(()=>{});
+  await tripRef.delete();
+}
+/* מוחק את כל הנתונים המשויכים לשנת לימודים נתונה (טיולים ותתי-האוספים שלהם, משימות
+   אישיות, משימות משויכות, וישיבות צוות) ומסירה את השנה מרשימת השנים. */
+async function deleteSchoolYearData(year){
+  const tripsSnap = await db.collection('trips').where('school_year','==', year).get();
+  for (const d of tripsSnap.docs) await deleteTripCascade(d.id);
+  for (const colName of ['personal_tasks','meetings','assigned_tasks']){
+    const snap = await db.collection(colName).where('school_year','==', year).get();
+    for (const doc of snap.docs) await logDeletion(colName, doc.id, doc.data());
+    await Promise.all(snap.docs.map(doc=> doc.ref.delete()));
+  }
+  schoolYears = schoolYears.filter(y=> y!==year);
+  await db.collection('settings').doc('global').set({ school_years: schoolYears }, { merge:true });
+  if (currentSchoolYear === year){
+    currentSchoolYear = schoolYears[schoolYears.length-1];
+    localStorage.setItem('yeshiva_school_year', currentSchoolYear);
+  }
+}
+/* מחיקת שנת לימודים — זמינה רק לתפקיד "מנהל מערכת" (ראה renderYearSwitcher). דורשת
+   אישור מודע לתוצאות ואז הזנה חוזרת של סיסמת ההתחברות (re-authentication מול Firebase)
+   כדי למנוע מחיקה בטעות של נתוני המערכת. */
+async function confirmDeleteSchoolYear(year){
+  if (schoolYears.length <= 1){ toast('לא ניתן למחוק את שנת הלימודים היחידה במערכת'); return; }
+  const sure = await confirmDialog(
+    `פעולה זו תמחק לצמיתות את כל הטיולים, האישורים, התשלומים, המשימות והישיבות ששייכים לשנת ${year}. הפעולה בלתי הפיכה (מלבד שחזור מגיבוי, אם מוגדר). להמשיך?`,
+    { title:`מחיקת שנת לימודים ${year}`, confirmText:'כן, אני מבין/ה — להמשיך', cancelText:'ביטול', danger:true }
+  );
+  if (!sure) return;
+  const password = await promptDialog('לאימות הזהות, יש להזין שוב את סיסמת ההתחברות שלך למערכת:', { title:'אימות סיסמה למחיקה', placeholder:'סיסמה', inputType:'password', confirmText:'אימות ומחיקה' });
+  if (!password) return;
+  toast('מאמת סיסמה…');
+  try{
+    const cred = firebase.auth.EmailAuthProvider.credential(me.email, password);
+    await me.reauthenticateWithCredential(cred);
+  }catch(err){
+    toast('הסיסמה שגויה — המחיקה בוטלה');
+    return;
+  }
+  toast(`מוחק את שנת ${year}… אנא המתן/י, זה עלול לקחת רגע`);
+  try{
+    await deleteSchoolYearData(year);
+    toast(`שנת ${year} נמחקה בהצלחה`);
+    renderYearSwitcher();
+    goto(currentView || 'home');
+  }catch(err){ toast('שגיאה במחיקת השנה: '+err.message); }
+}
 function renderYearSwitcher(){
   const el = document.getElementById('yearSwitcher');
   if (!el) return;
   const p = myProfile.permissions || {};
   const canAddYear = !!(p.manage_users || p.view_all_classes);
+  const isSystemAdmin = myProfile.role === 'מנהל מערכת';
   el.innerHTML = `
     <select id="yearSwitcherSelect">
       ${schoolYears.map(y=>`<option value="${esc(y)}" ${y===currentSchoolYear?'selected':''}>${esc(y)}</option>`).join('')}
     </select>
-    ${canAddYear ? `<button id="addYearBtn" title="הוספת שנת לימודים חדשה">${ICON.plus}</button>` : ''}`;
+    ${canAddYear ? `<button id="addYearBtn" title="הוספת שנת לימודים חדשה">${ICON.plus}</button>` : ''}
+    ${isSystemAdmin && schoolYears.length > 1 ? `<button id="deleteYearBtn" title="מחיקת שנת הלימודים המוצגת" style="color:var(--danger);">${ICON.trash}</button>` : ''}`;
   document.getElementById('yearSwitcherSelect').addEventListener('change', (e)=>{
     currentSchoolYear = e.target.value;
     localStorage.setItem('yeshiva_school_year', currentSchoolYear);
     goto(currentView || 'home');
   });
   document.getElementById('addYearBtn')?.addEventListener('click', async ()=>{
-    const next = prompt('הזינו את שם שנת הלימודים החדשה (לדוגמה: תשפ״ח)');
-    if (!next || !next.trim()) return;
+    const next = await promptDialog('הזינו את שם שנת הלימודים החדשה:', { title:'שנת לימודים חדשה', placeholder:'לדוגמה: תשפ״ח', confirmText:'הוספה' });
+    if (!next) return;
     const y = next.trim();
+    if (!y) return;
     if (schoolYears.includes(y)){ toast('שנה זו כבר קיימת'); return; }
     schoolYears = [...schoolYears, y];
     try{
@@ -702,6 +819,7 @@ function renderYearSwitcher(){
       goto(currentView || 'home');
     }catch(err){ toast('שגיאה בהוספת שנה: '+err.message); }
   });
+  document.getElementById('deleteYearBtn')?.addEventListener('click', ()=> confirmDeleteSchoolYear(currentSchoolYear));
 }
 
 async function onSignedIn(user){
@@ -768,6 +886,7 @@ function buildSideNav(){
     { id:'classes', label:'ניהול כיתות', icon:ICON.building, show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:ICON.user, show: !!p.manage_users },
     { id:'pushprefs', label:'הגדרות התראות', icon:ICON.bell, show: !!p.manage_users },
+    { id:'restore', label:'היסטוריית מחיקות ושחזור', icon:ICON.clock, show: myProfile.role === 'מנהל מערכת' || myProfile.role === 'ראש הישיבה' },
     { id:'smartschool', label:'סמארט סקול', icon:ICON.monitor, show:true, external:'https://www.smartschool.co.il/homepage.aspx?page_id=20' },
   ];
   nav.innerHTML = items.filter(i=>i.show).map(i=>
@@ -806,7 +925,7 @@ const titles = {
   home:'בית', myclass:'הכיתה שלי', trips:'טיולים ואישורים', payments:'ניהול תשלומים',
   mytasks:'המשימות שלי', meetings:'ישיבות צוות', classsettings:'הגדרות כיתה',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
-  pushprefs:'הגדרות התראות',
+  pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור',
 };
 
 let currentView = 'home';
@@ -820,7 +939,7 @@ async function goto(view){
     home: renderHome, myclass: renderMyClass, trips: renderTrips, payments: renderPayments,
     mytasks: renderMyTasks, meetings: renderMeetings, classsettings: renderClassSettings,
     announcements: renderAnnouncements, classes: renderClasses,
-    users: renderUsers, pushprefs: renderPushPrefs,
+    users: renderUsers, pushprefs: renderPushPrefs, restore: renderRestoreHistory,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -1421,6 +1540,7 @@ async function renderClassRosterView(container, classId){
         const student = students.find(s=>s.id===btn.dataset.id);
         if (!(await confirmDialog(`למחוק את ${student.full_name} מהכיתה? הפעולה תמחק גם את כל אישורי הטיולים שלו.`))) return;
         try{
+          await logDeletion('students', student.id, student);
           await db.collection('students').doc(student.id).delete();
           await removeStudentFromAllTripApprovals(student.id, classId);
           refresh();
@@ -1520,7 +1640,12 @@ async function renderClassRosterView(container, classId){
   const classMoreBtn = document.getElementById('classMoreActionsBtn');
   const classMoreMenu = document.getElementById('classMoreActionsMenu');
   if (classMoreBtn){
-    classMoreBtn.addEventListener('click', (e)=>{ e.stopPropagation(); classMoreMenu.classList.toggle('open'); });
+    classMoreBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const opening = !classMoreMenu.classList.contains('open');
+      classMoreMenu.classList.toggle('open', opening);
+      if (opening) positionMoreActionsMenu(classMoreBtn, classMoreMenu);
+    });
     document.addEventListener('click', ()=> classMoreMenu.classList.remove('open'));
   }
 
@@ -1928,8 +2053,8 @@ function renderTripsList(container, trips){
 
   const upcomingHtml = tripsHtml(upcomingTrips) || `<div class="card card-pad" style="color:var(--ink-soft);">אין טיולים קרובים.</div>`;
   const archiveHtml = pastTrips.length ? `
-    <div class="archive-toggle" id="archiveToggleBtn">
-      <span>📦 ארכיון — טיולים שעברו (${pastTrips.length})</span><span class="chev">⌄</span>
+    <div class="section-toggle" id="archiveToggleBtn">
+      <span>${ICON.archive} ארכיון — טיולים שעברו (${pastTrips.length})</span><span class="chev">⌄</span>
     </div>
     <div class="archive-list" id="archiveList" style="display:none;">${tripsHtml(pastTrips)}</div>` : '';
 
@@ -1948,14 +2073,9 @@ function renderTripsList(container, trips){
   container.querySelectorAll('.del-trip').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const trip = trips.find(t=>t.id===btn.dataset.id);
-      if (!(await confirmDialog(`למחוק את הטיול "${trip.title}"? כל אישורי ההורים שכבר התקבלו יימחקו לצמיתות.`))) return;
+      if (!(await confirmDialog(`למחוק את הטיול "${trip.title}"? כל אישורי ההורים, התשלומים והנוכחות שכבר נרשמו יימחקו לצמיתות.`))) return;
       try{
-        const tripRef = db.collection('trips').doc(trip.id);
-        const approvalsSnap = await tripRef.collection('approvals').get();
-        const batch = db.batch();
-        approvalsSnap.docs.forEach(d=> batch.delete(d.ref));
-        batch.delete(tripRef);
-        await batch.commit();
+        await deleteTripCascade(trip.id);
         toast('הטיול נמחק'); goto('trips');
       }
       catch(err){ toast('שגיאה: '+err.message); }
@@ -2855,7 +2975,12 @@ async function renderTripDetail(panel, trip){
   const moreBtn = panel.querySelector('#tripMoreActionsBtn');
   const moreMenu = panel.querySelector('#tripMoreActionsMenu');
   if (moreBtn){
-    moreBtn.addEventListener('click', (e)=>{ e.stopPropagation(); moreMenu.classList.toggle('open'); });
+    moreBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const opening = !moreMenu.classList.contains('open');
+      moreMenu.classList.toggle('open', opening);
+      if (opening) positionMoreActionsMenu(moreBtn, moreMenu);
+    });
     document.addEventListener('click', ()=> moreMenu.classList.remove('open'));
   }
 
@@ -3053,8 +3178,9 @@ function parseCost(costStr){
   const n = parseFloat(String(costStr).replace(/[^\d.]/g, ''));
   return isNaN(n) ? 0 : n;
 }
-function methodLabel(m){
-  return { cash:'מזומן', credit:'אשראי', other:'אחר' }[m] || m || '';
+function methodLabel(m, other){
+  if (m === 'other') return other ? `אחר — ${other}` : 'אחר';
+  return { cash:'מזומן', credit:'אשראי' }[m] || m || '';
 }
 function downloadCsv(filename, rows){
   const csvContent = rows.map(r => r.map(cell=>{
@@ -3114,7 +3240,7 @@ async function renderPayments(body){
   body.innerHTML = `
     <div id="paymentsTripsList"></div>
     <div class="archive-toggle" id="exportsToggleBtn" style="margin-top:24px;">
-      <span>📤 ייצוא דוחות תשלומים</span><span class="chev">⌄</span>
+      <span>${ICON.download} ייצוא דוחות תשלומים</span><span class="chev">⌄</span>
     </div>
     <div id="exportsPanel" style="display:none; margin-top:14px;">
       <div class="card card-pad">
@@ -3129,21 +3255,21 @@ async function renderPayments(body){
         <div class="form-grid" style="margin-top:10px;">
           <div class="field"><label>מתאריך</label><input type="date" id="exp_from"></div>
           <div class="field"><label>עד תאריך</label><input type="date" id="exp_to"></div>
-          <div class="field" style="grid-column:1/-1;"><button class="btn btn-primary btn-sm" id="exportRangeBtn">📤 ייצוא כל התשלומים בתקופה זו</button></div>
+          <div class="field" style="grid-column:1/-1;"><button class="btn btn-primary btn-sm" id="exportRangeBtn">${ICON.download} ייצוא כל התשלומים בתקופה זו</button></div>
         </div>
         <div class="form-grid" style="margin-top:6px; border-top:1px dashed var(--line); padding-top:18px;">
           <div class="field"><label>טיול</label><select id="exp_trip">${tripsWithCost.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('') || '<option value="">אין עדיין טיולים עם מחיר</option>'}</select></div>
           <div class="field"><label>תלמיד/ה</label><select id="exp_student"><option value="">טוען…</option></select></div>
           <div class="field" style="display:flex; gap:10px; grid-column:1/-1; flex-wrap:wrap;">
             <button class="btn btn-outline btn-sm" id="exportTripFullBtn">${ICON.download} ייצוא דוח מלא לטיול זה (כל התלמידים)</button>
-            <button class="btn btn-outline btn-sm" id="exportStudentTripBtn">📤 תשלום התלמיד/ה בטיול זה</button>
-            <button class="btn btn-outline btn-sm" id="exportStudentHistoryBtn">📤 היסטוריית תשלומים של התלמיד/ה (כל הטיולים)</button>
+            <button class="btn btn-outline btn-sm" id="exportStudentTripBtn">${ICON.download} תשלום התלמיד/ה בטיול זה</button>
+            <button class="btn btn-outline btn-sm" id="exportStudentHistoryBtn">${ICON.download} היסטוריית תשלומים של התלמיד/ה (כל הטיולים)</button>
           </div>
         </div>
       </div>
     </div>
     <div class="archive-toggle" id="shirtsToggleBtn" style="margin-top:16px;">
-      <span>👕 חולצות מעלין בקודש</span><span class="chev">⌄</span>
+      <span>${ICON.shirt} חולצות מעלין בקודש</span><span class="chev">⌄</span>
     </div>
     <div id="shirtsPanel" style="display:none; margin-top:14px;"></div>`;
 
@@ -3179,7 +3305,7 @@ async function renderPayments(body){
         const pay = d.data();
         if (pay.payment_date && pay.payment_date >= from && pay.payment_date <= to){
           const className = classesCache.find(c=>c.id===pay.class_id)?.name || '';
-          rows.push([trip.title, pay.student_name, className, pay.amount, pay.payment_date, methodLabel(pay.payment_method)]);
+          rows.push([trip.title, pay.student_name, className, pay.amount, pay.payment_date, methodLabel(pay.payment_method, pay.payment_method_other)]);
         }
       });
     }
@@ -3202,7 +3328,7 @@ async function renderPayments(body){
     studs.forEach(s=>{
       const pay = paymentsById[s.id];
       const className = classesCache.find(c=>c.id===s.class_id)?.name || '';
-      rows.push([s.full_name, className, pay?'שולם':'טרם שולם', pay?.amount||'', pay?.payment_date||'', pay?methodLabel(pay.payment_method):'']);
+      rows.push([s.full_name, className, pay?'שולם':'טרם שולם', pay?.amount||'', pay?.payment_date||'', pay?methodLabel(pay.payment_method, pay.payment_method_other):'']);
     });
     if (rows.length === 1){ toast('אין תלמידים בכיתות המשויכות לטיול'); return; }
     exportTable(rows, `דוח תשלומים - ${trip.title}`, exportFormat());
@@ -3217,7 +3343,7 @@ async function renderPayments(body){
     const studentName = studentSelect.options[studentSelect.selectedIndex]?.text || '';
     if (paySnap.exists){
       const pay = paySnap.data();
-      rows.push([trip.title, pay.student_name, pay.amount, pay.payment_date, methodLabel(pay.payment_method)]);
+      rows.push([trip.title, pay.student_name, pay.amount, pay.payment_date, methodLabel(pay.payment_method, pay.payment_method_other)]);
     } else {
       rows.push([trip.title, studentName, 'טרם שולם', '', '']);
     }
@@ -3234,7 +3360,7 @@ async function renderPayments(body){
       const pay = d.data();
       const tripId = d.ref.parent.parent.id;
       const trip = allTrips.find(t=>t.id===tripId);
-      rows.push([trip?.title || tripId, pay.amount, pay.payment_date, methodLabel(pay.payment_method)]);
+      rows.push([trip?.title || tripId, pay.amount, pay.payment_date, methodLabel(pay.payment_method, pay.payment_method_other)]);
     });
     if (rows.length === 1){ toast('לא נמצאו תשלומים עבור תלמיד/ה זו'); return; }
     exportTable(rows, `היסטוריית תשלומים - ${studentName}`, exportFormat());
@@ -3259,7 +3385,7 @@ async function renderPayments(body){
               <button class="export-trip-payments" data-id="${t.id}">${ICON.download} ייצוא דוח לטיול</button>
             </div>
           </div>
-          <button class="btn-manage-approvals payments-toggle" data-id="${t.id}" style="background:linear-gradient(135deg, var(--wait), #d99a3a);"><span>💰 ניהול תשלומים</span><span class="chev">⌄</span></button>
+          <button class="btn-manage-approvals payments-toggle" data-id="${t.id}" style="background:linear-gradient(135deg, var(--wait), #d99a3a);"><span>${ICON.wallet} ניהול תשלומים</span><span class="chev">⌄</span></button>
         </div>
       </div>
       <div id="pay-detail-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
@@ -3271,7 +3397,10 @@ async function renderPayments(body){
       const menu = listEl.querySelector(`[data-role="trip-more-menu"][data-id="${btn.dataset.id}"]`);
       const wasOpen = menu.classList.contains('open');
       listEl.querySelectorAll('.more-actions-menu').forEach(m=> m.classList.remove('open'));
-      if (!wasOpen) menu.classList.add('open');
+      if (!wasOpen){
+        menu.classList.add('open');
+        positionMoreActionsMenu(btn, menu);
+      }
     });
   });
   document.addEventListener('click', ()=> listEl.querySelectorAll('.more-actions-menu').forEach(m=> m.classList.remove('open')));
@@ -3285,7 +3414,7 @@ async function renderPayments(body){
       paySnap.docs.forEach(d=>{
         const pay = d.data();
         const className = classesCache.find(c=>c.id===pay.class_id)?.name || '';
-        rows.push([pay.student_name, className, pay.amount, pay.payment_date, methodLabel(pay.payment_method)]);
+        rows.push([pay.student_name, className, pay.amount, pay.payment_date, methodLabel(pay.payment_method, pay.payment_method_other)]);
       });
       if (rows.length === 1){ toast('אין עדיין תשלומים רשומים לטיול זה'); return; }
       exportTable(rows, `תשלומים - ${trip.title}`, exportFormat());
@@ -3528,7 +3657,7 @@ async function renderTripPaymentsPanel(panel, trip){
       <div class="approval-row" data-student="${s.id}">
         <div>
           <strong>${esc(s.full_name)}</strong>
-          <div style="margin-top:4px;">${isPaid ? `<span class="badge badge-ok">✓ שולם ₪${esc(pay.amount)} · ${esc(methodLabel(pay.payment_method))} · ${pay.payment_date ? new Date(pay.payment_date).toLocaleDateString('he-IL') : ''}</span>` : '<span class="badge badge-wait">טרם שולם</span>'}</div>
+          <div style="margin-top:4px;">${isPaid ? `<span class="badge badge-ok">✓ שולם ₪${esc(pay.amount)} · ${esc(methodLabel(pay.payment_method, pay.payment_method_other))} · ${pay.payment_date ? new Date(pay.payment_date).toLocaleDateString('he-IL') : ''}</span>` : '<span class="badge badge-wait">טרם שולם</span>'}</div>
         </div>
         <div class="a-actions">
           ${reminderParents.map(pr=>`
@@ -3538,7 +3667,7 @@ async function renderTripPaymentsPanel(panel, trip){
                 <button class="icon-btn wa send-payment-reminder" data-id="${s.id}" data-phone="${pr.phone}" title="שליחת תזכורת תשלום ל${pr.label} בוואטסאפ">${WA_ICON_SVG}</button>
               </div>
             </div>`).join('')}
-          <button class="btn btn-outline btn-sm record-payment" data-id="${s.id}">${isPaid ? '✏️ עריכה' : '💰 רישום תשלום'}</button>
+          <button class="btn btn-outline btn-sm record-payment" data-id="${s.id}">${isPaid ? ICON.edit + ' עריכה' : ICON.wallet + ' רישום תשלום'}</button>
           ${isPaid ? `<button class="btn btn-outline btn-sm cancel-payment" data-id="${s.id}" style="color:var(--danger); border-color:#f2c6c2;">✕ ביטול</button>` : ''}
         </div>
       </div>
@@ -3568,17 +3697,32 @@ async function renderTripPaymentsPanel(panel, trip){
                 <option value="other" ${pay.payment_method==='other'?'selected':''}>אחר</option>
               </select>
             </div>
+            <div class="field" id="pay_method_other_wrap_${sid}" style="display:${pay.payment_method==='other'?'':'none'};">
+              <label>פירוט אופן התשלום</label>
+              <input id="pay_method_other_${sid}" placeholder="לדוגמה: ביט, פייבוקס" value="${esc(pay.payment_method_other||'')}">
+            </div>
             <div class="field"><button class="btn btn-primary btn-sm" id="pay_save_${sid}">${ICON.save} שמירת תשלום</button></div>
           </div>
         </div>`;
+      const methodSel = document.getElementById(`pay_method_${sid}`);
+      const otherWrap = document.getElementById(`pay_method_other_wrap_${sid}`);
+      methodSel.addEventListener('change', ()=>{
+        otherWrap.style.display = methodSel.value === 'other' ? '' : 'none';
+      });
       document.getElementById(`pay_save_${sid}`).addEventListener('click', async ()=>{
         const amount = parseFloat(document.getElementById(`pay_amount_${sid}`).value) || 0;
         const payment_date = document.getElementById(`pay_date_${sid}`).value;
-        const payment_method = document.getElementById(`pay_method_${sid}`).value;
+        const payment_method = methodSel.value;
+        const payment_method_other = document.getElementById(`pay_method_other_${sid}`)?.value.trim() || '';
+        if (payment_method === 'other' && !payment_method_other){
+          toast('יש למלא את אופן התשלום כשבוחרים "אחר"');
+          return;
+        }
         try{
           await db.collection('trips').doc(trip.id).collection('payments').doc(sid).set({
             student_id: sid, student_name: student.full_name, class_id: student.class_id,
-            amount, payment_date, payment_method, recorded_by: myProfile.full_name,
+            amount, payment_date, payment_method, payment_method_other: payment_method === 'other' ? payment_method_other : '',
+            recorded_by: myProfile.full_name,
             updated_at: firebase.firestore.FieldValue.serverTimestamp(),
           });
           toast('התשלום נשמר');
@@ -3622,9 +3766,13 @@ async function renderMyTasks(body){
   const groupNames = [...new Set(tasks.map(t=> t.group_title || 'כללי'))];
 
   let assignedSnap = null;
-  try{ assignedSnap = await db.collection('assigned_tasks').where('assigned_to','==', me.uid).orderBy('created_at','desc').get(); }
+  /* בלי orderBy בשאילתה — כדי לא להזדקק לאינדקס מורכב (meeting_id/assigned_to + created_at)
+     שדורש הגדרה ידנית ב-Firestore Console; המיון נעשה בצד הלקוח במקום. */
+  try{ assignedSnap = await db.collection('assigned_tasks').where('assigned_to','==', me.uid).get(); }
   catch(err){ assignedSnap = null; }
-  const assignedTasks = assignedSnap ? assignedSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear) : [];
+  const assignedTasks = assignedSnap
+    ? assignedSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear).sort((a,b)=> (b.created_at?.toMillis?.()||0) - (a.created_at?.toMillis?.()||0))
+    : [];
 
   body.innerHTML = `
     ${assignedTasks.length ? `
@@ -3909,9 +4057,12 @@ async function renderMeetings(body){
   async function loadAssignedTasksForMeeting(meetingId){
     const box = document.getElementById(`assigned-tasks-${meetingId}`);
     if (!box) return;
+    /* בלי orderBy — כדי לא להזדקק לאינדקס מורכב (meeting_id + created_at) שדורש
+       הגדרה ידנית ב-Firestore Console; זה בדיוק מה שגרם לשגיאת הטעינה. מיון בצד הלקוח. */
     try{
-      const snap = await db.collection('assigned_tasks').where('meeting_id','==', meetingId).orderBy('created_at','desc').get();
-      const tasks = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      const snap = await db.collection('assigned_tasks').where('meeting_id','==', meetingId).get();
+      const tasks = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+        .sort((a,b)=> (b.created_at?.toMillis?.()||0) - (a.created_at?.toMillis?.()||0));
       if (!tasks.length){ box.innerHTML = '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין משימות משויכות מישיבה זו.</p>'; return; }
       box.innerHTML = tasks.map(t=>`
         <div class="task-row ${t.done?'done':''}" data-id="${t.id}" style="margin-bottom:8px;">
@@ -4113,8 +4264,8 @@ async function renderAnnouncements(body){
         <tbody>
           ${data.map(a=>`
             <tr data-id="${a.id}">
-              <td class="c-body">${esc(a.body)}</td>
-              <td>${a.is_active ? '<span class="badge badge-ok">פעיל</span>' : '<span class="badge badge-wait">מוסתר</span>'}</td>
+              <td class="c-body" data-label="טקסט">${esc(a.body)}</td>
+              <td data-label="סטטוס">${a.is_active ? '<span class="badge badge-ok">פעיל</span>' : '<span class="badge badge-wait">מוסתר</span>'}</td>
               <td style="display:flex; gap:8px;">
                 <button class="btn btn-outline btn-sm edit-ann" title="עריכה">✏️</button>
                 <button class="btn btn-outline btn-sm toggle-ann">${a.is_active?'הסתרה':'הפעלה'}</button>
@@ -4357,9 +4508,9 @@ async function renderClasses(body){
         <tbody>
           ${classes.map(c=>`
             <tr data-id="${c.id}">
-              <td class="c-name">${esc(c.name)}</td>
-              <td>${esc(teacherNameFor(c.id) || '— לא שויך —')}</td>
-              <td>${c.whatsapp_group_link ? `<a href="${esc(c.whatsapp_group_link)}" target="_blank" class="wa-link">🔗 פתיחה</a>` : '<span style="color:var(--ink-soft);">לא הוגדר</span>'}</td>
+              <td class="c-name" data-label="שם הכיתה">${esc(c.name)}</td>
+              <td data-label="מחנך/ת">${esc(teacherNameFor(c.id) || '— לא שויך —')}</td>
+              <td data-label="קבוצת וואטסאפ">${c.whatsapp_group_link ? `<a href="${esc(c.whatsapp_group_link)}" target="_blank" class="wa-link">🔗 פתיחה</a>` : '<span style="color:var(--ink-soft);">לא הוגדר</span>'}</td>
               <td style="display:flex; gap:6px;">
                 <button class="btn btn-outline btn-sm edit-class" title="עריכה">✏️</button>
                 ${p.delete_classes ? '<button class="btn btn-outline btn-sm del-class" title="מחיקה">🗑</button>' : ''}
@@ -4388,7 +4539,11 @@ async function renderClasses(body){
       btn.addEventListener('click', async ()=>{
         if (!(await confirmDialog('מחיקת כיתה תמחק גם את התלמידים והטיולים המשויכים אליה. להמשיך?'))) return;
         const tr = btn.closest('tr');
-        try{ await db.collection('classes').doc(tr.dataset.id).delete(); goto('classes'); }
+        try{
+          const cls = classes.find(c=>c.id===tr.dataset.id);
+          if (cls) await logDeletion('classes', tr.dataset.id, cls);
+          await db.collection('classes').doc(tr.dataset.id).delete(); goto('classes');
+        }
         catch(err){ toast('שגיאה: '+err.message); }
       });
     });
@@ -4512,9 +4667,9 @@ async function renderUsers(body){
         <tbody>
           ${profiles.map(p=>`
             <tr data-id="${p.id}">
-              <td class="c-name">${esc(p.full_name)}</td>
-              <td class="c-role">${esc(p.role||'')}</td>
-              <td class="c-class">${esc(classesCache.find(c=>c.id===p.class_id)?.name||'—')}</td>
+              <td class="c-name" data-label="שם">${esc(p.full_name)}</td>
+              <td class="c-role" data-label="תפקיד">${esc(p.role||'')}</td>
+              <td class="c-class" data-label="כיתה">${esc(classesCache.find(c=>c.id===p.class_id)?.name||'—')}</td>
               <td><button class="btn btn-outline btn-sm edit-user" title="עריכה">✏️</button></td>
             </tr>
           `).join('')}
@@ -4605,9 +4760,63 @@ async function renderUsers(body){
       box.querySelector('#cancelUserBtn').addEventListener('click', ()=>{ box.innerHTML=''; });
       box.querySelector('#deleteUserBtn').addEventListener('click', async ()=>{
         if (!(await confirmDialog(`למחוק את המשתמש ${p.full_name}? פעולה זו מוחקת רק את פרטי הגישה שלו במערכת (יש למחוק את חשבון ה-Auth בנפרד מ-Firebase Console).`))) return;
-        try{ await db.collection('users').doc(p.id).delete(); box.innerHTML=''; toast('המשתמש הוסר'); goto('users'); }
+        try{
+          await logDeletion('users', p.id, p);
+          await db.collection('users').doc(p.id).delete(); box.innerHTML=''; toast('המשתמש הוסר'); goto('users');
+        }
         catch(err){ toast('שגיאה: '+err.message); }
       });
+    });
+  });
+}
+
+/* ============================================================
+   היסטוריית מחיקות ושחזור — זמין רק ל"מנהל מערכת"/"ראש הישיבה" (ראה buildSideNav).
+   מציג את 100 המחיקות האחרונות (מ-logDeletion) עם אפשרות שחזור מיידית.
+   הערה: משחזר את מסמך הישות עצמה בלבד — עבור טיול, לא את תתי-האוספים שלו
+   (אישורים/תשלומים/נוכחות), כדי לא להעמיס את הגיבוי באלפי רשומות.
+   ============================================================ */
+async function renderRestoreHistory(body){
+  const collectionLabels = {
+    trips:'טיול', students:'תלמיד/ה', classes:'כיתה', users:'משתמש',
+    personal_tasks:'משימה אישית', meetings:'ישיבת צוות', assigned_tasks:'משימה משויכת',
+  };
+  const titleOf = (data) => data?.full_name || data?.title || data?.name || data?.text || '(ללא שם)';
+  const snap = await db.collection('audit_log').orderBy('deleted_at','desc').limit(100).get().catch(()=>({docs:[]}));
+  const entries = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+
+  body.innerHTML = `
+    <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">
+      כל מחיקה של טיול, תלמיד/ה, כיתה או משתמש נשמרת כאן (100 הפעולות האחרונות) וניתן לשחזר אותה בלחיצה.
+      שחזור טיול משחזר את פרטי הטיול עצמו בלבד — לא את האישורים/התשלומים/הנוכחות שהיו רשומים תחתיו.
+    </p>
+    <div class="card card-pad">
+      ${entries.length ? entries.map(e=>`
+        <div class="task-row" data-id="${e.id}" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <div><b>${esc(collectionLabels[e.collection] || e.collection)}</b> — ${esc(titleOf(e.data))}</div>
+            <div style="font-size:.78rem; color:var(--ink-soft); margin-top:2px;">
+              נמחק על ידי ${esc(e.deleted_by||'')}${e.deleted_at?.toDate ? ' · ' + e.deleted_at.toDate().toLocaleString('he-IL') : ''}
+              ${e.restored_at ? ` · שוחזר${e.restored_by ? ' על ידי ' + esc(e.restored_by) : ''}` : ''}
+            </div>
+          </div>
+          ${!e.restored_at ? `<button class="btn btn-outline btn-sm restore-entry" data-id="${e.id}">${ICON.check} שחזור</button>` : `<span class="badge badge-ok">שוחזר</span>`}
+        </div>`).join('') : '<p style="color:var(--ink-soft);">אין עדיין פעולות מחיקה מתועדות.</p>'}
+    </div>`;
+
+  body.querySelectorAll('.restore-entry').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const entry = entries.find(x=>x.id===btn.dataset.id);
+      if (!entry || !entry.data){ toast('אין נתונים לשחזור עבור רשומה זו'); return; }
+      if (!(await confirmDialog(`לשחזר את "${titleOf(entry.data)}" (${collectionLabels[entry.collection]||entry.collection})?`, { title:'שחזור מחיקה', danger:false, confirmText:'כן, לשחזר' }))) return;
+      try{
+        await db.collection(entry.collection).doc(entry.doc_id).set(entry.data);
+        await db.collection('audit_log').doc(entry.id).update({
+          restored_at: firebase.firestore.FieldValue.serverTimestamp(), restored_by: myProfile.full_name,
+        });
+        toast('שוחזר בהצלחה');
+        goto('restore');
+      }catch(err){ toast('שגיאה בשחזור: '+err.message); }
     });
   });
 }
