@@ -205,6 +205,13 @@ section{ padding:88px 0; position:relative; }
 .about-wrap .ring-figure{ position:relative; aspect-ratio:1; }
 
 .gallery-strip{ background:var(--paper-2); }
+.gallery-tabs{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.gallery-tab{
+  padding:8px 18px; border-radius:999px; border:1.5px solid var(--line); background:var(--surface);
+  color:var(--ink-soft); font-size:.88rem; font-weight:600; cursor:pointer; transition:all .15s ease;
+}
+.gallery-tab:hover{ border-color:var(--teal); color:var(--teal); }
+.gallery-tab.active{ background:linear-gradient(135deg, var(--steel), var(--teal)); border-color:transparent; color:#fff; }
 .gallery-grid{
   display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:150px; gap:14px;
 }
@@ -241,6 +248,7 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .site-nav .brand .t2{ display:none; }
   .site-nav .btn{ padding:8px 12px; font-size:.74rem; flex:none; white-space:nowrap; }
   .contact-grid{ grid-template-columns:1fr; }
+  .contact-card{ padding:16px 18px; gap:12px; }
 
   /* ---------- index.html: כותרת עליונה, עדכונים וגלריה במובייל ---------- */
   .hero{ padding:40px 0 56px; }
@@ -276,8 +284,9 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
 }
 .contact-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--teal); }
 .contact-card .icon{ font-size:1.6rem; flex:none; }
+.contact-card > div:last-child{ min-width:0; } /* בלי זה הטקסט (למשל המייל) נחתך בנייד כי ה-flex לא מכווץ מתחת לרוחב התוכן המובנה */
 .contact-card h3{ margin:0 0 2px; font-size:.95rem; color:var(--navy); }
-.contact-card p{ margin:0; color:var(--ink-soft); }
+.contact-card p{ margin:0; color:var(--ink-soft); overflow-wrap:anywhere; }
 
 /* ==========================================================================
    Staff app (login / dashboard) — shared with staff.html
@@ -538,8 +547,12 @@ table.data tr:last-child td{ border-bottom:none; }
   .roster-row-head{ padding:15px 16px; }
   .roster-row-name{ font-size:1.08rem; }
 
-  .event-row{ align-items:flex-start; padding:12px 2px; }
+  /* לוח אירועים בנייד — הכפתורים (צפייה בפרטים/עריכה/מחיקה) עוברים לשורה נפרדת
+     ברוחב מלא, כדי שלא יידחסו לצד תג התאריך והכותרת בשורה אחת צרה מדי */
+  .event-row{ align-items:flex-start; padding:12px 2px; flex-wrap:wrap; }
   .event-date-badge{ min-width:66px; padding:7px 8px; }
+  .event-row-main{ flex-basis:0; }
+  .event-row-actions{ flex:1 1 100%; justify-content:flex-end; flex-wrap:wrap; margin-top:6px; }
   .ev-heb{ font-size:.68rem; }
   .ev-greg{ font-size:.72rem; }
   .task-row{ flex-wrap:wrap; }
@@ -849,13 +862,23 @@ html[data-theme="dark"] .badge-ok{ background:rgba(61,220,151,.14); }
 html[data-theme="dark"] .badge-wait{ background:rgba(227,171,84,.16); }
 html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-color:rgba(255,255,255,.16); }
 
-/* ---------- stat cards: clickable, rounder, more modern ---------- */
+/* ---------- stat cards: clickable, rounder, more modern, colorful icon badge per stat ---------- */
 .stat{
   cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s;
-  border-radius:18px;
+  border-radius:18px; position:relative; overflow:hidden;
 }
 .stat:hover{ transform:translateY(-2px); box-shadow:var(--shadow-sm); border-color:var(--sky); }
 .stat:active{ transform:translateY(0); }
+.stat-icon{
+  width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  margin-bottom:10px; color:#fff;
+}
+.stat-icon svg{ width:19px; height:19px; }
+.stat-classes .stat-icon{ background:linear-gradient(135deg, var(--steel), var(--sky)); }
+.stat-students .stat-icon{ background:linear-gradient(135deg, var(--teal), var(--teal-2)); }
+.stat-trips .stat-icon{ background:linear-gradient(135deg, var(--navy-2), var(--steel)); }
+.stat-pending .stat-icon{ background:linear-gradient(135deg, #c98a2e, var(--wait)); }
+.stat-pending .num{ color:var(--wait); }
 
 /* ---------- login card + mobile staff/home polish (rounder, more app-like) ---------- */
 .login-card{ border-radius:24px; }
@@ -914,7 +937,9 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
 .atb-class-row .atb-nums{ flex:none; font-size:.82rem; color:var(--ink-soft); font-weight:700; min-width:56px; text-align:left; }
 .atb-class-row:hover{ background:var(--surface); }
 .atb-class-row .chev{ flex:none; color:var(--ink-soft); transition:transform .2s; }
-.atb-class-row.open .chev{ transform:rotate(180deg); }
+.atb-class-row.open{ background:var(--paper-2); box-shadow:inset 3px 0 0 var(--steel); }
+.atb-class-row.open .atb-name{ color:var(--steel); }
+.atb-class-row.open .chev{ transform:rotate(180deg); color:var(--steel); }
 .atb-class-detail{ padding:2px 12px 12px; margin-top:-6px; margin-bottom:8px; }
 .atb-student-list{ background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:4px 12px; }
 .atb-student-row{
@@ -947,6 +972,7 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
   .login-wrap{ padding:16px; }
   .login-card{ border-radius:26px; padding:30px 22px; }
   .stat{ text-align:center; }
+  .stat-icon{ margin:0 auto 10px; }
   .stat .num{ font-size:1.7rem; }
   .app-side{ border-radius:0 0 22px 22px; }
   .side-link{ border-radius:14px; }
