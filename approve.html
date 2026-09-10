@@ -193,48 +193,6 @@ async function sha256Hex(str){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-/* מסך אימות זהות — לפני הצגת פרטי הטיול, ההורה מתבקש להזין פרטים תואמים
-   (שם התלמיד/ה, שם ההורה, כיתה, טלפון ההורה) כדי לוודא שהאישור מתבצע עבור התלמיד/ה
-   הנכון/ה, גם אם הקישור הועבר בטעות או שיש מספר תלמידים בעלי שם דומה.
-   השוואת השמות (תלמיד/ה והורה) סובלנית — מספיק שם פרטי, לא חייבים שם מלא.
-   ת.ז ההורה/ת הוא שדה חובה, אבל אינו חלק מההשוואה (כי לרוב ההורים היא עדיין לא רשומה
-   במערכת) — הוא רק נשמר בהמשך לכרטיס התלמיד/ה (ראה onVerified).
-   ההשוואה עצמה מתבצעת מול גיבוב (hash) חד-כיווני שנשמר מראש על מסמך האישור — לעולם לא
-   נשלף כאן שם/טלפון הורה גולמיים ממסד הנתונים (וגם לא ניתן, כי ההורה אינו מחובר למערכת). */
-function renderVerificationGate(content, studentName, approval, onVerified){
-  content.innerHTML = `
-    <div class="trip-card">
-      <div class="section-eyebrow">אימות זהות</div>
-      <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
-      <p class="verify-hint">כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
-      <div id="verifyErrorBox"></div>
-      <form id="verifyForm" class="verify-box">
-        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
-        <div class="field"><label>שם ההורה/ת המאשר/ת</label><input id="v_parent" required></div>
-        <div class="field"><label>כיתה</label><input id="v_class" required></div>
-        <div class="field"><label>טלפון ההורה/ת המאשר/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
-        <div class="field"><label>ת.ז ההורה/ת המאשר/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
-        <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
-      </form>
-    </div>`;
-  document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const enteredName = cleanText(document.getElementById('v_name').value);
-    const enteredParent = cleanText(document.getElementById('v_parent').value);
-    const enteredClass = cleanText(document.getElementById('v_class').value);
-    const enteredPhone = document.getElementById('v_phone').value;
-    const enteredId = document.getElementById('v_id').value.replace(/\D/g,'');
-    const nameOk = firstNameOf(enteredName) === firstNameOf(studentName);
-    const candidate = await sha256Hex(`${firstNameOf(enteredParent)}|${normPhoneDigits(enteredPhone)}|${norm(enteredClass)}`);
-    const match = (approval.verify_hashes||[]).find(h => h.hash === candidate);
-    if (nameOk && match){
-      onVerified({ slot: match.slot, parentName: enteredParent, parentId: enteredId });
-    } else {
-      document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
-    }
-  });
-}
-
 async function load(){
   const content = document.getElementById('content');
   if (!tripId || !studentId){
@@ -274,14 +232,13 @@ async function load(){
     return;
   }
 
-  if ((approval.verify_hashes||[]).length){
-    renderVerificationGate(content, studentName, approval, (verified)=> renderTripAndApprovalForm(verified));
-  } else {
-    // גיבוי: אישורים ישנים שנוצרו לפני הוספת האימות (אין להם verify_hashes) — ממשיכים בלי שער האימות
-    renderTripAndApprovalForm(null);
-  }
+  renderTripAndApprovalForm();
 
-  function renderTripAndApprovalForm(verified){
+  /* בניגוד לגרסה הקודמת: אין יותר שער אימות נפרד לפני הצגת חוזר הטיול. ההורה רואה
+     קודם את כל פרטי הטיול, לוחץ "מילוי אישור יציאה", וממלא טופס אחד יחיד (שם, טלפון,
+     ת.ז, הסכמה, חתימה) — ההצלבה מול verify_hashes מתבצעת "מאחורי הקלעים" רק בלחיצה
+     על שליחה: אם לא תואם, מוצגת שגיאה במקום; אם תואם, האישור נשמר מיד. */
+  function renderTripAndApprovalForm(){
   let mainHtml = `
     ${studentName ? `<div class="match-confirm">מאשרים עבור: ${esc(studentName)}${className ? ' · כיתה ' + esc(className) : ''}</div>` : ''}
     <div class="trip-card">
@@ -316,6 +273,14 @@ async function load(){
     </div>`;
   }
 
+  if (trip.equipment){
+    mainHtml += `
+    <div class="trip-card">
+      <div class="section-eyebrow">ציוד נדרש</div>
+      <p style="margin:0; color:var(--ink); white-space:pre-line;">${esc(trip.equipment)}</p>
+    </div>`;
+  }
+
   if (trip.notes){
     mainHtml += `
     <div class="trip-card">
@@ -341,7 +306,7 @@ async function load(){
   })();
 
   content.innerHTML = mainHtml + `
-    <div class="trip-card">
+    <div class="trip-card" id="approvalCard">
       <div class="section-eyebrow">אישור יציאה</div>
       <h3 class="trip-title" style="font-size:1.2rem;">אישור השתתפות בטיול</h3>
       <div class="student-summary" style="display:flex; gap:22px; flex-wrap:wrap; margin-bottom:20px; padding:14px 16px; background:var(--paper-2); border-radius:12px;">
@@ -349,39 +314,75 @@ async function load(){
         <div><div style="font-size:.72rem; color:var(--ink-soft);">שם משפחה</div><div style="font-weight:700;">${esc(nameParts.last)}</div></div>
         ${className ? `<div><div style="font-size:.72rem; color:var(--ink-soft);">כיתה</div><div style="font-weight:700;">${esc(className)}</div></div>` : ''}
       </div>
-      <div class="field">
-        <label>שם ההורה/ת המאשר/ת</label>
-        <input placeholder="שם מלא" id="approverName" value="${esc(verified?.parentName||'')}">
+      <div class="startBtnWrap" id="startWrap">
+        <button class="btn btn-primary" id="startBtn">✍️ מילוי אישור יציאה</button>
       </div>
-      <div class="field">
-        <label>ת.ז ההורה/ת המאשר/ת</label>
-        <input placeholder="מספר תעודת זהות" id="approverId" inputmode="numeric" maxlength="9" value="${esc(verified?.parentId||'')}">
+      <div id="formArea" style="display:none;">
+        <div id="verifyErrorBox"></div>
+        <div class="field">
+          <label>שם ההורה/ת המאשר/ת</label>
+          <input placeholder="שם מלא" id="approverName">
+        </div>
+        <div class="field">
+          <label>טלפון ההורה/ת המאשר/ת</label>
+          <input placeholder="05X-XXXXXXX" id="approverPhone" type="tel" inputmode="tel">
+        </div>
+        <div class="field">
+          <label>ת.ז ההורה/ת המאשר/ת</label>
+          <input placeholder="מספר תעודת זהות" id="approverId" inputmode="numeric" maxlength="9">
+        </div>
+        <div class="field">
+          <label class="consent-check">
+            <input type="checkbox" id="consentCheck">
+            <span>אני מאשר לבני לצאת ולהשתתף בטיול</span>
+          </label>
+        </div>
+        <div class="field">
+          <label>חתימה</label>
+          <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
+          <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" id="submitApproval">✓ שליחת אישור</button>
       </div>
-      <div class="field">
-        <label class="consent-check">
-          <input type="checkbox" id="consentCheck">
-          <span>אני מאשר לבני לצאת ולהשתתף בטיול</span>
-        </label>
-      </div>
-      <div class="field">
-        <label>חתימה</label>
-        <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
-        <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
-      </div>
-      <button class="btn btn-primary" style="width:100%;" id="submitApproval">✓ שליחת אישור</button>
     </div>
   `;
 
-  const pad = setupSignaturePad(document.getElementById('sigCanvas'));
-  document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
+  let pad = null;
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    document.getElementById('startWrap').style.display = 'none';
+    document.getElementById('formArea').style.display = '';
+    // חשוב: לאתחל את לוח החתימה רק אחרי שהקנבס נראה בפועל — קנבס בתוך אלמנט מוסתר
+    // (display:none) מקבל רוחב 0 ונשאר שבור גם אחרי שמציגים אותו.
+    pad = setupSignaturePad(document.getElementById('sigCanvas'));
+    document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
+  });
 
   document.getElementById('submitApproval').addEventListener('click', async ()=>{
+    const verifyErrorBox = document.getElementById('verifyErrorBox');
+    verifyErrorBox.innerHTML = '';
     const name = cleanText(document.getElementById('approverName').value);
+    const phone = document.getElementById('approverPhone').value;
     const idDigits = document.getElementById('approverId').value.replace(/\D/g,'');
     if (!name){ toast('יש להזין שם'); return; }
+    if (!phone){ toast('יש להזין מספר טלפון'); return; }
     if (idDigits.length !== 9){ toast('יש להזין מספר תעודת זהות בן 9 ספרות'); return; }
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
+
+    // ההצלבה "מאחורי הקלעים": שם פרטי של ההורה + טלפון + כיתה, מול verify_hashes שנשמרו
+    // מראש על מסמך האישור. אם אין בכלל verify_hashes (קישור ישן מלפני האימות) — ממשיכים
+    // בלי הצלבה, כמו קודם.
+    let matchedSlot = null;
+    if ((approval.verify_hashes||[]).length){
+      const candidate = await sha256Hex(`${firstNameOf(name)}|${normPhoneDigits(phone)}|${norm(className)}`);
+      const match = approval.verify_hashes.find(h => h.hash === candidate);
+      if (!match){
+        verifyErrorBox.innerHTML = `<div class="verify-error">אחד או יותר מהפרטים (שם ההורה, הטלפון) אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
+        return;
+      }
+      matchedSlot = match.slot;
+    }
+
     const btn = document.getElementById('submitApproval');
     btn.disabled = true; btn.textContent = 'שולח…';
     try{
@@ -395,8 +396,8 @@ async function load(){
       });
       // שמירת הת.ז שהוזנה לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה באימות (אמא/אבא), ורק אם
       // עדיין ריק שם (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
-      if (verified?.slot){
-        const field = verified.slot === 'mother' ? 'mother_id' : 'father_id';
+      if (matchedSlot){
+        const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
         db.collection('students').doc(studentId).update({ [field]: idDigits }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
       }
       notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`);
