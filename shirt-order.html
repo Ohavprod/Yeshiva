@@ -81,6 +81,8 @@ function notifyPush(type, title, body){
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
+function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -89,30 +91,37 @@ async function sha256Hex(str){
 const params = new URLSearchParams(location.search);
 const studentId = params.get('s');
 
-/* אותו שער אימות רך שקיים באישורי טיולים — 3 פרטים (שם תלמיד/ה, שם הורה, ת.ז) מול גיבוב
-   שנשמר מראש על הרשומה הציבורית-הבטוחה של התלמיד/ה (student_public), ללא חשיפת נתונים גולמיים. */
+/* אותו שער אימות רך שקיים באישורי טיולים — שם תלמיד/ה (מספיק שם פרטי), שם ההורה (מספיק שם
+   פרטי), כיתה וטלפון ההורה, מול גיבוב שנשמר מראש על הרשומה הציבורית-הבטוחה של התלמיד/ה
+   (student_public), ללא חשיפת נתונים גולמיים. ת.ז חובה בטופס אך אינה חלק מההצלבה. */
 function renderVerificationGate(content, pub, onVerified){
   content.innerHTML = `
     <div class="trip-card">
       <div class="section-eyebrow">אימות זהות</div>
       <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
-      <p class="verify-hint">כדי לוודא שההזמנה מתבצעת עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה.</p>
+      <p class="verify-hint">כדי לוודא שההזמנה מתבצעת עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
       <div id="verifyErrorBox"></div>
       <form id="verifyForm" class="verify-box">
-        <div class="field"><label>שם התלמיד/ה (מלא)</label><input id="v_name" required></div>
+        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
         <div class="field"><label>שם ההורה/ת</label><input id="v_parent" required></div>
         <div class="field"><label>כיתה</label><input id="v_class" required></div>
+        <div class="field"><label>טלפון ההורה/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
         <div class="field"><label>ת.ז ההורה/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
         <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
       </form>
     </div>`;
   document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const nameOk = norm(document.getElementById('v_name').value) === norm(pub.full_name);
-    const idDigits = document.getElementById('v_id').value.replace(/\D/g,'');
-    const candidate = await sha256Hex(`${norm(document.getElementById('v_parent').value)}|${idDigits}|${norm(document.getElementById('v_class').value)}`);
-    const hashOk = (pub.verify_hashes||[]).includes(candidate);
-    if (nameOk && hashOk){
+    const enteredId = document.getElementById('v_id').value.replace(/\D/g,'');
+    const nameOk = firstNameOf(document.getElementById('v_name').value) === firstNameOf(pub.full_name);
+    const candidate = await sha256Hex(`${firstNameOf(document.getElementById('v_parent').value)}|${normPhoneDigits(document.getElementById('v_phone').value)}|${norm(document.getElementById('v_class').value)}`);
+    const match = (pub.verify_hashes||[]).find(h => h.hash === candidate);
+    if (nameOk && match){
+      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
+      if (match.slot){
+        const field = match.slot === 'mother' ? 'mother_id' : 'father_id';
+        db.collection('students').doc(studentId).update({ [field]: enteredId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
+      }
       onVerified();
     } else {
       document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
