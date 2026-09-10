@@ -306,6 +306,19 @@ async function fetchStudentDocsForClassIds(classIds){
   const snaps = await Promise.all(chunks.map(chunk => db.collection('students').where('class_id','in', chunk).get()));
   return snaps.flatMap(s => s.docs);
 }
+/* כמו fetchStudentDocsForClassIds, אבל מחזיר רק *מספר* התלמידים דרך שאילתת count() —
+   שנחשבת כקריאה אחת בודדת ל-Firestore בלי קשר לכמה מסמכים תואמים (בניגוד ל-.get()
+   הרגיל, ששם כל מסמך שחוזר נספר כקריאה נפרדת). משמש בכל מקום שרק צריך מספר, לא
+   את התלמידים עצמם (כמו תקציר "טיולים קרובים" בדף הבית) — כדי לא לבזבז מכסת קריאות
+   יומית על נתונים שבפועל אף אחד לא מסתכל עליהם (הפירוט המלא נטען רק בלחיצה על הטיול). */
+async function countStudentsForClassIds(classIds){
+  const ids = Array.from(new Set(classIds)).filter(Boolean);
+  if (!ids.length) return 0;
+  const chunks = [];
+  for (let i=0; i<ids.length; i+=10) chunks.push(ids.slice(i, i+10));
+  const counts = await Promise.all(chunks.map(chunk => db.collection('students').where('class_id','in', chunk).count().get()));
+  return counts.reduce((sum,c)=> sum + c.data().count, 0);
+}
 
 /* ============================================================
    EXCEL IMPORT — reads a student roster from an uploaded xlsx/xls/csv file.
@@ -925,9 +938,8 @@ async function setupPushNotifications(){
     }
     // הודעות שמגיעות כשהטאב פתוח ופעיל (בפוקוס) לא עוברות דרך ה-Service Worker בכלל —
     // ה-SDK מטפל בהן ישירות בעמוד עצמו דרך onMessage. משתמשים ב-Notification רגילה
-    // (לא טוסט בתוך האפליקציה) כדי שזה יקפוץ בטלפון בדיוק כמו כשהאתר סגור — כולל
-    // כשהמסך נעול/מוקטן. מוגן מפני רישום כפול (setupPushNotifications עלול לרוץ יותר
-    // מפעם אחת בסשן).
+    // (לא טוסט בתוך האפליקציה) כדי שזה יקפוץ בטלפון בדיוק כמו כשהאתר סגור. מוגן מפני
+    // רישום כפול (setupPushNotifications עלול לרוץ יותר מפעם אחת בסשן).
     if (!window._fgMessagingBound){
       window._fgMessagingBound = true;
       messaging.onMessage((payload) => {
@@ -1031,9 +1043,9 @@ async function renderHome(body){
   let classesList = [];
   let tripSummaries = [];
   if (isAdminLevel){
-    const [classSnap, studentSnap, tripSnap] = await Promise.all([
+    const [classSnap, studentCountSnap, tripSnap] = await Promise.all([
       db.collection('classes').get(),
-      db.collection('students').get(),
+      db.collection('students').count().get(),
       db.collection('trips').orderBy('created_at','desc').get(),
     ]);
     classesList = classSnap.docs.map(d=>({ id:d.id, ...d.data() }));
@@ -1056,27 +1068,19 @@ async function renderHome(body){
     for (const t of openTrips){
       try{
         const classIds = t.class_ids || (t.class_id ? [t.class_id] : []);
-        const [studentDocs, approvalsSnap] = await Promise.all([
-          fetchStudentDocsForClassIds(classIds),
-          db.collection('trips').doc(t.id).collection('approvals').get(),
+        // כאן צריך רק *מספרים* לתגיות "אישרו/ממתינים" — לא את רשימת התלמידים עצמה.
+        // count() נספר כקריאה אחת בלבד ל-Firestore בלי קשר לכמה תלמידים/אישורים יש
+        // בפועל, בניגוד ל-.get() הרגיל ששם כל מסמך = קריאה נפרדת. הפירוט המלא
+        // (שמות, מי אישר ומי לא) נטען רק בלחיצה על הטיול — ראו renderAdminTripBreakdown.
+        const [totalStudents, approvedSnap] = await Promise.all([
+          countStudentsForClassIds(classIds),
+          db.collection('trips').doc(t.id).collection('approvals').where('status','==','approved').count().get(),
         ]);
-        const approvedIds = new Set(approvalsSnap.docs.filter(d=>d.data().status==='approved').map(d=>d.id));
-        const byClass = {};
-        studentDocs.forEach(d=>{
-          const sd = d.data();
-          const cid = sd.class_id;
-          byClass[cid] = byClass[cid] || { approved:0, total:0, students:[] };
-          byClass[cid].total++;
-          const isApproved = approvedIds.has(d.id);
-          if (isApproved) byClass[cid].approved++;
-          byClass[cid].students.push({ id:d.id, full_name: sd.full_name, approved: isApproved });
-        });
-        const totalStudents = studentDocs.length;
-        const approvedCount = Math.min(approvedIds.size, totalStudents);
+        const approvedCount = Math.min(approvedSnap.data().count, totalStudents);
         pendingCount += Math.max(totalStudents - approvedCount, 0);
-        tripSummaries0.push({ trip:t, approvedCount, totalStudents, byClass });
+        tripSummaries0.push({ trip:t, approvedCount, totalStudents, classIds });
       }catch(err){
-        tripSummaries0.push({ trip:t, approvedCount:null, totalStudents:0, byClass:{} });
+        tripSummaries0.push({ trip:t, approvedCount:null, totalStudents:0, classIds:[] });
       }
     }
     tripSummaries = tripSummaries0;
@@ -1084,7 +1088,7 @@ async function renderHome(body){
     statsHtml = `
     <div class="stat-row">
       <div class="stat stat-classes" data-goto="classes"><div class="stat-icon">${ICON.building}</div><div class="num">${classSnap.size}</div><div class="lbl">כיתות</div></div>
-      <div class="stat stat-students" data-goto="classes"><div class="stat-icon">${ICON.user}</div><div class="num">${studentSnap.size}</div><div class="lbl">תלמידים</div></div>
+      <div class="stat stat-students" data-goto="classes"><div class="stat-icon">${ICON.user}</div><div class="num">${studentCountSnap.data().count}</div><div class="lbl">תלמידים</div></div>
       <div class="stat stat-trips" data-goto="trips"><div class="stat-icon">${ICON.compass}</div><div class="num">${allTripsList.length}</div><div class="lbl">טיולים</div></div>
       <div class="stat stat-pending" data-goto="trips"><div class="stat-icon">${ICON.clock}</div><div class="num">${pendingCount}</div><div class="lbl">אישורים ממתינים</div></div>
     </div>`;
@@ -1113,17 +1117,20 @@ async function renderHome(body){
 
   let teacherTripsHtml = '';
   if (!isAdminLevel && myProfile.class_id && p.manage_class_roster){
-    const [tripsSnap, rosterSnap] = await Promise.all([
+    const [tripsSnap, rosterCountSnap] = await Promise.all([
       db.collection('trips').where('class_ids','array-contains', myProfile.class_id).orderBy('created_at','desc').get(),
-      db.collection('students').where('class_id','==', myProfile.class_id).get(),
+      db.collection('students').where('class_id','==', myProfile.class_id).count().get(),
     ]);
-    const totalStudents = rosterSnap.size;
+    const totalStudents = rosterCountSnap.data().count;
     const tripsForClass = tripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
     const summaries = [];
     for (const t of tripsForClass){
       try{
-        const approvedSnap = await db.collection('trips').doc(t.id).collection('approvals').where('status','==','approved').get();
-        summaries.push({ trip: t, approvedCount: approvedSnap.size, totalStudents });
+        // count() כאן במקום .get() רגיל: נספר כקריאה אחת בלבד ל-Firestore בלי קשר
+        // לכמה תלמידים אישרו בפועל (בניגוד ל-.get(), ששם כל מסמך אישור = קריאה נפרדת) —
+        // חשוב כי זה רץ בלולאה על כל טיולי הכיתה, בכל טעינה של דף הבית.
+        const approvedCountSnap = await db.collection('trips').doc(t.id).collection('approvals').where('status','==','approved').count().get();
+        summaries.push({ trip: t, approvedCount: approvedCountSnap.data().count, totalStudents });
       }catch(err){
         summaries.push({ trip: t, approvedCount: null, totalStudents });
       }
@@ -1249,14 +1256,33 @@ async function renderHome(body){
   });
 
   body.querySelectorAll('.admin-trip-row').forEach(el=>{
-    el.addEventListener('click', ()=>{
+    el.addEventListener('click', async ()=>{
       const idx = el.dataset.idx;
       const panel = document.getElementById(`admin-trip-breakdown-${idx}`);
       const opening = panel.style.display === 'none';
       panel.style.display = opening ? '' : 'none';
       if (opening && !panel.dataset.loaded){
         panel.dataset.loaded = '1';
-        renderAdminTripBreakdown(panel, tripSummaries[idx].byClass, classesList);
+        panel.innerHTML = '<div style="color:var(--ink-soft); font-size:.85rem; padding:8px 0;">טוען…</div>';
+        // הרשימה המלאה (שמות תלמידים, מי אישר ומי לא) נטענת רק עכשיו — בלחיצה בפועל —
+        // ולא מראש עבור כל 6 הטיולים בכל טעינת דף הבית (ראו ההערה למעלה על count()).
+        const { classIds } = tripSummaries[idx];
+        const [studentDocs, approvalsSnap] = await Promise.all([
+          fetchStudentDocsForClassIds(classIds),
+          db.collection('trips').doc(tripSummaries[idx].trip.id).collection('approvals').where('status','==','approved').get(),
+        ]);
+        const approvedIds = new Set(approvalsSnap.docs.map(d=>d.id));
+        const byClass = {};
+        studentDocs.forEach(d=>{
+          const sd = d.data();
+          const cid = sd.class_id;
+          byClass[cid] = byClass[cid] || { approved:0, total:0, students:[] };
+          byClass[cid].total++;
+          const isApproved = approvedIds.has(d.id);
+          if (isApproved) byClass[cid].approved++;
+          byClass[cid].students.push({ id:d.id, full_name: sd.full_name, approved: isApproved });
+        });
+        renderAdminTripBreakdown(panel, byClass, classesList);
       }
     });
   });
@@ -2505,29 +2531,6 @@ async function ensureApprovalDoc(tripId, student){
   }
   return ref;
 }
-/* מרענן את verify_hashes (ואת roster_snapshot של הטיול) לכל התלמידים בטיול — נחוץ לטיולים
-   שנוצרו/נשלחו לפני שהאימות עודכן לפורמט טלפון+שם פרטי (במקום ת.ז), כדי שקישורי אישור
-   שכבר נשלחו יתחילו להשתמש בכלל האימות המעודכן בלי לשלוח קישורים חדשים. */
-async function refreshTripVerifyHashes(trip, students){
-  toast('מרענן נתוני אימות…');
-  try{
-    const batch = db.batch();
-    for (const s of students){
-      const className = classesCache.find(c=>c.id===s.class_id)?.name || '';
-      const ref = db.collection('trips').doc(trip.id).collection('approvals').doc(s.id);
-      batch.set(ref, { verify_hashes: await buildVerifyHashes(s, className) }, { merge:true });
-    }
-    await batch.commit();
-    const rosterDocs = await fetchStudentDocsForClassIds(trip.class_ids || (trip.class_id ? [trip.class_id] : []));
-    const roster_snapshot = await Promise.all(rosterDocs.map(async d=>{
-      const sd = d.data();
-      return { id: d.id, full_name: sd.full_name, class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
-    }));
-    await db.collection('trips').doc(trip.id).update({ roster_snapshot });
-    toast('נתוני האימות עודכנו לכל התלמידים בטיול');
-  }catch(err){ toast('שגיאה בריענון: '+err.message); }
-}
-
 /* חלון קטן לצפייה בפרטי אישור הורה (שם + תאריך + חתימה) */
 /* מודאל פרטים על תלמיד/ה בתוך ניהול אישורים — נפתח בלחיצה על כל המשבצת (גם ממתינים, לא רק מאושרים) */
 function showStudentApprovalDetailModal(trip, student, approval, canManage){
