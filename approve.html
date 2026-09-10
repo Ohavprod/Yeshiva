@@ -200,14 +200,14 @@ function renderVerificationGate(content, studentName, approval, onVerified){
     <div class="trip-card">
       <div class="section-eyebrow">אימות זהות</div>
       <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
-      <p class="verify-hint">כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
+      <p class="verify-hint">על מנת לוודא שהאישור מתבצע עבור התלמיד/ה הנכון, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה.</p>
       <div id="verifyErrorBox"></div>
       <form id="verifyForm" class="verify-box">
-        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
-        <div class="field"><label>שם ההורה/ת המאשר/ת</label><input id="v_parent" required></div>
+        <div class="field"><label>שם התלמיד</label><input id="v_name" required></div>
+        <div class="field"><label>שם ההורה המאשר</label><input id="v_parent" required></div>
         <div class="field"><label>כיתה</label><input id="v_class" required></div>
-        <div class="field"><label>טלפון ההורה/ת המאשר/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
-        <div class="field"><label>ת.ז ההורה/ת המאשר/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
+        <div class="field"><label>טלפון ההורה המאשר</label><input id="v_phone" type="tel" inputmode="tel" required></div>
+        <div class="field"><label>ת.ז ההורה המאשר</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
         <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
       </form>
     </div>`;
