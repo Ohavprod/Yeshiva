@@ -320,6 +320,11 @@ table.data tr:last-child td{ border-bottom:none; }
   position:sticky; right:0; background:var(--surface); z-index:2; text-align:right; box-shadow:-1px 0 0 var(--line);
 }
 .push-prefs-table thead th:first-child{ background:var(--surface); z-index:3; }
+.push-prefs-table .push-pref-cb{ width:20px; height:20px; cursor:pointer; }
+@media (max-width:600px){
+  .push-prefs-table td, .push-prefs-table th{ padding:12px 14px; }
+  .push-prefs-table .push-pref-cb{ width:22px; height:22px; }
+}
 
 .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:.8rem; font-weight:600; }
 .badge-ok{ background:var(--ok-bg); color:var(--ok); }
@@ -484,11 +489,11 @@ table.data tr:last-child td{ border-bottom:none; }
 
   .trip-summary{ flex-direction:column; align-items:stretch !important; }
   .trip-summary h3.c-title{ font-size:1.1rem; }
-  /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — פיזור ברשת של כמה טורים
-     במקום טור אחד ארוך שהכל בו אחד מעל השני; ניהול אישורים תמיד ברוחב מלא */
-  .trip-summary > div:last-child{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px !important; width:100%; }
-  .trip-summary > div:last-child .btn{ width:auto; }
-  .btn-manage-approvals{ grid-column:1 / -1; width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
+  /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — עמודה אחת מסודרת וברוחב
+     אחיד בנייד (במקום רשת שגורמת לכפתורים ארוכים להישבר לכמה שורות באמצע) */
+  .trip-summary > div:last-child{ display:flex; flex-direction:column; align-items:stretch; gap:8px !important; width:100%; }
+  .trip-summary > div:last-child .btn{ width:100%; }
+  .btn-manage-approvals{ width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
 
   .approval-row{ flex-direction:column; align-items:stretch; gap:10px; padding:14px 16px; }
   .approval-row .a-actions{ width:100%; flex-direction:column; align-items:stretch; gap:8px; }
@@ -805,6 +810,8 @@ html[data-theme="dark"] h3.panel-title{ box-shadow:0 6px 14px -6px rgba(0,0,0,.6
   border-right:2px solid currentColor; border-bottom:2px solid currentColor;
   transform:rotate(45deg); border-radius:0 0 2px 0;
 }
+/* גרסה כללית: תגית .open ישירות על ה-chev עצמו (לא רק על הורה), למקרים כמו כותרת כרטיס טיול מתקפלת */
+.chev.open{ transform:rotate(180deg); }
 /* the roster row's own expand arrow — kept very light, barely-there since the whole row is already clickable */
 .roster-row-head .chev{ opacity:.45; }
 .roster-row-head:hover .chev{ opacity:.9; }
