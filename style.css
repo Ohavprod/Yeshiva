@@ -272,6 +272,12 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
 @media (max-width:480px){
   /* בטלפונים צרים גודל הגופן הבסיסי (19px) הופך הכל גדול מדי — מקטינים חזרה לסטנדרט */
   html{ font-size:16px; }
+  /* כרטיסי יצירת קשר (מייל/טלפון) בעמוד הבית: בטלפונים צרים במיוחד הטקסט (בעיקר
+     המייל) נדחק לשורה שנייה בתוך הכרטיס ונראה לא אחיד מול הכרטיס השני — מצמצמים
+     ריפוד/אייקון ופונט כדי לפנות מספיק רוחב לטקסט בשורה אחת. */
+  .contact-card{ padding:14px 16px; gap:10px; }
+  .contact-card .icon svg{ width:22px; height:22px; }
+  .contact-card p{ font-size:.86rem; white-space:nowrap; }
 }
 
 /* ---------- contact section ---------- */
@@ -295,7 +301,7 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
 .app-side{
   width:250px; flex:none; background:var(--navy); color:#dbe4f2;
   padding:18px 18px; display:flex; flex-direction:column; gap:4px;
-  position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto;
+  position:sticky; top:0; align-self:flex-start; min-height:100vh; overflow-y:auto;
 }
 .app-side .brand{ margin-bottom:12px; padding:0 6px; }
 .app-side .role-pill{
@@ -458,6 +464,13 @@ table.data tr:last-child td{ border-bottom:none; }
 
   .app-main{ padding:14px; max-width:100%; }
   .app-topbar{ display:flex; flex-direction:row; align-items:center; gap:10px; margin-bottom:18px; }
+
+  /* טיולים קרובים בדף הבית: כותרת תמיד למעלה, "אישרו/ממתינים" תמיד מתחתיה —
+     בלי זה, טיולים עם כותרת ארוכה "שוברים שורה" והתגיות קופצות פעם לצד אחד
+     ופעם לצד השני, כי justify-content:space-between מתנהג אחרת כשנשאר רק
+     איבר אחד בשורה אחרי גלישה. */
+  .admin-trip-row, .dash-trip-row{ flex-direction:column !important; align-items:flex-start !important; }
+  .admin-trip-row > div:last-child, .dash-trip-row > div:last-child{ width:100%; }
   .app-topbar h1{ font-size:1.3rem; flex:1; }
   #userTag{ font-size:.85rem !important; display:none; } /* אין מקום בשורה העליונה הצרה — מוצג בתוך המגירה */
 
