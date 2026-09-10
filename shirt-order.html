@@ -250,4 +250,256 @@ async function load(){
 load();
 </script>
 </body>
+</html><!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>הזמנת חולצה — ישיבה תיכונית עפולה</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ישיבה תיכונית עפולה">
+<meta property="og:title" content="הזמנת חולצה — ישיבה תיכונית עפולה">
+<meta property="og:description" content="הזמנת חולצת מעלין בקודש, ישירות מהנייד.">
+<meta property="og:image" content="https://ytafula.netlify.app/assets/img/logo.png">
+<meta name="twitter:card" content="summary">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16223d">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  body{ background:var(--paper); }
+  .basd-line{ text-align:right; max-width:640px; margin:0 auto; padding:10px 24px 0; font-size:.8rem; color:var(--ink-soft); font-weight:600; }
+  .notice-wrap{ max-width:640px; margin:0 auto; padding:0 0 60px; }
+  .notice-header{
+    position:relative; overflow:hidden;
+    background:radial-gradient(1100px 500px at 85% -20%, #1f3563 0%, var(--navy) 55%, var(--navy) 100%);
+    color:#fff; text-align:center; padding:40px 24px 34px;
+  }
+  .notice-header .logo-badge{
+    height:112px; width:112px; border-radius:50%; margin:0 auto 14px;
+    background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 28px -8px rgba(0,0,0,.45);
+    overflow:hidden; border:3px solid rgba(255,255,255,.5);
+  }
+  .notice-header .logo-badge img{ height:100%; width:100%; object-fit:cover; }
+  .notice-header .school{ font-family:'Rubik',sans-serif; font-weight:800; font-size:1.3rem; }
+  .notice-header .tag{ font-size:1rem; font-weight:800; color:#fff; margin-top:5px; letter-spacing:.02em; }
+  .notice-body{ padding:0 24px; margin-top:-26px; position:relative; z-index:2; }
+  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
+  .section-eyebrow{
+    display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
+    background:var(--paper-2); padding:5px 14px; border-radius:999px; margin-bottom:14px;
+  }
+  .trip-title{ margin:0 0 14px; font-size:1.5rem; }
+  .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
+  .approved-card{ text-align:center; padding:40px 24px; }
+  .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
+  .shirt-option{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px;
+    border:1.5px solid var(--line); border-radius:12px; cursor:pointer; margin-bottom:10px;
+  }
+  .shirt-option.selected{ border-color:var(--teal); background:#eef8f8; }
+  .shirt-option .so-name{ font-weight:700; color:var(--navy); }
+  .shirt-option .so-price{ font-weight:700; color:var(--steel); }
+  @media (max-width:480px){ .notice-body{ padding:0 14px; } .trip-card{ padding:20px; } }
+</style>
+</head>
+<body>
+<div class="basd-line">בס״ד</div>
+<div class="notice-wrap">
+  <div class="notice-header">
+    <div class="logo-badge"><img src="assets/img/logo.png" alt=""></div>
+    <div class="school">ישיבה תיכונית עפולה</div>
+    <div class="tag">הזמנת חולצה — מעלין בקודש</div>
+  </div>
+  <div class="notice-body" id="content"><p class="center-msg">טוען…</p></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="firebaseClient.js"></script>
+<script>
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
+   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
+const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
+const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
+function notifyPush(type, title, body){
+  if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body }) }).catch(()=>{});
+}
+function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
+function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
+function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
+function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+const params = new URLSearchParams(location.search);
+const studentId = params.get('s');
+
+/* אותו שער אימות רך שקיים באישורי טיולים — שם תלמיד/ה (מספיק שם פרטי), שם ההורה (מספיק שם
+   פרטי), כיתה וטלפון ההורה, מול גיבוב שנשמר מראש על הרשומה הציבורית-הבטוחה של התלמיד/ה
+   (student_public), ללא חשיפת נתונים גולמיים. ת.ז חובה בטופס אך אינה חלק מההצלבה. */
+function renderVerificationGate(content, pub, onVerified){
+  content.innerHTML = `
+    <div class="trip-card">
+      <div class="section-eyebrow">אימות זהות</div>
+      <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
+      <p class="verify-hint">כדי לוודא שההזמנה מתבצעת עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
+      <div id="verifyErrorBox"></div>
+      <form id="verifyForm" class="verify-box">
+        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
+        <div class="field"><label>שם ההורה/ת</label><input id="v_parent" required></div>
+        <div class="field"><label>כיתה</label><input id="v_class" required></div>
+        <div class="field"><label>טלפון ההורה/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
+        <div class="field"><label>ת.ז ההורה/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
+        <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
+      </form>
+    </div>`;
+  document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const enteredId = document.getElementById('v_id').value.replace(/\D/g,'');
+    const nameOk = firstNameOf(document.getElementById('v_name').value) === firstNameOf(pub.full_name);
+    const candidate = await sha256Hex(`${firstNameOf(document.getElementById('v_parent').value)}|${normPhoneDigits(document.getElementById('v_phone').value)}|${norm(document.getElementById('v_class').value)}`);
+    const match = (pub.verify_hashes||[]).find(h => h.hash === candidate);
+    if (nameOk && match){
+      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
+      if (match.slot){
+        const field = match.slot === 'mother' ? 'mother_id' : 'father_id';
+        db.collection('students').doc(studentId).update({ [field]: enteredId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
+      }
+      onVerified();
+    } else {
+      document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
+    }
+  });
+}
+
+async function load(){
+  const content = document.getElementById('content');
+  if (!studentId){
+    content.innerHTML = '<p class="center-msg">קישור לא תקין. יש לוודא שהקישור המלא שהתקבל הועתק במלואו.</p>';
+    return;
+  }
+  const studentRef = db.collection('students').doc(studentId);
+  const pubRef = db.collection('student_public').doc(studentId);
+  const catalogRef = db.collection('settings').doc('shirt_catalog');
+
+  let pubSnap, catalogSnap, studentSnap;
+  try{
+    [pubSnap, catalogSnap, studentSnap] = await Promise.all([pubRef.get(), catalogRef.get(), studentRef.get().catch(()=>null)]);
+  }catch(err){
+    content.innerHTML = '<p class="center-msg">אירעה שגיאה בטעינת הדף. נא לנסות שוב מאוחר יותר, או לפנות למחנך/ת הכיתה.</p>';
+    return;
+  }
+  if (!pubSnap.exists){
+    content.innerHTML = '<p class="center-msg">לא נמצאו פרטי תלמיד/ה התואמים לקישור זה. יש לפנות למחנך/ת הכיתה.</p>';
+    return;
+  }
+  const pub = pubSnap.data();
+  const catalog = (catalogSnap.exists && Array.isArray(catalogSnap.data().items)) ? catalogSnap.data().items : [];
+  const existingOrder = (studentSnap && studentSnap.exists) ? studentSnap.data().shirt_order : null;
+
+  if (existingOrder && existingOrder.type_name){
+    content.innerHTML = `
+      <div class="trip-card approved-card">
+        <div class="big-check">✅</div>
+        <h2 style="margin:0 0 6px;">ההזמנה נקלטה, תודה!</h2>
+        <p style="color:var(--ink-soft); margin:0;">
+          עבור ${esc(pub.full_name)} נרשמה חולצה מסוג "${esc(existingOrder.type_name)}" במידה ${esc(existingOrder.size)}.<br>
+          ${existingOrder.ordered_by_name ? 'נרשם ע״י ' + esc(existingOrder.ordered_by_name) : ''}
+        </p>
+        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:14px;">לשינוי ההזמנה יש לפנות למחנך/ת הכיתה או למזכירות.</p>
+      </div>`;
+    return;
+  }
+
+  if (!catalog.length){
+    content.innerHTML = '<p class="center-msg">מבצע החולצות טרם נפתח. נא לנסות שוב מאוחר יותר.</p>';
+    return;
+  }
+
+  renderVerificationGate(content, pub, ()=> renderShirtForm());
+
+  function renderShirtForm(){
+    let selectedType = null;
+    content.innerHTML = `
+      <div class="trip-card">
+        <div class="section-eyebrow">בחירת חולצה</div>
+        <h2 class="trip-title" style="font-size:1.25rem;">הזמנת חולצה — ${esc(pub.full_name)}</h2>
+        <div id="shirtTypesList">
+          ${catalog.map((t,i)=>`
+            <div class="shirt-option" data-idx="${i}">
+              <span class="so-name">${esc(t.name)}</span>
+              <span class="so-price">${esc(fmtCost(t.price))}</span>
+            </div>`).join('')}
+        </div>
+        <div class="field" id="sizeFieldWrap" style="display:none; margin-top:10px;">
+          <label>מידה</label>
+          <select id="shirtSize"></select>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>שם ההורה/ת הרושם/ת את ההזמנה</label>
+          <input id="orderParentName" placeholder="שם מלא">
+        </div>
+        <button class="btn btn-primary" style="width:100%; margin-top:10px;" id="submitShirtOrder" disabled>שליחת ההזמנה</button>
+      </div>`;
+
+    const sizeWrap = document.getElementById('sizeFieldWrap');
+    const sizeSel = document.getElementById('shirtSize');
+    const submitBtn = document.getElementById('submitShirtOrder');
+    document.querySelectorAll('.shirt-option').forEach(opt=>{
+      opt.addEventListener('click', ()=>{
+        document.querySelectorAll('.shirt-option').forEach(o=>o.classList.remove('selected'));
+        opt.classList.add('selected');
+        selectedType = catalog[Number(opt.dataset.idx)];
+        const sizes = (selectedType.sizes && selectedType.sizes.length) ? selectedType.sizes : ['S','M','L','XL'];
+        sizeSel.innerHTML = sizes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+        sizeWrap.style.display = '';
+        submitBtn.disabled = false;
+      });
+    });
+
+    submitBtn.addEventListener('click', async ()=>{
+      const parentName = cleanText(document.getElementById('orderParentName').value);
+      if (!parentName){ toast('יש להזין שם הורה'); return; }
+      if (!selectedType){ toast('יש לבחור סוג חולצה'); return; }
+      submitBtn.disabled = true; submitBtn.textContent = 'שולח…';
+      try{
+        await studentRef.update({
+          shirt_order: {
+            type_name: selectedType.name,
+            price: selectedType.price || '',
+            size: sizeSel.value,
+            ordered_by_name: parentName,
+            ordered_at: firebase.firestore.FieldValue.serverTimestamp(),
+            paid: false,
+            payment_method: '',
+            payment_method_other: '',
+          },
+        });
+        notifyPush('shirt_order_submitted', 'הזמנת חולצה חדשה', `התקבלה הזמנת חולצה עבור ${pub.full_name} (${selectedType.name}, מידה ${sizeSel.value})`);
+        load();
+      }catch(err){
+        toast('אירעה שגיאה, נא לנסות שוב');
+        submitBtn.disabled = false; submitBtn.textContent = 'שליחת ההזמנה';
+      }
+    });
+  }
+}
+load();
+</script>
+</body>
 </html>
