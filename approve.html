@@ -180,39 +180,49 @@ function setupSignaturePad(canvas){
 }
 
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
+function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-/* מסך אימות זהות — לפני הצגת פרטי הטיול, ההורה מתבקש להזין 4 פרטים תואמים
-   (ת.ז, שם התלמיד/ה, שם ההורה, כיתה) כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה,
-   גם אם הקישור הועבר בטעות או שיש מספר תלמידים בעלי שם דומה.
-   ההשוואה מתבצעת מול גיבוב (hash) חד-כיווני שנשמר מראש על מסמך האישור — לעולם לא
-   נשלף כאן ת.ז/שם הורה גולמיים ממסד הנתונים (וגם לא ניתן, כי ההורה אינו מחובר למערכת). */
+/* מסך אימות זהות — לפני הצגת פרטי הטיול, ההורה מתבקש להזין פרטים תואמים
+   (שם התלמיד/ה, שם ההורה, כיתה, טלפון ההורה) כדי לוודא שהאישור מתבצע עבור התלמיד/ה
+   הנכון/ה, גם אם הקישור הועבר בטעות או שיש מספר תלמידים בעלי שם דומה.
+   השוואת השמות (תלמיד/ה והורה) סובלנית — מספיק שם פרטי, לא חייבים שם מלא.
+   ת.ז ההורה/ת הוא שדה חובה, אבל אינו חלק מההשוואה (כי לרוב ההורים היא עדיין לא רשומה
+   במערכת) — הוא רק נשמר בהמשך לכרטיס התלמיד/ה (ראה onVerified).
+   ההשוואה עצמה מתבצעת מול גיבוב (hash) חד-כיווני שנשמר מראש על מסמך האישור — לעולם לא
+   נשלף כאן שם/טלפון הורה גולמיים ממסד הנתונים (וגם לא ניתן, כי ההורה אינו מחובר למערכת). */
 function renderVerificationGate(content, studentName, approval, onVerified){
   content.innerHTML = `
     <div class="trip-card">
       <div class="section-eyebrow">אימות זהות</div>
       <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
-      <p class="verify-hint">כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה, נא למלא את 4 הפרטים הבאים כפי שנמסרו לישיבה.</p>
+      <p class="verify-hint">כדי לוודא שהאישור מתבצע עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
       <div id="verifyErrorBox"></div>
       <form id="verifyForm" class="verify-box">
-        <div class="field"><label>שם התלמיד/ה (מלא)</label><input id="v_name" required></div>
-        <div class="field"><label>שם ההורה/ת</label><input id="v_parent" required></div>
+        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
+        <div class="field"><label>שם ההורה/ת המאשר/ת</label><input id="v_parent" required></div>
         <div class="field"><label>כיתה</label><input id="v_class" required></div>
-        <div class="field"><label>ת.ז ההורה/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
+        <div class="field"><label>טלפון ההורה/ת המאשר/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
+        <div class="field"><label>ת.ז ההורה/ת המאשר/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
         <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
       </form>
     </div>`;
   document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const nameOk = norm(document.getElementById('v_name').value) === norm(studentName);
-    const idDigits = document.getElementById('v_id').value.replace(/\D/g,'');
-    const candidate = await sha256Hex(`${norm(document.getElementById('v_parent').value)}|${idDigits}|${norm(document.getElementById('v_class').value)}`);
-    const hashOk = (approval.verify_hashes||[]).includes(candidate);
-    if (nameOk && hashOk){
-      onVerified();
+    const enteredName = cleanText(document.getElementById('v_name').value);
+    const enteredParent = cleanText(document.getElementById('v_parent').value);
+    const enteredClass = cleanText(document.getElementById('v_class').value);
+    const enteredPhone = document.getElementById('v_phone').value;
+    const enteredId = document.getElementById('v_id').value.replace(/\D/g,'');
+    const nameOk = firstNameOf(enteredName) === firstNameOf(studentName);
+    const candidate = await sha256Hex(`${firstNameOf(enteredParent)}|${normPhoneDigits(enteredPhone)}|${norm(enteredClass)}`);
+    const match = (approval.verify_hashes||[]).find(h => h.hash === candidate);
+    if (nameOk && match){
+      onVerified({ slot: match.slot, parentName: enteredParent, parentId: enteredId });
     } else {
       document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
     }
@@ -259,13 +269,13 @@ async function load(){
   }
 
   if ((approval.verify_hashes||[]).length){
-    renderVerificationGate(content, studentName, approval, ()=> renderTripAndApprovalForm());
+    renderVerificationGate(content, studentName, approval, (verified)=> renderTripAndApprovalForm(verified));
   } else {
     // גיבוי: אישורים ישנים שנוצרו לפני הוספת האימות (אין להם verify_hashes) — ממשיכים בלי שער האימות
-    renderTripAndApprovalForm();
+    renderTripAndApprovalForm(null);
   }
 
-  function renderTripAndApprovalForm(){
+  function renderTripAndApprovalForm(verified){
   let mainHtml = `
     ${studentName ? `<div class="match-confirm">מאשרים עבור: ${esc(studentName)}${className ? ' · כיתה ' + esc(className) : ''}</div>` : ''}
     <div class="trip-card">
@@ -335,11 +345,11 @@ async function load(){
       </div>
       <div class="field">
         <label>שם ההורה/ת המאשר/ת</label>
-        <input placeholder="שם מלא" id="approverName">
+        <input placeholder="שם מלא" id="approverName" value="${esc(verified?.parentName||'')}">
       </div>
       <div class="field">
         <label>ת.ז ההורה/ת המאשר/ת</label>
-        <input placeholder="מספר תעודת זהות" id="approverId" inputmode="numeric" maxlength="9">
+        <input placeholder="מספר תעודת זהות" id="approverId" inputmode="numeric" maxlength="9" value="${esc(verified?.parentId||'')}">
       </div>
       <div class="field">
         <label class="consent-check">
@@ -377,6 +387,12 @@ async function load(){
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
+      // שמירת הת.ז שהוזנה לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה באימות (אמא/אבא), ורק אם
+      // עדיין ריק שם (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
+      if (verified?.slot){
+        const field = verified.slot === 'mother' ? 'mother_id' : 'father_id';
+        db.collection('students').doc(studentId).update({ [field]: idDigits }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
+      }
       notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`);
       load();
     }catch(err){
