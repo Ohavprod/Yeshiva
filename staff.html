@@ -296,6 +296,37 @@ async function syncStudentPublicRecord(studentId, student){
   }catch(err){ /* לא קריטי — אם הכלל עדיין לא הוגדר ב-Firestore, הקישורים הישנים ימשיכו לעבוד כרגיל */ }
 }
 
+/* --- ספירה בעלות "קריאה אחת" בלי קשר לכמה מסמכים תואמים ---
+   ה-Firestore SDK מסוג "compat" (הנטען כאן דרך תגי <script>, לא ה-SDK המודולרי) לא
+   תומך במתודת count() בכלל — נבדק ישירות מול הגרסה הטעונה כאן: המתודה פשוט לא קיימת
+   על אובייקט ה-Query, גם בגרסה העדכנית ביותר של ה-SDK. לכן במקום `.collection(...).count().get()`
+   (שזרק "count is not a function"), פונים ישירות ל-REST API של Firestore
+   (runAggregationQuery) עם טוקן ה-ID של המשתמש/ת המחובר/ת — זו הדרך שבה count() אמור
+   לעבוד "מתחת למכסה", וזו בדיוק אותה עלות (קריאה אחת) בלי קשר לכמה מסמכים תואמים. */
+async function firestoreCount_(collectionId, opts){
+  opts = opts || {};
+  const token = await auth.currentUser.getIdToken();
+  const parentPath = opts.parentPath ? '/' + opts.parentPath : '';
+  const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents${parentPath}:runAggregationQuery`;
+  const structuredQuery = { from: [{ collectionId }] };
+  if (opts.where) structuredQuery.where = opts.where;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredAggregationQuery: { structuredQuery, aggregations: [{ alias: 'count', count: {} }] } }),
+  });
+  if (!res.ok) throw new Error('שגיאת ספירה (' + res.status + ')');
+  const rows = await res.json();
+  const row = Array.isArray(rows) ? rows.find(r => r.result) : null;
+  return row ? parseInt(row.result.aggregateFields.count.integerValue, 10) : 0;
+}
+function eqFilter_(field, value){
+  return { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: String(value) } } };
+}
+function inFilter_(field, values){
+  return { fieldFilter: { field: { fieldPath: field }, op: 'IN', value: { arrayValue: { values: values.map(v=>({ stringValue: String(v) })) } } } };
+}
+
 /* שולף מסמכי תלמידים עבור רשימת כיתות, בקבוצות של עד 10 (מגבלת Firestore ל-'in') —
    נחוץ בעיקר לטיולים "כלל ישיבתיים" עם יותר מ-10 כיתות */
 async function fetchStudentDocsForClassIds(classIds){
@@ -306,8 +337,8 @@ async function fetchStudentDocsForClassIds(classIds){
   const snaps = await Promise.all(chunks.map(chunk => db.collection('students').where('class_id','in', chunk).get()));
   return snaps.flatMap(s => s.docs);
 }
-/* כמו fetchStudentDocsForClassIds, אבל מחזיר רק *מספר* התלמידים דרך שאילתת count() —
-   שנחשבת כקריאה אחת בודדת ל-Firestore בלי קשר לכמה מסמכים תואמים (בניגוד ל-.get()
+/* כמו fetchStudentDocsForClassIds, אבל מחזיר רק *מספר* התלמידים דרך firestoreCount_ —
+   שנחשב כקריאה אחת בודדת ל-Firestore בלי קשר לכמה מסמכים תואמים (בניגוד ל-.get()
    הרגיל, ששם כל מסמך שחוזר נספר כקריאה נפרדת). משמש בכל מקום שרק צריך מספר, לא
    את התלמידים עצמם (כמו תקציר "טיולים קרובים" בדף הבית) — כדי לא לבזבז מכסת קריאות
    יומית על נתונים שבפועל אף אחד לא מסתכל עליהם (הפירוט המלא נטען רק בלחיצה על הטיול). */
@@ -316,8 +347,8 @@ async function countStudentsForClassIds(classIds){
   if (!ids.length) return 0;
   const chunks = [];
   for (let i=0; i<ids.length; i+=10) chunks.push(ids.slice(i, i+10));
-  const counts = await Promise.all(chunks.map(chunk => db.collection('students').where('class_id','in', chunk).count().get()));
-  return counts.reduce((sum,c)=> sum + c.data().count, 0);
+  const counts = await Promise.all(chunks.map(chunk => firestoreCount_('students', { where: inFilter_('class_id', chunk) })));
+  return counts.reduce((sum,c)=> sum + c, 0);
 }
 
 /* ============================================================
@@ -1043,9 +1074,9 @@ async function renderHome(body){
   let classesList = [];
   let tripSummaries = [];
   if (isAdminLevel){
-    const [classSnap, studentCountSnap, tripSnap] = await Promise.all([
+    const [classSnap, studentCount, tripSnap] = await Promise.all([
       db.collection('classes').get(),
-      db.collection('students').count().get(),
+      firestoreCount_('students'),
       db.collection('trips').orderBy('created_at','desc').get(),
     ]);
     classesList = classSnap.docs.map(d=>({ id:d.id, ...d.data() }));
@@ -1072,11 +1103,11 @@ async function renderHome(body){
         // count() נספר כקריאה אחת בלבד ל-Firestore בלי קשר לכמה תלמידים/אישורים יש
         // בפועל, בניגוד ל-.get() הרגיל ששם כל מסמך = קריאה נפרדת. הפירוט המלא
         // (שמות, מי אישר ומי לא) נטען רק בלחיצה על הטיול — ראו renderAdminTripBreakdown.
-        const [totalStudents, approvedSnap] = await Promise.all([
+        const [totalStudents, approvedCount0] = await Promise.all([
           countStudentsForClassIds(classIds),
-          db.collection('trips').doc(t.id).collection('approvals').where('status','==','approved').count().get(),
+          firestoreCount_('approvals', { parentPath: `trips/${t.id}`, where: eqFilter_('status','approved') }),
         ]);
-        const approvedCount = Math.min(approvedSnap.data().count, totalStudents);
+        const approvedCount = Math.min(approvedCount0, totalStudents);
         pendingCount += Math.max(totalStudents - approvedCount, 0);
         tripSummaries0.push({ trip:t, approvedCount, totalStudents, classIds });
       }catch(err){
@@ -1088,7 +1119,7 @@ async function renderHome(body){
     statsHtml = `
     <div class="stat-row">
       <div class="stat stat-classes" data-goto="classes"><div class="stat-icon">${ICON.building}</div><div class="num">${classSnap.size}</div><div class="lbl">כיתות</div></div>
-      <div class="stat stat-students" data-goto="classes"><div class="stat-icon">${ICON.user}</div><div class="num">${studentCountSnap.data().count}</div><div class="lbl">תלמידים</div></div>
+      <div class="stat stat-students" data-goto="classes"><div class="stat-icon">${ICON.user}</div><div class="num">${studentCount}</div><div class="lbl">תלמידים</div></div>
       <div class="stat stat-trips" data-goto="trips"><div class="stat-icon">${ICON.compass}</div><div class="num">${allTripsList.length}</div><div class="lbl">טיולים</div></div>
       <div class="stat stat-pending" data-goto="trips"><div class="stat-icon">${ICON.clock}</div><div class="num">${pendingCount}</div><div class="lbl">אישורים ממתינים</div></div>
     </div>`;
@@ -1117,20 +1148,19 @@ async function renderHome(body){
 
   let teacherTripsHtml = '';
   if (!isAdminLevel && myProfile.class_id && p.manage_class_roster){
-    const [tripsSnap, rosterCountSnap] = await Promise.all([
+    const [tripsSnap, totalStudents] = await Promise.all([
       db.collection('trips').where('class_ids','array-contains', myProfile.class_id).orderBy('created_at','desc').get(),
-      db.collection('students').where('class_id','==', myProfile.class_id).count().get(),
+      firestoreCount_('students', { where: eqFilter_('class_id', myProfile.class_id) }),
     ]);
-    const totalStudents = rosterCountSnap.data().count;
     const tripsForClass = tripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
     const summaries = [];
     for (const t of tripsForClass){
       try{
-        // count() כאן במקום .get() רגיל: נספר כקריאה אחת בלבד ל-Firestore בלי קשר
+        // firestoreCount_ כאן במקום .get() רגיל: נספר כקריאה אחת בלבד ל-Firestore בלי קשר
         // לכמה תלמידים אישרו בפועל (בניגוד ל-.get(), ששם כל מסמך אישור = קריאה נפרדת) —
         // חשוב כי זה רץ בלולאה על כל טיולי הכיתה, בכל טעינה של דף הבית.
-        const approvedCountSnap = await db.collection('trips').doc(t.id).collection('approvals').where('status','==','approved').count().get();
-        summaries.push({ trip: t, approvedCount: approvedCountSnap.data().count, totalStudents });
+        const approvedCount = await firestoreCount_('approvals', { parentPath: `trips/${t.id}`, where: eqFilter_('status','approved') });
+        summaries.push({ trip: t, approvedCount, totalStudents });
       }catch(err){
         summaries.push({ trip: t, approvedCount: null, totalStudents });
       }
