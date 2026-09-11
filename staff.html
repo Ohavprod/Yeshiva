@@ -2212,7 +2212,12 @@ function renderTripsList(container, trips){
   const classIdsOf = (t) => t.class_ids || (t.class_id ? [t.class_id] : []);
   const classNamesOf = (t) => t.is_school_wide ? 'כלל ישיבתי' : classIdsOf(t).map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
 
-  const tripCardHtml = (t) => `
+  const tripCardHtml = (t) => {
+    // "נוכחות ביום הטיול" רלוונטי רק החל מתאריך הטיול עצמו — לפני זה אין עדיין מה לסמן,
+    // וזה רק מבלבל/מפתה לפתוח מסך ריק. טיול בלי תאריך מוגדר בכלל (t.trip_date ריק) ממשיך
+    // להציג את הכפתור תמיד, כמו קודם, כי אין לפיו על מה להתבסס.
+    const showAttendanceBtn = !t.trip_date || t.trip_date <= todayStr;
+    return `
     <div class="card card-pad" style="margin-bottom:18px;" data-trip-id="${t.id}">
       <div class="trip-summary" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
         <div class="trip-card-toggle" data-trip-toggle="${t.id}" style="cursor:pointer; flex:1; min-width:180px; display:flex; align-items:flex-start; gap:8px;">
@@ -2231,21 +2236,25 @@ function renderTripsList(container, trips){
             ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
             ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
             ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
-            <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
           </div>
           ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} פרטי הטיול המלאים</button>
-          <button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} נוכחות ביום הטיול</button>
+          ${showAttendanceBtn ? `<button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} נוכחות ביום הטיול</button>` : ''}
+          <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
+          ${(canEditInfo || p.view_all_classes || p.create_trips || p.edit_trip_details) ? `
           <details class="kebab-menu">
             <summary class="icon-btn kebab-btn" title="עוד פעולות">⋮</summary>
             <div class="kebab-panel">
               ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
               ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
               ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
-              <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
             </div>
-          </details>
+          </details>` : ''}
         </div>
+        <!-- (ניהול אישורים תמיד גלוי ישירות — לא כפתור משני; אצל מחנך/ת רגיל/ה, זו למעשה
+             הפעולה החשובה ביותר, ולכן היא לא יכולה להיות "קבורה" בתוך תפריט ⋮ בנייד. -->
+        <!-- דדופ: הכפתור הראשי היחיד שנשאר גם בגרסת דסקטופ הישנה הוא זה שמעל, בלי כפילות בתוך kebab-panel. -->
+        <!-- כפתור נוכחות מוצג רק אם showAttendanceBtn === true (ר' חישוב למעלה) -->
       </div>
       <div class="trip-edit-box" id="trip-edit-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="notice-preview trip-info" id="trip-info-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
@@ -2253,6 +2262,7 @@ function renderTripsList(container, trips){
       <div class="trip-detail" id="trip-detail-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
     </div>
   `;
+  };
 
   // עוטף את קיבוץ-לפי-כיתה או הרשימה השטוחה, כדי לעשות בו שימוש גם לרשימה הפעילה וגם לארכיון
   const tripsHtml = (tripsArr) => {
@@ -4606,7 +4616,7 @@ async function renderMeetings(body){
                 <div class="topic-title">${esc(t.title||'(נושא ללא כותרת)')}</div>
                 ${t.notes ? `<div class="topic-notes">${esc(t.notes)}</div>` : ''}
                 <div style="display:flex; gap:8px; margin-top:8px;">
-                  <button class="btn btn-outline btn-sm edit-topic" data-mid="${m.id}" data-tid="${t.id}">${ICON.edit} עריכה</button>
+                  ${canManage ? `<button class="btn btn-outline btn-sm edit-topic" data-mid="${m.id}" data-tid="${t.id}">${ICON.edit} עריכה</button>` : ''}
                   ${canManage ? `<button class="btn btn-outline btn-sm del-topic" data-mid="${m.id}" data-tid="${t.id}" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash}</button>` : ''}
                 </div>
               </div>
