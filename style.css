@@ -247,8 +247,8 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .site-nav .brand img{ height:38px; width:38px; flex:none; }
   .site-nav .brand .t2{ display:none; }
   .site-nav .btn{ padding:8px 12px; font-size:.74rem; flex:none; white-space:nowrap; }
-  .contact-grid{ grid-template-columns:1fr; }
-  .contact-card{ padding:16px 18px; gap:12px; }
+  .contact-grid{ grid-template-columns:1fr !important; }
+  .contact-card{ padding:16px 18px !important; gap:12px !important; }
 
   /* ---------- index.html: כותרת עליונה, עדכונים וגלריה במובייל ---------- */
   .hero{ padding:40px 0 56px; }
@@ -438,170 +438,14 @@ table.data tr:last-child td{ border-bottom:none; }
 .roster-detail .rd-row.contact-row{ align-items:center; }
 .roster-detail .rd-notes{ background:var(--paper-2); border-radius:10px; padding:10px 14px; margin-top:12px; font-size:.9rem; }
 
-@media (max-width:900px){
-  /* גודל בסיס מוגדל במובייל — פחות "כיווץ" ביחס לדסקטופ, לקריאות וברור טובים יותר */
-  html{ font-size:18px; }
-  /* !important נחוץ כאן: הכלל הלא-מותנה .trip-form-grid (בהמשך הקובץ) מגדיר grid-template-columns
-     משלו, ומכיוון שהוא מופיע *אחרי* הכלל הזה בקובץ, הוא מנצח אותו תמיד ללא תלות ברוחב המסך —
-     זו הייתה הסיבה שטופס "יצירת טיול" נשאר בשתי עמודות וגלש החוצה בנייד. */
-  .trip-form-grid{ grid-template-columns:1fr !important; }
-  .notice-preview{ position:static; margin-top:20px; }
-  .app-shell{ flex-direction:column; min-height:auto; }
 
-  .mobile-menu-btn{ display:inline-flex; }
-  .mobile-brand-header{
-    display:flex; align-items:center; gap:10px; background:var(--navy); color:#fff;
-    margin:-14px -14px 14px; padding:14px 16px; border-radius:0 0 16px 16px;
-  }
-  .mobile-brand-header img{ height:42px; width:42px; border-radius:50%; background:#fff; }
-  .mobile-brand-header span{ font-family:'Rubik',sans-serif; font-weight:700; font-size:1.05rem; }
-
-  .app-side{
-    position:fixed; top:0; right:0; height:100vh; width:250px; max-width:80vw;
-    transform:translateX(100%); transition:transform .25s ease; z-index:150;
-    overflow-y:auto; align-items:stretch;
-  }
-  .app-side.open{ transform:translateX(0); }
-  .app-side nav#sideNav{ display:flex; flex-direction:column; gap:4px; }
-  .side-link{ white-space:normal; font-size:1.02rem; padding:13px 14px; }
-
-  .app-main{ padding:14px; max-width:100%; }
-  .app-topbar{ display:flex; flex-direction:row; align-items:center; gap:10px; margin-bottom:18px; }
-
-  /* טיולים קרובים בדף הבית: כותרת תמיד למעלה, "אישרו/ממתינים" תמיד מתחתיה —
-     בלי זה, טיולים עם כותרת ארוכה "שוברים שורה" והתגיות קופצות פעם לצד אחד
-     ופעם לצד השני, כי justify-content:space-between מתנהג אחרת כשנשאר רק
-     איבר אחד בשורה אחרי גלישה. */
-  .admin-trip-row, .dash-trip-row{ flex-direction:column !important; align-items:flex-start !important; }
-  .admin-trip-row > div:last-child, .dash-trip-row > div:last-child{ width:100%; }
-  .app-topbar h1{ font-size:1.3rem; flex:1; }
-  #userTag{ font-size:.85rem !important; display:none; } /* אין מקום בשורה העליונה הצרה — מוצג בתוך המגירה */
-
-  .stat-row{ grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:20px; }
-  .stat{ padding:14px; }
-  .stat .num{ font-size:1.6rem; }
-  .stat .lbl{ font-size:.82rem; }
-
-  .card-pad{ padding:16px; }
-  h3{ font-size:1.15rem; }
-  .form-grid{ grid-template-columns:1fr; gap:12px; }
-  .field{ margin-bottom:12px; }
-  .field label{ font-size:.9rem; }
-  .field input, .field select, .field textarea{ padding:13px 14px; font-size:1rem; }
-  .btn{ padding:12px 22px; font-size:.98rem; }
-  .btn-sm{ padding:9px 16px; font-size:.88rem; }
-
-  /* טבלת ההרשאות-לפי-תפקיד (מטריצה רחבה) — נשארת טבלה רגילה (לא display:block) בתוך
-     המעטפת הגלילה (.push-prefs-scroll), עם העמודה הראשונה מוצמדת (sticky). הצירוף
-     הקודם של display:block על הטבלה יחד עם display:table על thead/tbody/tr בנפרד
-     שבר את חלוקת הרוחב בין העמודות (כל שורה "חישבה" את עצמה כטבלה נפרדת) — זו
-     הייתה הסיבה שהמסך נראה שבור/מחורבש בנייד. */
-  table.push-prefs-table{ font-size:.92rem; }
-
-  /* שאר הטבלאות (משתמשים/כיתות/עדכונים) — כרטיסים מסודרים במקום טבלה שנשברת/נגללת */
-  table.data:not(.push-prefs-table){ display:block; border:none; }
-  table.data:not(.push-prefs-table) thead{ display:none; }
-  table.data:not(.push-prefs-table) tbody{ display:block; }
-  table.data:not(.push-prefs-table) tr{
-    display:block; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:var(--paper-2);
-  }
-  table.data:not(.push-prefs-table) td{
-    display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:left;
-    padding:7px 0; border-bottom:1px dashed var(--line); font-size:.92rem; white-space:normal;
-  }
-  table.data:not(.push-prefs-table) td:last-child{ border-bottom:none; }
-  table.data:not(.push-prefs-table) td[data-label]::before{
-    content: attr(data-label); font-weight:700; color:var(--ink-soft); font-size:.76rem; flex:none; margin-inline-end:10px;
-  }
-  table.data:not(.push-prefs-table) td:not([data-label]){ justify-content:flex-end; padding-top:10px; }
-
-  .trip-summary{ flex-direction:column; align-items:stretch !important; }
-  .trip-summary h3.c-title{ font-size:1.1rem; }
-
-  /* בנייד: מסתירים את הפעולות המשניות (עריכה/מחיקה/קישור/ניהול אישורים) ומעבירים
-     אותן לתפריט "⋮" — שליחת חוזר/פרטי הטיול/נוכחות נשארות גלויות תמיד. */
-  .desktop-only-actions{ display:none; }
-  .kebab-menu{ display:inline-block; position:relative; }
-  .kebab-menu > summary{ list-style:none; cursor:pointer; }
-  .kebab-menu > summary::-webkit-details-marker{ display:none; }
-  .kebab-panel{
-    position:absolute; left:0; top:calc(100% + 6px); background:var(--surface); border:1px solid var(--line);
-    border-radius:var(--radius-sm); box-shadow:var(--shadow); padding:8px; display:flex; flex-direction:column;
-    gap:6px; z-index:30; min-width:190px;
-  }
-  .kebab-panel .btn{ width:100%; justify-content:flex-start; }
-  /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — עמודה אחת מסודרת וברוחב
-     אחיד בנייד (במקום רשת שגורמת לכפתורים ארוכים להישבר לכמה שורות באמצע).
-     !important על flex-direction/align-items כי האלמנט מקבל style inline (display/gap/
-     align-items/flex-wrap) מ-JS כשנפתח, שבלי זה היה גובר על הכללים האלה ומשאיר את
-     הכפתורים מיושרים למרכז ברוחבים שונים במקום עמודה אחידה. */
-  .trip-summary > div:last-child{
-    display:flex !important; flex-direction:column !important; align-items:stretch !important;
-    flex-wrap:nowrap !important; gap:8px !important; width:100%;
-  }
-  .trip-summary > div:last-child .btn{ width:100%; }
-  .btn-manage-approvals{ width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
-
-  .approval-row{ flex-direction:column; align-items:stretch; gap:10px; padding:14px 16px; }
-  .approval-row .a-actions{ width:100%; flex-direction:column; align-items:stretch; gap:8px; }
-  .approval-row .a-actions .parent-contact-group{ width:100%; justify-content:space-between; }
-  .approval-row .a-actions > .icon-btn{ align-self:flex-start; }
-
-  /* נוכחות ביום הטיול: שני כפתורים (נכח/ה, חסר/ה) לצד תלמיד/ה — נשארים באותה שורה
-     במקום אחד מעל השני, כדי שהרשימה לא תתארך לחינם. */
-  #attList .approval-row{ flex-direction:row; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; }
-  #attList .approval-row .a-actions{ width:auto; flex-direction:row; align-items:center; gap:6px; }
-  #attList .approval-row .att-btn{ padding:8px 10px; font-size:.8rem; }
-  .parent-contact-group{ padding:6px 10px; }
-  .parent-label{ font-size:.8rem; }
-  .icon-btn{ width:44px; height:44px; }
-  .icon-btn svg{ width:20px; height:20px; }
-  .icon-btn{ font-size:1.1rem; }
-  .badge{ font-size:.8rem; padding:5px 12px; }
-
-  .login-card{ padding:24px 20px; }
-
-  .checkgroup{ gap:8px; }
-  .chip-check{ padding:9px 14px; font-size:.86rem; }
-
-  .class-group-head{ font-size:1.05rem; margin:20px 0 10px; }
-
-  /* המד (בר ההתקדמות) נדחס מדי כשהוא לצד הספירות בשורה אחת בנייד — עובר לעמודה
-     כדי שהבר עצמו יקבל רוחב מלא וברור, בכל מקום שבו approval-summary מופיע */
-  .approval-summary{ flex-direction:column; align-items:stretch; padding:14px; gap:14px; }
-  .as-counts{ width:100%; justify-content:space-between; }
-  .as-bar-wrap{ width:100%; }
-  .as-num{ font-size:1.7rem; }
-  .as-lbl{ font-size:.82rem; }
-
-  /* אותה בעיה בבר ההתקדמות לפי כיתה (פירוט טיול בלוח הבקרה) — הבר נדחס לצד
-     השם והמספרים; עובר לשורה נפרדת ברוחב מלא בנייד */
-  .atb-class-row{ flex-wrap:wrap; row-gap:8px; }
-  .atb-class-row .atb-name{ flex:1 1 auto; }
-  .atb-class-row .atb-bar{ order:3; flex:1 1 100%; }
-  .atb-class-row .atb-nums{ order:2; }
-  .atb-class-row .chev{ order:2; }
-
-  .roster-row-head{ padding:15px 16px; }
-  .roster-row-name{ font-size:1.08rem; }
-
-  /* לוח אירועים בנייד — הכפתורים (צפייה בפרטים/עריכה/מחיקה) עוברים לשורה נפרדת
-     ברוחב מלא, כדי שלא יידחסו לצד תג התאריך והכותרת בשורה אחת צרה מדי */
-  .event-row{ align-items:flex-start; padding:12px 2px; flex-wrap:wrap; }
-  .event-date-badge{ min-width:66px; padding:7px 8px; }
-  .event-row-main{ flex-basis:0; }
-  .event-row-actions{ flex:1 1 100%; justify-content:flex-end; flex-wrap:wrap; margin-top:6px; }
-  .ev-heb{ font-size:.68rem; }
-  .ev-greg{ font-size:.72rem; }
-  .task-row{ flex-wrap:wrap; }
-}
 
 @media (max-width:480px){
   html{ font-size:17px; }
   .stat-row{ grid-template-columns:1fr 1fr; }
   .icon-btn{ width:46px; height:46px; }
-  .confirm-box{ padding:20px; }
-  .confirm-box h3{ font-size:1.05rem; }
+  .confirm-box{ padding:20px !important; }
+  .confirm-box h3{ font-size:1.05rem !important; }
 }
 
 /* ---------- confirm dialog ---------- */
@@ -1054,3 +898,174 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
   margin:16px 0 8px;
 }
 .month-group-head:first-child{ margin-top:0; }
+
+
+/* ============================================================
+ * המדיה-קוורי הבאה (מסך עד 900px) הועברה לכאן, לסוף הקובץ, בכוונה.
+ * היא הייתה בעבר קרוב לתחילת הקובץ — ולכן כללי CSS "בסיסיים" (לא-מותנים) שנוספו
+ * אחר-כך לרכיבים חדשים (למשל .kebab-menu, .trip-form-grid) תמיד ניצחו אותה בפועל
+ * במכשירים ניידים, למרות שנראתה תקינה בקוד: ב-CSS, כששני כללים עם אותה רמת
+ * ספציפיות (למשל class יחיד) סותרים, מנצח *מי שמופיע אחרון בקובץ* — בלי קשר
+ * לכך שהאחד נמצא במדיה-קוורי והשני לא. מיקום המדיה-קוורי כאן, בסוף הקובץ,
+ * מבטיח שהיא תמיד תנצח בהתנגשות, בלי להזדקק ל-!important בכל כלל חדש שנוסף.
+ * ============================================================ */
+@media (max-width:900px){
+  /* גודל בסיס מוגדל במובייל — פחות "כיווץ" ביחס לדסקטופ, לקריאות וברור טובים יותר */
+  html{ font-size:18px; }
+  /* !important נחוץ כאן: הכלל הלא-מותנה .trip-form-grid (בהמשך הקובץ) מגדיר grid-template-columns
+     משלו, ומכיוון שהוא מופיע *אחרי* הכלל הזה בקובץ, הוא מנצח אותו תמיד ללא תלות ברוחב המסך —
+     זו הייתה הסיבה שטופס "יצירת טיול" נשאר בשתי עמודות וגלש החוצה בנייד. */
+  .trip-form-grid{ grid-template-columns:1fr !important; }
+  .notice-preview{ position:static; margin-top:20px; }
+  .app-shell{ flex-direction:column; min-height:auto; }
+
+  .mobile-menu-btn{ display:inline-flex; }
+  .mobile-brand-header{
+    display:flex; align-items:center; gap:10px; background:var(--navy); color:#fff;
+    margin:-14px -14px 14px; padding:14px 16px; border-radius:0 0 16px 16px;
+  }
+  .mobile-brand-header img{ height:42px; width:42px; border-radius:50%; background:#fff; }
+  .mobile-brand-header span{ font-family:'Rubik',sans-serif; font-weight:700; font-size:1.05rem; }
+
+  .app-side{
+    position:fixed; top:0; right:0; height:100vh; width:250px; max-width:80vw;
+    transform:translateX(100%); transition:transform .25s ease; z-index:150;
+    overflow-y:auto; align-items:stretch;
+  }
+  .app-side.open{ transform:translateX(0); }
+  .app-side nav#sideNav{ display:flex; flex-direction:column; gap:4px; }
+  .side-link{ white-space:normal; font-size:1.02rem; padding:13px 14px; }
+
+  .app-main{ padding:14px; max-width:100%; }
+  .app-topbar{ display:flex; flex-direction:row; align-items:center; gap:10px; margin-bottom:18px; }
+
+  /* טיולים קרובים בדף הבית: כותרת תמיד למעלה, "אישרו/ממתינים" תמיד מתחתיה —
+     בלי זה, טיולים עם כותרת ארוכה "שוברים שורה" והתגיות קופצות פעם לצד אחד
+     ופעם לצד השני, כי justify-content:space-between מתנהג אחרת כשנשאר רק
+     איבר אחד בשורה אחרי גלישה. */
+  .admin-trip-row, .dash-trip-row{ flex-direction:column !important; align-items:flex-start !important; }
+  .admin-trip-row > div:last-child, .dash-trip-row > div:last-child{ width:100%; }
+  .app-topbar h1{ font-size:1.3rem; flex:1; }
+  #userTag{ font-size:.85rem !important; display:none; } /* אין מקום בשורה העליונה הצרה — מוצג בתוך המגירה */
+
+  .stat-row{ grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:20px; }
+  .stat{ padding:14px; }
+  .stat .num{ font-size:1.6rem; }
+  .stat .lbl{ font-size:.82rem; }
+
+  .card-pad{ padding:16px; }
+  h3{ font-size:1.15rem; }
+  .form-grid{ grid-template-columns:1fr; gap:12px; }
+  .field{ margin-bottom:12px; }
+  .field label{ font-size:.9rem; }
+  .field input, .field select, .field textarea{ padding:13px 14px; font-size:1rem; }
+  .btn{ padding:12px 22px; font-size:.98rem; }
+  .btn-sm{ padding:9px 16px; font-size:.88rem; }
+
+  /* טבלת ההרשאות-לפי-תפקיד (מטריצה רחבה) — נשארת טבלה רגילה (לא display:block) בתוך
+     המעטפת הגלילה (.push-prefs-scroll), עם העמודה הראשונה מוצמדת (sticky). הצירוף
+     הקודם של display:block על הטבלה יחד עם display:table על thead/tbody/tr בנפרד
+     שבר את חלוקת הרוחב בין העמודות (כל שורה "חישבה" את עצמה כטבלה נפרדת) — זו
+     הייתה הסיבה שהמסך נראה שבור/מחורבש בנייד. */
+  table.push-prefs-table{ font-size:.92rem; }
+
+  /* שאר הטבלאות (משתמשים/כיתות/עדכונים) — כרטיסים מסודרים במקום טבלה שנשברת/נגללת */
+  table.data:not(.push-prefs-table){ display:block; border:none; }
+  table.data:not(.push-prefs-table) thead{ display:none; }
+  table.data:not(.push-prefs-table) tbody{ display:block; }
+  table.data:not(.push-prefs-table) tr{
+    display:block; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:var(--paper-2);
+  }
+  table.data:not(.push-prefs-table) td{
+    display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:left;
+    padding:7px 0; border-bottom:1px dashed var(--line); font-size:.92rem; white-space:normal;
+  }
+  table.data:not(.push-prefs-table) td:last-child{ border-bottom:none; }
+  table.data:not(.push-prefs-table) td[data-label]::before{
+    content: attr(data-label); font-weight:700; color:var(--ink-soft); font-size:.76rem; flex:none; margin-inline-end:10px;
+  }
+  table.data:not(.push-prefs-table) td:not([data-label]){ justify-content:flex-end; padding-top:10px; }
+
+  .trip-summary{ flex-direction:column; align-items:stretch !important; }
+  .trip-summary h3.c-title{ font-size:1.1rem; }
+
+  /* בנייד: מסתירים את הפעולות המשניות (עריכה/מחיקה/קישור/ניהול אישורים) ומעבירים
+     אותן לתפריט "⋮" — שליחת חוזר/פרטי הטיול/נוכחות נשארות גלויות תמיד.
+     !important נחוץ כאן: אותה בעיית סדר-הופעה כמו ב-.trip-form-grid למעלה — הכללים
+     הלא-מותנים ל-.desktop-only-actions/.kebab-menu מופיעים אחר-כך בקובץ (בסגנון
+     "דסקטופ כברירת מחדל, נייד = חריגה"), ולכן מנצחים בלי ה-!important, גם בתוך המדיה-קוורי. */
+  .desktop-only-actions{ display:none !important; }
+  .kebab-menu{ display:inline-block !important; position:relative; }
+  .kebab-menu > summary{ list-style:none; cursor:pointer; }
+  .kebab-menu > summary::-webkit-details-marker{ display:none; }
+  .kebab-panel{
+    position:absolute; left:0; top:calc(100% + 6px); background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius-sm); box-shadow:var(--shadow); padding:8px; display:flex; flex-direction:column;
+    gap:6px; z-index:30; min-width:190px;
+  }
+  .kebab-panel .btn{ width:100%; justify-content:flex-start; }
+  /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — עמודה אחת מסודרת וברוחב
+     אחיד בנייד (במקום רשת שגורמת לכפתורים ארוכים להישבר לכמה שורות באמצע).
+     !important על flex-direction/align-items כי האלמנט מקבל style inline (display/gap/
+     align-items/flex-wrap) מ-JS כשנפתח, שבלי זה היה גובר על הכללים האלה ומשאיר את
+     הכפתורים מיושרים למרכז ברוחבים שונים במקום עמודה אחידה. */
+  .trip-summary > div:last-child{
+    display:flex !important; flex-direction:column !important; align-items:stretch !important;
+    flex-wrap:nowrap !important; gap:8px !important; width:100%;
+  }
+  .trip-summary > div:last-child .btn{ width:100%; }
+  .btn-manage-approvals{ width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
+
+  .approval-row{ flex-direction:column; align-items:stretch; gap:10px; padding:14px 16px; }
+  .approval-row .a-actions{ width:100%; flex-direction:column; align-items:stretch; gap:8px; }
+  .approval-row .a-actions .parent-contact-group{ width:100%; justify-content:space-between; }
+  .approval-row .a-actions > .icon-btn{ align-self:flex-start; }
+
+  /* נוכחות ביום הטיול: שני כפתורים (נכח/ה, חסר/ה) לצד תלמיד/ה — נשארים באותה שורה
+     במקום אחד מעל השני, כדי שהרשימה לא תתארך לחינם. */
+  #attList .approval-row{ flex-direction:row; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; }
+  #attList .approval-row .a-actions{ width:auto; flex-direction:row; align-items:center; gap:6px; }
+  #attList .approval-row .att-btn{ padding:8px 10px; font-size:.8rem; }
+  .parent-contact-group{ padding:6px 10px; }
+  .parent-label{ font-size:.8rem; }
+  .icon-btn{ width:44px; height:44px; }
+  .icon-btn svg{ width:20px; height:20px; }
+  .icon-btn{ font-size:1.1rem; }
+  .badge{ font-size:.8rem; padding:5px 12px; }
+
+  .login-card{ padding:24px 20px; }
+
+  .checkgroup{ gap:8px; }
+  .chip-check{ padding:9px 14px; font-size:.86rem; }
+
+  .class-group-head{ font-size:1.05rem; margin:20px 0 10px; }
+
+  /* המד (בר ההתקדמות) נדחס מדי כשהוא לצד הספירות בשורה אחת בנייד — עובר לעמודה
+     כדי שהבר עצמו יקבל רוחב מלא וברור, בכל מקום שבו approval-summary מופיע */
+  .approval-summary{ flex-direction:column; align-items:stretch; padding:14px; gap:14px; }
+  .as-counts{ width:100%; justify-content:space-between; }
+  .as-bar-wrap{ width:100%; }
+  .as-num{ font-size:1.7rem; }
+  .as-lbl{ font-size:.82rem; }
+
+  /* אותה בעיה בבר ההתקדמות לפי כיתה (פירוט טיול בלוח הבקרה) — הבר נדחס לצד
+     השם והמספרים; עובר לשורה נפרדת ברוחב מלא בנייד */
+  .atb-class-row{ flex-wrap:wrap; row-gap:8px; }
+  .atb-class-row .atb-name{ flex:1 1 auto; }
+  .atb-class-row .atb-bar{ order:3; flex:1 1 100%; }
+  .atb-class-row .atb-nums{ order:2; }
+  .atb-class-row .chev{ order:2; }
+
+  .roster-row-head{ padding:15px 16px; }
+  .roster-row-name{ font-size:1.08rem; }
+
+  /* לוח אירועים בנייד — הכפתורים (צפייה בפרטים/עריכה/מחיקה) עוברים לשורה נפרדת
+     ברוחב מלא, כדי שלא יידחסו לצד תג התאריך והכותרת בשורה אחת צרה מדי */
+  .event-row{ align-items:flex-start; padding:12px 2px; flex-wrap:wrap; }
+  .event-date-badge{ min-width:66px; padding:7px 8px; }
+  .event-row-main{ flex-basis:0; }
+  .event-row-actions{ flex:1 1 100%; justify-content:flex-end; flex-wrap:wrap; margin-top:6px; }
+  .ev-heb{ font-size:.68rem; }
+  .ev-greg{ font-size:.72rem; }
+  .task-row{ flex-wrap:wrap; }
+}
