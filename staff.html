@@ -966,6 +966,9 @@ async function setupPushNotifications(){
     if (token && token !== myProfile.fcm_token){
       await db.collection('users').doc(myProfile.id).update({ fcm_token: token });
       myProfile.fcm_token = token;
+      // משוב גלוי (לא רק ב-console) — כדי שאפשר יהיה לוודא בפועל, מהטלפון עצמו, שטוקן
+      // חדש נשמר בהצלחה, בלי צורך לפתוח כלים למפתחים או לבדוק ב-Firestore ידנית.
+      toast('🔔 התראות פוש הופעלו במכשיר הזה');
     }
     // הודעות שמגיעות כשהטאב פתוח ופעיל (בפוקוס) לא עוברות דרך ה-Service Worker בכלל —
     // ה-SDK מטפל בהן ישירות בעמוד עצמו דרך onMessage. משתמשים ב-Notification רגילה
@@ -983,7 +986,10 @@ async function setupPushNotifications(){
         n.onclick = () => { window.focus(); n.close(); };
       });
     }
-  }catch(err){ console.warn('push setup failed:', err); }
+  }catch(err){
+    console.warn('push setup failed:', err);
+    toast('⚠️ הפעלת התראות פוש נכשלה: ' + err.message);
+  }
 }
 
 /* ============================================================
