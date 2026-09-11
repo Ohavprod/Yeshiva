@@ -480,13 +480,19 @@ table.data tr:last-child td{ border-bottom:none; }
 .kebab-menu{ display:none; }
 
 /* ---------- נקודות בדיקה בנוכחות יום הטיול: כפתור מחיקה קטן צמוד לכל נקודה מותאמת
-   אישית (לא ליציאה/חזרה הקבועות) ---------- */
-.att-leg-btn-wrap{ position:relative; }
+   אישית (לא ליציאה/חזרה הקבועות). תג עגול אדום שחופף לפינת הכפתור (position:absolute) —
+   לא איבר-flex נפרד לצד הכפתור, כדי שלא ייווצר מרווח מוזר בינו לבין הכפתור שלו (הבעיה
+   בגרסה הקודמת). אדום קבוע (לא רק ב-hover), כי במגע אין hover בכלל. ---------- */
+.att-leg-btn-wrap{ position:relative; display:inline-flex; }
+.att-leg-btn-wrap .att-leg-btn{ padding-inline-start:20px; }
 .att-leg-del{
-  border:none; background:transparent; color:var(--ink-soft); cursor:pointer; font-size:.8rem;
-  width:20px; height:20px; margin-inline-start:-6px; border-radius:50%; line-height:1;
+  position:absolute; top:-6px; inset-inline-start:-2px; z-index:2;
+  width:18px; height:18px; border-radius:50%; padding:0; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--danger); color:#fff; border:2px solid var(--surface);
+  font-size:.62rem; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25);
 }
-.att-leg-del:hover{ color:var(--danger); background:rgba(198,64,64,.1); }
+.att-leg-del:hover{ background:#a83232; }
 
 /* ---------- archive toggle (past trips) ---------- */
 .archive-toggle{
