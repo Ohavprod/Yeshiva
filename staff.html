@@ -1232,9 +1232,7 @@ async function renderHome(body){
   eventTripsCache = eventTripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
 
   const eventsHtml = `
-    <div class="card card-pad" style="margin-top:20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <h3 style="margin:0; color:var(--steel);">${ICON.calendar} לוח אירועים</h3>
+    <div class="card card-pad events-card" style="margin-top:20px;">
         ${canManageEvents ? `<button class="btn btn-outline btn-sm" id="addEventBtn">${ICON.plus} הוספת אירוע</button>` : ''}
       </div>
       ${canManageEvents ? `<div id="addEventWrap" style="display:none; margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">${eventFormHtml('new')}</div>` : ''}
@@ -1447,7 +1445,7 @@ function eventRowHtml(ev, canManageEvents, idx){
       </div>
       <div class="event-row-main">
         <strong>${esc(ev.title)}</strong>${badge}
-        <div style="font-size:.82rem; color:var(--ink-soft); margin-top:3px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div class="event-meta">
           ${ev.time ? `<span style="display:inline-flex; align-items:center; gap:4px;">${ICON.clock} ${esc(ev.time)}</span>` : ''}
           ${ev.location ? `<span style="display:inline-flex; align-items:center; gap:4px;">${ICON.pin} ${esc(ev.location)}</span>` : ''}
         </div>
@@ -2300,7 +2298,7 @@ function renderTripsList(container, trips){
       <div class="trip-summary" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
         <div class="trip-card-toggle" data-trip-toggle="${t.id}" style="cursor:pointer; flex:1; min-width:180px; display:flex; align-items:flex-start; gap:8px;">
           <span class="chev" style="flex:none; margin-top:7px; color:var(--ink-soft);">⌄</span>
-          <div>
+          <div style="min-width:0; flex:1;">
             <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span></h3>
             ${t.subtitle ? `<div style="font-size:.82rem; color:var(--ink-soft); font-weight:600; margin:-2px 0 4px;">${esc(t.subtitle)}</div>` : ''}
             <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
@@ -3195,6 +3193,10 @@ function matchedCity(city){
 function canViewTripSensitivityStats(){
   return myProfile.role === 'מנהל מערכת' || myProfile.role === 'רכז חברתי' || myProfile.role === 'ראש הישיבה';
 }
+/* אותם שלושה תפקידים בלבד רואים את סך כל המשתתפים (תלמידים+הורים) באירוע חברתי */
+function canViewEventParticipantTotals(){
+  return myProfile.role === 'מנהל מערכת' || myProfile.role === 'רכז חברתי' || myProfile.role === 'ראש הישיבה';
+}
 function buildCityAndSensitivityStatsHtml(approvedStudents, heading, showSensitivities){
   if (!approvedStudents.length) return '';
   const cityCounts = {};
@@ -3665,6 +3667,23 @@ async function renderTripDetail(panel, trip){
     return;
   }
 
+/* מחשב מחדש את סך כל המשתתפים באירוע (תלמידים+הורים, לפי participants_students/
+   participants_parents שנשמרו על כל מסמך אישור מאושר) ומעדכן רק את הספרה בכרטיס —
+   נקרא הן ברינדור הראשוני והן אחרי כל שינוי בתיבות העריכה ליד תלמיד/ה, בלי לרנדר
+   מחדש את כל פאנל ניהול האישורים (שהיה סוגר תפריטים/קיפולים פתוחים). */
+function updateEventParticipantsTotal(panel, students, approvalsById){
+  const el = panel.querySelector('#eventParticipantsTotal');
+  if (!el) return;
+  let totalStudents = 0, totalParents = 0;
+  students.forEach(s=>{
+    const appr = approvalsById[s.id];
+    if (appr?.status !== 'approved') return;
+    totalStudents += Number.isFinite(appr.participants_students) ? appr.participants_students : 1;
+    totalParents += Number.isFinite(appr.participants_parents) ? appr.participants_parents : 0;
+  });
+  el.textContent = `${totalStudents} תלמידים · ${totalParents} הורים · סה"כ ${totalStudents + totalParents}`;
+}
+
   const totalCount = students.length;
   const approvedCount = students.filter(s=> approvalsById[s.id]?.status === 'approved').length;
   const waitingCount = totalCount - approvedCount;
@@ -3687,10 +3706,21 @@ async function renderTripDetail(panel, trip){
     ? buildCityAndSensitivityStatsHtml(approvedStudents, 'כלל הכיתות בטיול זה', showSens)
     : buildCityAndSensitivityStatsHtml(approvedStudents, '', showSens);
 
+  // סך כל המשתתפים באירוע חברתי (תלמידים+הורים, כולל נלווים) — רק לראש הישיבה,
+  // מנהל מערכת ורכז חברתי. מתעדכן בלייב דרך updateEventParticipantsTotal בלי
+  // לרנדר מחדש את כל הפאנל בכל שינוי מספר בתיבות העריכה שלמטה.
+  const showEventTotals = trip.kind === 'event' && canViewEventParticipantTotals();
+  const eventTotalsHtml = showEventTotals ? `
+    <div class="card card-pad" id="eventParticipantsTotalCard" style="margin-bottom:16px; background:var(--paper-2);">
+      <h3 style="margin:0 0 6px; font-size:1rem;">👥 סך כל המשתתפים באירוע</h3>
+      <div id="eventParticipantsTotal" style="font-size:1.4rem; font-weight:700; color:var(--navy);"></div>
+    </div>` : '';
+
   const canViewCert = p.view_all_classes || p.manage_trip_certificates;
 
   panel.innerHTML = `
     ${summaryHtml}
+    ${eventTotalsHtml}
     ${cityStatsHtml}
     ${(p.manage_trip_logistics || canViewCert) ? `<div class="section-toggle" id="tripLogisticsToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.wallet} ניהול טיול</span><span class="chev">⌄</span>
@@ -3727,6 +3757,7 @@ async function renderTripDetail(panel, trip){
     });
   }
   renderTripAttendanceCard(panel.querySelector('#tripAttendanceCard'), trip, students, approvedStudents, tripClassIds, canManage);
+  if (showEventTotals) updateEventParticipantsTotal(panel, students, approvalsById);
 
   const rowsEl = panel.querySelector('#approvalRows');
   const moreBtn = panel.querySelector('#tripMoreActionsBtn');
@@ -3749,6 +3780,19 @@ async function renderTripDetail(panel, trip){
     if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
     const classTag = ''; // כפול מיותר כעת שכל כיתה מקובצת תחת כותרת קיפול משלה
     const hasSensitivity = !!(s.notes && s.notes.trim());
+    // באירוע חברתי בלבד: לצד תלמיד/ה מאושר/ת, מציגים כמה משתתפים סה"כ נרשמו איתו/ה
+    // (תלמידים/הורים) — ברירת המחדל 1 תלמיד ו-0 הורים אם ההורה לא מילא בטופס, וניתן
+    // לערוך את המספרים ישירות כאן (למשל הרשמה טלפונית/ידנית שלא עברה דרך הטופס).
+    const isEventTrip = trip.kind === 'event';
+    const participantsEditHtml = (isEventTrip && isApproved) ? (canManage ? `
+      <div class="participants-edit" data-student="${s.id}" onclick="event.stopPropagation()">
+        <span class="pe-label">👥 משתתפים:</span>
+        <label class="pe-field">תלמידים <input type="number" class="pe-students" min="1" step="1" value="${appr?.participants_students ?? 1}"></label>
+        <label class="pe-field">הורים <input type="number" class="pe-parents" min="0" step="1" value="${appr?.participants_parents ?? 0}"></label>
+      </div>` : `
+      <div class="participants-edit">
+        <span>👥 ${appr?.participants_students ?? 1} תלמידים · ${appr?.participants_parents ?? 0} הורים</span>
+      </div>`) : '';
     return `
       <div class="approval-row ${hasSensitivity ? 'has-sensitivity' : ''}" data-student="${s.id}">
         <div>
@@ -3757,6 +3801,7 @@ async function renderTripDetail(panel, trip){
             ${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}
             ${hasSensitivity ? `<span class="badge badge-urgent" title="${esc(s.notes)}">${ICON.bell} רגישות</span>` : ''}
           </div>
+          ${participantsEditHtml}
         </div>
         <div class="a-actions">
           ${parents.map(pr=>`
@@ -3817,6 +3862,27 @@ async function renderTripDetail(panel, trip){
         if (winRef) winRef.location.href = waUrl; else window.open(waUrl, '_blank');
       }catch(err){ if (winRef) winRef.close(); toast('שגיאה: '+err.message); }
     });
+  });
+
+  // עריכת מספר משתתפים (תלמידים/הורים) לצד תלמיד/ה מאושר/ת באירוע חברתי — נשמר
+  // אוטומטית בשינוי, כמו יתר תיבות ההגדרות בלוח הבקרה; מעדכן גם את סך כל המשתתפים
+  // שמוצג למעלה (אם מוצג) בלי לרענן את כל הפאנל.
+  rowsEl.querySelectorAll('.participants-edit[data-student]').forEach(wrap=>{
+    const sid = wrap.dataset.student;
+    const studentsInput = wrap.querySelector('.pe-students');
+    const parentsInput = wrap.querySelector('.pe-parents');
+    const saveField = async (field, input, fallback)=>{
+      const n = parseInt(input.value, 10);
+      const val = Number.isFinite(n) && n >= fallback ? n : fallback;
+      input.value = val;
+      try{
+        await db.collection('trips').doc(trip.id).collection('approvals').doc(sid).set({ [field]: val }, { merge:true });
+        approvalsById[sid] = { ...(approvalsById[sid]||{}), [field]: val };
+        updateEventParticipantsTotal(panel, students, approvalsById);
+      }catch(err){ toast('שגיאה: '+err.message); }
+    };
+    studentsInput.addEventListener('change', ()=> saveField('participants_students', studentsInput, 1));
+    parentsInput.addEventListener('change', ()=> saveField('participants_parents', parentsInput, 0));
   });
 
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); showBulkSendModal(trip, students, approvalsById); });
@@ -4606,7 +4672,23 @@ function renderTaskGroups(tasks){
   const groupsEl = document.getElementById('tasksGroups');
   const byGroup = {};
   tasks.forEach(t=> (byGroup[t.group_title || 'כללי'] = byGroup[t.group_title || 'כללי'] || []).push(t));
-  const sortedGroupKeys = Object.keys(byGroup).sort((a,b)=> (a==='כללי') ? 1 : (b==='כללי') ? -1 : a.localeCompare(b,'he'));
+  // סדר קבוצות הנושאים עצמן: לא לפי אלף-בית אלא לפי המשימה הכי דחופה/קרובה שבתוכן —
+  // קבוצה עם משימה דחופה שלא בוצעה קודם לכולן, אחריה לפי תאריך היעד הקרוב ביותר שבה,
+  // כדי שכל העמוד ייקרא "מהקרוב לרחוק" ולא רק בתוך כל כרטיס נושא בנפרד.
+  const groupPriority = (items)=>{
+    const open = items.filter(t=>!t.done);
+    const hasUrgent = open.some(t=>t.urgent);
+    const dates = open.map(t=>t.due_date).filter(Boolean).sort();
+    return { hasUrgent, nearestDate: dates[0] || null };
+  };
+  const sortedGroupKeys = Object.keys(byGroup).sort((a,b)=>{
+    const pa = groupPriority(byGroup[a]), pb = groupPriority(byGroup[b]);
+    if (pa.hasUrgent !== pb.hasUrgent) return pa.hasUrgent ? -1 : 1;
+    if (!pa.nearestDate && !pb.nearestDate) return a.localeCompare(b,'he');
+    if (!pa.nearestDate) return 1;
+    if (!pb.nearestDate) return -1;
+    return pa.nearestDate.localeCompare(pb.nearestDate) || a.localeCompare(b,'he');
+  });
 
   if (!sortedGroupKeys.length){
     groupsEl.innerHTML = `<div class="card card-pad" style="color:var(--ink-soft);">אין עדיין משימות. אפשר להוסיף את הראשונה למעלה 👆</div>`;
@@ -5488,7 +5570,7 @@ async function renderPushPrefs(body){
             ${PUSH_NOTIFICATION_TYPES.map(t=>`
               <tr>
                 <td>${esc(t.label)}</td>
-                ${allRoles.map(r=>`<td style="text-align:center;"><input type="checkbox" class="push-pref-cb" data-type="${t.key}" data-role="${esc(r)}" ${(prefs[t.key]?.roles||[]).includes(r)?'checked':''}></td>`).join('')}
+                ${allRoles.map(r=>`<td class="push-pref-td"><label class="push-pref-cell"><input type="checkbox" class="push-pref-cb" data-type="${t.key}" data-role="${esc(r)}" ${(prefs[t.key]?.roles||[]).includes(r)?'checked':''}></label></td>`).join('')}
               </tr>`).join('')}
           </tbody>
         </table>
