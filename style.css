@@ -201,6 +201,26 @@ section{ padding:88px 0; position:relative; }
 .info-card h3{ font-size:1.05rem; margin-bottom:6px; }
 .info-card p{ color:var(--ink-soft); font-size:.92rem; margin:0; }
 
+.schedule-card{
+  margin-top:40px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  padding:28px 32px; box-shadow:var(--shadow-sm);
+}
+.schedule-card h3{ margin:0 0 18px; font-size:1.15rem; }
+.schedule-table{ display:grid; grid-template-columns:repeat(2,1fr); gap:2px 32px; }
+.sch-row{
+  display:flex; align-items:center; gap:14px; padding:11px 4px; border-bottom:1px dashed var(--line);
+}
+.sch-time{
+  flex:none; width:64px; font-weight:800; color:var(--steel); font-variant-numeric:tabular-nums; direction:ltr; text-align:center;
+}
+.sch-name{ color:var(--ink); font-weight:500; }
+.sch-row.sch-break .sch-name{ color:var(--ink-soft); font-weight:600; }
+.sch-row.sch-break .sch-time{ color:var(--ink-soft); }
+@media (max-width:860px){
+  .schedule-table{ grid-template-columns:1fr; gap:0; }
+  .schedule-card{ padding:22px 18px; margin-top:24px; }
+}
+
 .about-wrap{ display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center; }
 .about-wrap .ring-figure{ position:relative; aspect-ratio:1; }
 
@@ -212,20 +232,34 @@ section{ padding:88px 0; position:relative; }
 }
 .gallery-tab:hover{ border-color:var(--teal); color:var(--teal); }
 .gallery-tab.active{ background:linear-gradient(135deg, var(--steel), var(--teal)); border-color:transparent; color:#fff; }
-.gallery-grid{
-  display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:150px; gap:14px;
+.gallery-viewport{
+  position:relative; overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image:linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
 }
-.gallery-grid .g1{ grid-column:span 2; grid-row:span 2; }
+.gallery-track{
+  display:flex; gap:16px; width:max-content;
+  animation:gallery-scroll 45s linear infinite;
+}
+.gallery-track:hover{ animation-play-state:paused; }
+@keyframes gallery-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
 .gallery-tile{
+  flex:none; width:270px; height:190px;
   border-radius:var(--radius-sm); overflow:hidden; position:relative;
   background:linear-gradient(135deg,var(--steel),var(--teal));
   background-size:cover; background-position:center;
-  display:flex; align-items:flex-end; padding:14px; color:#fff; font-size:.85rem; font-weight:600;
+  display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between;
+  padding:14px; color:#fff; font-size:.85rem; font-weight:600;
 }
 .gallery-tile::after{
-  content:""; position:absolute; inset:0; background:linear-gradient(0deg,rgba(10,20,40,.55),transparent 60%);
+  content:""; position:absolute; inset:0; background:linear-gradient(0deg,rgba(10,20,40,.6),transparent 55%);
 }
 .gallery-tile span{ position:relative; z-index:1; }
+.gallery-tile .g-cat{
+  background:rgba(255,255,255,.22); backdrop-filter:blur(4px); border:1px solid rgba(255,255,255,.4);
+  padding:3px 12px; border-radius:999px; font-size:.72rem; font-weight:700;
+}
+.gallery-tile .g-cap{ font-size:.88rem; }
 
 footer.site-footer{ background:var(--navy); color:#c7d4ea; padding:48px 0 28px; }
 footer.site-footer .container{ display:flex; justify-content:space-between; flex-wrap:wrap; gap:24px; }
@@ -239,7 +273,6 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .hero-actions{ justify-content:center; }
   .info-grid{ grid-template-columns:1fr; }
   .about-wrap{ grid-template-columns:1fr; }
-  .gallery-grid{ grid-template-columns:repeat(2,1fr); }
   .nav-links{ display:none; }
   .site-nav .container{ height:60px; gap:10px; }
   .site-nav .brand{ min-width:0; flex:1 1 auto; overflow:hidden; }
@@ -261,8 +294,8 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .ticker-bar .label{ position:static; box-shadow:none; padding:10px 16px; width:100%; justify-content:center; }
   .ticker-track{ padding:14px 16px; gap:40px; }
 
-  .gallery-grid{ grid-template-columns:1fr 1fr; grid-auto-rows:120px; gap:10px; }
-  .gallery-grid .g1{ grid-column:span 2; grid-row:span 1; }
+  .gallery-tile{ width:190px; height:140px; }
+  .gallery-track{ animation-duration:32s; }
 
   footer.site-footer .container{ flex-direction:column; text-align:center; }
   footer.site-footer .brand{ justify-content:center; }
@@ -346,6 +379,10 @@ table.data tr:last-child td{ border-bottom:none; }
 .badge-wait{ background:var(--wait-bg); color:var(--wait); }
 
 .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+/* min-width:0 חובה על פריטי grid עם תוכן כמו input/select — בלי זה, הדפדפן נותן להם
+   רוחב מינימלי מובנה שיכול לחרוג מרוחב העמודה בנייד ולגרום לכל הטופס לגלוש הצידה
+   (בדיוק כמו התיקון הקיים ל-.itinerary-row input, אותה בעיה בהקשר של grid ולא flex). */
+.form-grid > .field{ min-width:0; }
 .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
 .field label{ font-size:.85rem; color:var(--ink-soft); font-weight:500; }
 .field input, .field select, .field textarea{
@@ -523,6 +560,8 @@ table.data tr:last-child td{ border-bottom:none; }
   display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
   border:1.5px solid var(--line); border-radius:12px; padding:14px 18px; margin-bottom:10px;
 }
+.approval-row.has-sensitivity{ border-color:#f0c4c0; background:#fef8f7; }
+html[data-theme="dark"] .approval-row.has-sensitivity{ background:#2a1c1a; border-color:#4a2c28; }
 .approval-row .a-actions{ display:flex; align-items:center; gap:8px; }
 .parent-contact-group{
   display:flex; align-items:center; gap:6px; background:var(--paper-2); border-radius:999px;
@@ -569,7 +608,7 @@ table.data tr:last-child td{ border-bottom:none; }
 .staff-ann-row:last-child{ border-bottom:none; }
 
 /* ---------- personal tasks ---------- */
-.task-list{ display:flex; flex-direction:column; gap:2px; }
+.task-list{ display:flex; flex-direction:column; gap:10px; }
 .task-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 4px; border-bottom:1px dashed var(--line); }
 .task-row.assigned-readonly{ align-items:flex-start; padding:14px 16px; background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); border-bottom:1px solid var(--line); margin-bottom:10px; }
 .task-row:last-child{ border-bottom:none; }
@@ -577,6 +616,32 @@ table.data tr:last-child td{ border-bottom:none; }
 .task-check input{ width:21px; height:21px; accent-color:var(--teal); cursor:pointer; flex:none; }
 .task-text{ overflow-wrap:anywhere; }
 .task-row.done .task-text{ text-decoration:line-through; color:var(--ink-soft); }
+
+.task-group-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:2px; }
+.task-group-head h3{ margin:0; }
+.task-group-head .icon-btn{ width:36px; height:36px; }
+.task-group-head .icon-btn svg{ width:17px; height:17px; }
+
+.task-card{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:13px 16px; background:var(--surface-2); border:1px solid var(--line);
+  border-inline-start:4px solid var(--line); border-radius:var(--radius-sm);
+  transition:border-color .15s ease, background .15s ease;
+}
+.task-card.urgent{ border-inline-start-color:var(--danger); background:linear-gradient(0deg, var(--surface-2), var(--surface-2)); }
+.task-card.overdue:not(.done){ border-inline-start-color:var(--wait); }
+.task-card.done{ opacity:.68; border-inline-start-color:var(--ok); }
+.task-card .task-check{ gap:12px; }
+.task-card .task-meta{ display:flex; align-items:center; gap:8px; flex:none; }
+.badge-urgent{ background:#fbe9e7; color:var(--danger); }
+html[data-theme="dark"] .badge-urgent{ background:#3a1e1c; }
+.task-due{ background:var(--paper-2); color:var(--ink-soft); }
+.task-due.overdue{ background:var(--wait-bg); color:var(--wait); }
+.task-card .icon-btn{ width:34px; height:34px; }
+.task-card .icon-btn svg{ width:16px; height:16px; }
+.task-edit-form{ display:flex; flex-direction:column; gap:10px; width:100%; }
+.task-edit-form .field-row{ display:flex; gap:10px; flex-wrap:wrap; }
+.task-edit-form .field-row .field{ flex:1; min-width:140px; }
 
 /* ---------- staff meetings ---------- */
 .meeting-protocol{ margin-top:14px; padding:14px 16px; background:var(--paper-2); border-radius:var(--radius-sm); font-size:.94rem; line-height:1.7; white-space:pre-wrap; }
@@ -647,6 +712,7 @@ table.data tr:last-child td{ border-bottom:none; }
 .notice-preview .signature-col .sig-title{ color:var(--ink-soft); font-size:.72rem; margin-top:2px; }
 .notice-preview .np-empty{ color:var(--ink-soft); font-size:.88rem; text-align:center; padding:20px 10px; }
 .trip-form-grid{ display:grid; grid-template-columns:1.3fr 1fr; gap:24px; align-items:start; }
+.trip-form-grid > *{ min-width:0; }
 
 /* ---------- approval summary (approved/pending, prominent) ---------- */
 .approval-summary{
@@ -1005,9 +1071,9 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
   .kebab-menu > summary{ list-style:none; cursor:pointer; }
   .kebab-menu > summary::-webkit-details-marker{ display:none; }
   .kebab-panel{
-    position:absolute; left:0; top:calc(100% + 6px); background:var(--surface); border:1px solid var(--line);
+    position:absolute; right:0; left:auto; top:calc(100% + 6px); background:var(--surface); border:1px solid var(--line);
     border-radius:var(--radius-sm); box-shadow:var(--shadow); padding:8px; display:flex; flex-direction:column;
-    gap:6px; z-index:30; min-width:190px;
+    gap:6px; z-index:30; min-width:190px; max-width:calc(100vw - 24px);
   }
   .kebab-panel .btn{ width:100%; justify-content:flex-start; }
   /* פעולות הטיול (עריכה/מחיקה/קישור/חוזר/פרטים/ניהול אישורים) — עמודה אחת מסודרת וברוחב
@@ -1019,6 +1085,7 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
     display:flex !important; flex-direction:column !important; align-items:stretch !important;
     flex-wrap:nowrap !important; gap:8px !important; width:100%;
   }
+  .trip-summary > div:last-child.collapsed{ display:none !important; }
   .trip-summary > div:last-child .btn{ width:100%; }
   .btn-manage-approvals{ width:100%; justify-content:center; padding:12px 16px; font-size:.95rem; }
 
