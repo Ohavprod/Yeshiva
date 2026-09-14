@@ -1919,7 +1919,8 @@ function buildTripNoticePreviewHtml(vals){
   let html = `
     <div class="trip-card">
       <div class="section-eyebrow">פרטי ${detailsWord}</div>
-      <h2 class="trip-title">${esc(vals.title || (isEvent ? 'שם האירוע' : 'שם הטיול'))}</h2>
+      <h2 class="trip-title" style="margin-bottom:${vals.subtitle ? '2px' : ''};">${esc(vals.title || (isEvent ? 'שם האירוע' : 'שם הטיול'))}</h2>
+      ${vals.subtitle ? `<div style="color:var(--ink-soft); font-size:.92rem; font-weight:600; margin-bottom:14px;">${esc(vals.subtitle)}</div>` : ''}
       ${vals.intro_text ? `<div class="intro-callout">${esc(vals.intro_text)}</div>` : ''}
       ${(vals.hebrew_date || gregDate) ? `<div class="date-line">
         <span class="lbl">תאריך ${detailsWord}</span>
@@ -1927,9 +1928,9 @@ function buildTripNoticePreviewHtml(vals){
         ${vals.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
       </div>` : ''}
       <div class="meta-badges">
-        ${vals.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(vals.location)}</div></div>` : ''}
-        ${vals.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">שעת יציאה</div><div class="m-value">${esc(vals.departure_time)}</div></div>` : ''}
-        ${vals.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">שעת חזרה</div><div class="m-value">${esc(vals.return_time)}</div></div>` : ''}
+        ${vals.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">${isEvent ? 'מיקום האירוע' : 'יעד'}</div><div class="m-value">${esc(vals.location)}</div></div>` : ''}
+        ${vals.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">${isEvent ? 'תחילת האירוע' : 'שעת יציאה'}</div><div class="m-value">${esc(vals.departure_time)}</div></div>` : ''}
+        ${vals.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">${isEvent ? 'סיום האירוע' : 'שעת חזרה'}</div><div class="m-value">${esc(vals.return_time)}</div></div>` : ''}
         ${vals.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(vals.cost))}</div></div>` : ''}
       </div>
     </div>`;
@@ -1965,7 +1966,12 @@ function buildTripNoticePreviewHtml(vals){
     </div>`;
   }
 
-  if (vals.head_name || vals.coordinator_name){
+  if (vals.custom_regards){
+    html += `
+    <div class="trip-card">
+      <div style="text-align:center; font-weight:700; color:var(--navy);">${esc(vals.custom_regards)}</div>
+    </div>`;
+  } else if (vals.head_name || vals.coordinator_name){
     html += `
     <div class="trip-card">
       <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:8px;">בברכה,</div>
@@ -2043,15 +2049,20 @@ async function renderTrips(body){
             </select>
           </div>
           <div class="field" style="grid-column:1/-1;"><label>שם הטיול</label><input required id="t_title" placeholder="לדוגמה: סיור סליחות ישיבתי"></div>
+          <div class="field" style="grid-column:1/-1;"><label>כותרת משנה (אופציונלי — לתיאור מדויק יותר מתחת לשם הראשי)</label><input id="t_subtitle" placeholder="לדוגמה: יציאה לצפת ומירון עם כל שכבת י\"א"></div>
           <div class="field" style="grid-column:1/-1;"><label>פתיח / עיקרי הדברים (יוצג בבלטות בראש החוזר)</label>
             <textarea id="t_intro" placeholder="לדוגמה: שלום הורים יקרים, כהכנה לקראת הימים הנוראים נצא כל הישיבה אי״ה ביום רביעי..."></textarea>
           </div>
           <div class="field"><label>תאריך עברי (טקסט חופשי)</label><input id="t_hebrew_date" placeholder="ה' תשרי תשפ״ז"></div>
           <div class="field"><label>תאריך לועזי</label><input type="date" id="t_date"></div>
-          <div class="field"><label>יעד / מיקום</label><input id="t_location"></div>
+          <div class="field"><label id="t_location_label">יעד / מיקום</label><input id="t_location"></div>
           <div class="field"><label>עלות</label><input id="t_cost" placeholder="₪ 80"></div>
-          <div class="field"><label>שעת יציאה</label><input id="t_depart" placeholder="07:30"></div>
-          <div class="field"><label>שעת חזרה</label><input id="t_return" placeholder="16:00"></div>
+          <div class="field"><label id="t_depart_label">שעת יציאה</label><input id="t_depart" placeholder="07:30"></div>
+          <div class="field"><label id="t_return_label">שעת חזרה</label><input id="t_return" placeholder="16:00"></div>
+          <div class="field" id="t_regards_wrap" style="display:none; grid-column:1/-1;">
+            <label>טקסט "בברכה" מותאם אישית (אופציונלי — לאירועים חברתיים בלבד, לדוגמה לקראת חג)</label>
+            <input id="t_custom_regards" placeholder="לדוגמה: בברכת גמר חתימה טובה לכולם">
+          </div>
 
           <div class="field" style="grid-column:1/-1;">
             <label>תוכנייה (מה בתוכנית)</label>
@@ -2097,12 +2108,19 @@ async function renderTrips(body){
 
   if (canCreate){
     document.getElementById('t_kind').addEventListener('change', (e)=>{
-      document.getElementById('t_requires_reg_wrap').style.display = e.target.value === 'event' ? '' : 'none';
+      const isEvent = e.target.value === 'event';
+      document.getElementById('t_requires_reg_wrap').style.display = isEvent ? '' : 'none';
+      document.getElementById('t_regards_wrap').style.display = isEvent ? '' : 'none';
+      document.getElementById('t_location_label').textContent = isEvent ? 'מיקום האירוע' : 'יעד / מיקום';
+      document.getElementById('t_depart_label').textContent = isEvent ? 'שעת תחילת האירוע' : 'שעת יציאה';
+      document.getElementById('t_return_label').textContent = isEvent ? 'שעת סיום האירוע' : 'שעת חזרה';
+      refreshTripPreview();
     });
     const itineraryRowsEl = document.getElementById('itineraryRows');
     const previewBodyEl = document.getElementById('tripPreviewBody');
     const readTripFormForPreview = () => ({
       title: document.getElementById('t_title').value,
+      subtitle: document.getElementById('t_subtitle').value,
       kind: document.getElementById('t_kind').value,
       intro_text: document.getElementById('t_intro').value,
       hebrew_date: document.getElementById('t_hebrew_date').value,
@@ -2115,6 +2133,7 @@ async function renderTrips(body){
       notes: document.getElementById('t_notes').value,
       head_name: document.getElementById('t_head_name').value,
       coordinator_name: document.getElementById('t_coordinator_name').value,
+      custom_regards: document.getElementById('t_custom_regards').value,
       itinerary: Array.from(itineraryRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
         time: row.querySelector('.it-time').value,
         activity: row.querySelector('.it-activity').value,
@@ -2150,8 +2169,10 @@ async function renderTrips(body){
       const itinerary = Array.from(itineraryRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
         time: row.querySelector('.it-time').value.trim(),
         activity: row.querySelector('.it-activity').value.trim(),
-      })).filter(r=> r.time || r.activity)
-        .sort((a,b)=> a.time.localeCompare(b.time));
+      })).filter(r=> r.time || r.activity);
+      // הערה: בכוונה בלי מיון לפי time — שורה שנוספה ידנית (למשל שעת לילה כמו 00:30)
+      // צריכה להישאר במקום שבו המשתמש/ת הכניסה אותה בפועל, ולא "לקפוץ" לראש הרשימה
+      // בגלל מיון לקסיקוגרפי של המחרוזת (כאשר "00" קטן אלפביתית מכל שעה אחרת).
 
       const kind = document.getElementById('t_kind').value; // 'trip' | 'event'
       // רישום תלמידים רלוונטי לבחירה רק עבור אירוע חברתי — לטיול תמיד יש רישום/אישור הורים.
@@ -2163,6 +2184,7 @@ async function renderTrips(body){
         kind,
         requires_registration: requiresRegistration,
         title: document.getElementById('t_title').value.trim(),
+        subtitle: document.getElementById('t_subtitle').value.trim(),
         intro_text: document.getElementById('t_intro').value.trim(),
         hebrew_date: document.getElementById('t_hebrew_date').value.trim(),
         location: document.getElementById('t_location').value.trim(),
@@ -2175,6 +2197,7 @@ async function renderTrips(body){
         notes: document.getElementById('t_notes').value.trim(),
         head_name: document.getElementById('t_head_name').value.trim(),
         coordinator_name: document.getElementById('t_coordinator_name').value.trim(),
+        custom_regards: kind === 'event' ? document.getElementById('t_custom_regards').value.trim() : '',
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
         school_year: currentSchoolYear,
@@ -2284,6 +2307,7 @@ function renderTripsList(container, trips){
           <span class="chev" style="flex:none; margin-top:7px; color:var(--ink-soft);">⌄</span>
           <div>
             <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span></h3>
+            ${t.subtitle ? `<div style="font-size:.82rem; color:var(--ink-soft); font-weight:600; margin:-2px 0 4px;">${esc(t.subtitle)}</div>` : ''}
             <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
               ${formatTripDateLine(t) ? esc(formatTripDateLine(t))+' · ' : ''}
               ${esc(t.location||'')}
@@ -2376,6 +2400,31 @@ function renderTripsList(container, trips){
         toast('הטיול נמחק'); goto('trips');
       }
       catch(err){ toast('שגיאה: '+err.message); }
+    });
+  });
+
+  // תפריט "⋮" בכל טיול (בנייד): ממוקם עם position:fixed מחושב לפי מיקום הכפתור בפועל —
+  // בלי זה, ה-position:absolute הרגיל של .kebab-panel נסמך על ה-stacking context של
+  // הכרטיס הנוכחי בלבד, וכשהפאנל נפתח כלפי מטה הוא "נבלע" מתחת לכרטיס הטיול הבא ברשימה
+  // (שמצויר מעליו כי הוא מאוחר יותר ב-DOM) — בדיוק כמו הבעיה שכבר נפתרה כך ב"פעולות נוספות".
+  container.querySelectorAll('.kebab-menu').forEach(details=>{
+    details.addEventListener('toggle', ()=>{
+      const panel = details.querySelector('.kebab-panel');
+      if (!details.open){ panel.style.position = ''; panel.style.top = ''; panel.style.left = ''; panel.style.right = ''; return; }
+      const summary = details.querySelector('summary');
+      const r = summary.getBoundingClientRect();
+      panel.style.position = 'fixed';
+      panel.style.right = 'auto';
+      panel.style.top = `${r.bottom + 6}px`;
+      panel.style.left = `${Math.max(10, r.right - panel.offsetWidth)}px`;
+      requestAnimationFrame(()=>{
+        const margin = 10;
+        const w = panel.offsetWidth || 190;
+        let left = r.right - w;
+        if (left < margin) left = margin;
+        if (left + w > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - margin - w);
+        panel.style.left = `${left}px`;
+      });
     });
   });
 
@@ -2536,13 +2585,14 @@ function renderTripsList(container, trips){
             </div>
           </div>` : ''}
           <div class="field" style="grid-column:1/-1;"><label>שם הטיול</label><input id="et_title_${id}" value="${esc(trip.title)}"></div>
+          <div class="field" style="grid-column:1/-1;"><label>כותרת משנה (אופציונלי)</label><input id="et_subtitle_${id}" value="${esc(trip.subtitle||'')}"></div>
           <div class="field" style="grid-column:1/-1;"><label>פתיח / עיקרי הדברים</label><textarea id="et_intro_${id}">${esc(trip.intro_text||'')}</textarea></div>
           <div class="field"><label>תאריך עברי</label><input id="et_hebrew_${id}" value="${esc(trip.hebrew_date||'')}"></div>
           <div class="field"><label>תאריך לועזי</label><input type="date" id="et_date_${id}" value="${trip.trip_date||''}"></div>
-          <div class="field"><label>יעד / מיקום</label><input id="et_location_${id}" value="${esc(trip.location||'')}"></div>
+          <div class="field"><label>${trip.kind === 'event' ? 'מיקום האירוע' : 'יעד / מיקום'}</label><input id="et_location_${id}" value="${esc(trip.location||'')}"></div>
           <div class="field"><label>עלות</label><input id="et_cost_${id}" value="${esc(trip.cost||'')}"></div>
-          <div class="field"><label>שעת יציאה</label><input id="et_depart_${id}" value="${esc(trip.departure_time||'')}"></div>
-          <div class="field"><label>שעת חזרה</label><input id="et_return_${id}" value="${esc(trip.return_time||'')}"></div>
+          <div class="field"><label>${trip.kind === 'event' ? 'שעת תחילת האירוע' : 'שעת יציאה'}</label><input id="et_depart_${id}" value="${esc(trip.departure_time||'')}"></div>
+          <div class="field"><label>${trip.kind === 'event' ? 'שעת סיום האירוע' : 'שעת חזרה'}</label><input id="et_return_${id}" value="${esc(trip.return_time||'')}"></div>
           <div class="field" style="grid-column:1/-1;">
             <label>תוכנייה</label>
             <div id="et_itinerary_${id}"></div>
@@ -2552,6 +2602,7 @@ function renderTripsList(container, trips){
           <div class="field" style="grid-column:1/-1;"><label>הערות</label><textarea id="et_notes_${id}">${esc(trip.notes||'')}</textarea></div>
           <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="et_head_${id}" value="${esc(trip.head_name||'')}"></div>
           <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="et_coordinator_${id}" value="${esc(trip.coordinator_name||'')}"></div>
+          ${trip.kind === 'event' ? `<div class="field" style="grid-column:1/-1;"><label>טקסט "בברכה" מותאם אישית (אופציונלי)</label><input id="et_regards_${id}" value="${esc(trip.custom_regards||'')}" placeholder="לדוגמה: בברכת גמר חתימה טובה לכולם"></div>` : ''}
         </div>
         <button class="btn btn-primary btn-sm save-trip-edit" data-id="${id}">${ICON.save} שמירת שינויים</button>
       `;
@@ -2585,9 +2636,10 @@ function renderTripsList(container, trips){
         const itinerary = Array.from(itRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
           time: row.querySelector('.it-time').value.trim(),
           activity: row.querySelector('.it-activity').value.trim(),
-        })).filter(r=> r.time || r.activity).sort((a,b)=> a.time.localeCompare(b.time));
+        })).filter(r=> r.time || r.activity); // בלי מיון — ר' הערה מקבילה בטופס יצירת טיול
         const payload = {
           title: document.getElementById(`et_title_${id}`).value.trim(),
+          subtitle: document.getElementById(`et_subtitle_${id}`).value.trim(),
           intro_text: document.getElementById(`et_intro_${id}`).value.trim(),
           hebrew_date: document.getElementById(`et_hebrew_${id}`).value.trim(),
           location: document.getElementById(`et_location_${id}`).value.trim(),
@@ -2601,6 +2653,9 @@ function renderTripsList(container, trips){
           head_name: document.getElementById(`et_head_${id}`).value.trim(),
           coordinator_name: document.getElementById(`et_coordinator_${id}`).value.trim(),
         };
+        if (trip.kind === 'event'){
+          payload.custom_regards = document.getElementById(`et_regards_${id}`).value.trim();
+        }
         if (p.view_all_classes){
           const class_ids = Array.from(box.querySelectorAll(`#et_classes_picker_${id} input:checked`)).map(i=>i.value);
           if (class_ids.length === 0){ toast('יש לבחור לפחות כיתה אחת'); return; }
