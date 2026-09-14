@@ -5422,14 +5422,14 @@ async function renderAnnouncements(body){
 
   loadGalleryAdmin();
 
-  /* --- אירועים קרובים (חלון קופץ באתר הציבורי, למשל פלייר ערב סליחות) --- */
+  /* --- אירועים קרובים (חלק קבוע בעמוד הבית הציבורי, למשל פלייר ערב סליחות) --- */
   let publicEventsItems = [];
   let pendingPubEvImage = null;
   body.insertAdjacentHTML('beforeend', `
     <div class="card card-pad" style="margin-top:24px;">
-      <h3 style="margin-top:0;">📅 אירועים קרובים (חלון קופץ בעמוד הבית)</h3>
+      <h3 style="margin-top:0;">📅 אירועים קרובים (חלק קבוע בעמוד הבית)</h3>
       <p style="color:var(--ink-soft); font-size:.85rem;">
-        אירועים שיוצגו בחלון קופץ באתר הציבורי כשלוחצים על הכפתור "אירועים קרובים" — לדוגמה פרסום פלייר של ערב סליחות ישיבתי עם כמה מילים. תמונת פלייר היא רשות.
+        אירועים שיוצגו בחלק "אירועים קרובים" בעמוד הבית הציבורי — לדוגמה פרסום פלייר של ערב סליחות ישיבתי עם כמה מילים. תמונת פלייר היא רשות.
       </p>
       <div class="form-grid" style="margin-bottom:14px;">
         <div class="field" style="grid-column:1/-1;"><label>כותרת</label><input id="newPubEvTitle" placeholder="לדוגמה: ערב סליחות ישיבתי"></div>
