@@ -1959,7 +1959,7 @@ function buildTripNoticePreviewHtml(vals){
   if (vals.notes){
     html += `
     <div class="trip-card notes-card">
-      <div class="section-eyebrow">⚠️ הערות נוספות</div>
+      <div class="section-eyebrow"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-2px; margin-inline-end:2px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="13"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> הערות נוספות</div>
       <p style="margin:0; color:var(--ink); white-space:pre-line; font-weight:600;">${esc(vals.notes)}</p>
     </div>`;
   }
@@ -3787,8 +3787,20 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     const participantsEditHtml = (isEventTrip && isApproved) ? (canManage ? `
       <div class="participants-edit" data-student="${s.id}" onclick="event.stopPropagation()">
         <span class="pe-label">👥 משתתפים:</span>
-        <label class="pe-field">תלמידים <input type="number" class="pe-students" min="1" step="1" value="${appr?.participants_students ?? 1}"></label>
-        <label class="pe-field">הורים <input type="number" class="pe-parents" min="0" step="1" value="${appr?.participants_parents ?? 0}"></label>
+        <label class="pe-field">תלמידים
+          <div class="number-stepper">
+            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
+            <input type="number" class="pe-students" min="1" step="1" value="${appr?.participants_students ?? 1}">
+            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
+          </div>
+        </label>
+        <label class="pe-field">הורים
+          <div class="number-stepper">
+            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
+            <input type="number" class="pe-parents" min="0" step="1" value="${appr?.participants_parents ?? 0}">
+            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
+          </div>
+        </label>
       </div>` : `
       <div class="participants-edit">
         <span>👥 ${appr?.participants_students ?? 1} תלמידים · ${appr?.participants_parents ?? 0} הורים</span>
@@ -3883,6 +3895,21 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     };
     studentsInput.addEventListener('change', ()=> saveField('participants_students', studentsInput, 1));
     parentsInput.addEventListener('change', ()=> saveField('participants_parents', parentsInput, 0));
+    // כפתורי +/- ליד כל שדה: הכפתור המקיף (participants-edit) עוצר את בעבוע הקליק
+    // כדי שלא תיפתח כרטיסיית התלמיד/ה, ולכן ה"מאזין הכללי" ל-.ns-btn (שרשום על
+    // document) לעולם לא מגיע לכפתורים האלה — מטפלים בהם ישירות כאן במקום.
+    wrap.querySelectorAll('.ns-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const input = btn.closest('.number-stepper').querySelector('input[type="number"]');
+        const min = parseFloat(input.min) || 0;
+        let val = parseFloat(input.value);
+        if (!Number.isFinite(val)) val = min;
+        val = btn.classList.contains('ns-plus') ? val + 1 : val - 1;
+        if (val < min) val = min;
+        input.value = val;
+        input.dispatchEvent(new Event('change', { bubbles:true }));
+      });
+    });
   });
 
   panel.querySelector('#bulkSendBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); showBulkSendModal(trip, students, approvalsById); });
