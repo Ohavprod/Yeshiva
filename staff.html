@@ -365,7 +365,14 @@ async function pickAndUploadToCloudinary({ accept, folder, preset, onSuccess, ms
    לשמור את הת.ז שההורה הקליד. */
 function normVerify(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return normVerify(s).split(' ')[0] || ''; }
-function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
+function normPhoneDigits(s){
+  let d = (s||'').toString().replace(/\D/g,'');
+  // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
+  // ששני הפורמטים ("0501234567" ו-"972501234567") ינורמלו לאותה מחרוזת בדיוק,
+  // ולא ייתפסו כאי-התאמה שגויה בין הורה שמקליד פורמט שונה מזה שנשמר במערכת.
+  if (d.startsWith('972') && d.length === 12){ d = '0' + d.slice(3); }
+  return d;
+}
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -643,6 +650,7 @@ const ICON = {
   pin: fIcon('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle>', 15),
   eye: fIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle>', 15),
   calendar: fIcon('<rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>', 16),
+  search: fIcon('<circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>'),
 };
 
 /* נתיב הבסיס לקישורים ציבוריים (approve.html) — עמיד גם מול Netlify Clean URLs
@@ -1111,6 +1119,7 @@ function buildSideNav(){
     { id:'home', label:'בית', icon:ICON.home, show:true },
     { id:'myclass', label:'הכיתה שלי', icon:ICON.cap, show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:ICON.compass, show:true },
+    { id:'search', label:'חיפוש תלמידים', icon:ICON.search, show: !!p.view_all_classes },
     { id:'payments', label:'ניהול תשלומים', icon:ICON.wallet, show: !!p.manage_payments || !!p.manage_users },
     { id:'mytasks', label:'המשימות שלי', icon:ICON.check, show:true },
     { id:'meetings', label:'ישיבות צוות', icon:ICON.notes, show:true },
@@ -1157,7 +1166,7 @@ const titles = {
   home:'בית', myclass:'הכיתה שלי', trips:'טיולים ואישורים', payments:'ניהול תשלומים',
   mytasks:'המשימות שלי', meetings:'ישיבות צוות',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
-  pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור',
+  pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור', search:'חיפוש תלמידים',
 };
 
 let currentView = 'home';
@@ -1172,6 +1181,7 @@ async function goto(view){
     mytasks: renderMyTasks, meetings: renderMeetings,
     announcements: renderAnnouncements, classes: renderClasses,
     users: renderUsers, pushprefs: renderPushPrefs, restore: renderRestoreHistory,
+    search: renderStudentSearch,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -1248,7 +1258,7 @@ async function renderHome(body){
           <div class="admin-trip-row" data-idx="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:10px; cursor:pointer;">
               <div>
                 <b>${esc(s.trip.title)}</b>
-                <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? new Date(s.trip.trip_date).toLocaleDateString('he-IL') : 'ללא תאריך'}</div>
+                <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? `${formatFullHebrewDate(s.trip.trip_date)} · ${new Date(s.trip.trip_date).toLocaleDateString('he-IL')}` : 'ללא תאריך'}</div>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 ${s.approvedCount === null
@@ -1300,7 +1310,7 @@ async function renderHome(body){
           <div class="dash-trip-row" data-trip-id="${s.trip.id}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); cursor:pointer; flex-wrap:wrap; gap:10px;">
             <div>
               <b>${esc(s.trip.title)}</b>
-              <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? new Date(s.trip.trip_date).toLocaleDateString('he-IL') : 'ללא תאריך'}</div>
+              <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? `${formatFullHebrewDate(s.trip.trip_date)} · ${new Date(s.trip.trip_date).toLocaleDateString('he-IL')}` : 'ללא תאריך'}</div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               ${s.approvedCount === null
@@ -1323,7 +1333,7 @@ async function renderHome(body){
   const eventsHtml = `
     <div class="card card-pad events-card" style="margin-top:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <h3 style="margin:0;">📅 אירועים קרובים</h3>
+        <h3 style="margin:0; display:flex; align-items:center; gap:8px;">${ICON.calendar} אירועים קרובים</h3>
         ${canManageEvents ? `<button class="btn btn-outline btn-sm" id="addEventBtn">${ICON.plus} הוספת אירוע</button>` : ''}
       </div>
       ${canManageEvents ? `<div id="addEventWrap" style="display:none; margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">${eventFormHtml('new')}</div>` : ''}
@@ -1483,6 +1493,43 @@ function renderAdminTripBreakdown(el, byClassMap, classesList){
 /* ============================================================
    EVENTS (yeshiva-wide calendar, shown to everyone on the dashboard)
    ============================================================ */
+/* ---------- תאריך עברי מלא באותיות (גימטריה) + יום בשבוע — לתצוגה בדף הבית ---------- */
+const HEBREW_NUMERAL_ONES = ['','א','ב','ג','ד','ה','ו','ז','ח','ט'];
+const HEBREW_NUMERAL_TENS = ['','י','כ','ל','מ','נ','ס','ע','פ','צ'];
+const HEBREW_WEEKDAY_LETTERS = ['א','ב','ג','ד','ה','ו'];
+function hebrewNumeral(n){
+  let num = n, result = '';
+  while (num >= 400){ result += 'ת'; num -= 400; }
+  const hundreds = { 100:'ק', 200:'ר', 300:'ש' };
+  if (num >= 100){ const h = Math.floor(num/100)*100; result += hundreds[h] || ''; num -= h; }
+  if (num === 15){ result += 'טו'; num = 0; }
+  else if (num === 16){ result += 'טז'; num = 0; }
+  else {
+    if (num >= 10){ result += HEBREW_NUMERAL_TENS[Math.floor(num/10)]; num %= 10; }
+    if (num > 0){ result += HEBREW_NUMERAL_ONES[num]; }
+  }
+  if (!result) return '';
+  return result.length > 1 ? result.slice(0,-1) + '"' + result.slice(-1) : result + "'";
+}
+/* תאריך עברי מלא (יום בחודש + שם חודש + שנה, הכל באותיות) ויום בשבוע — לתצוגה לצד
+   התאריך הלועזי בכרטיסי "טיולים קרובים" בדף הבית. ה-Intl API מחשב נכון את התאריך
+   העברי (יום/חודש/שנה) אבל לא תומך בפועל בהצגת הספרות כאותיות עבריות (numberingSystem
+   'hebr' מוחזר בשקט כ-latn בדפדפנים) — לכן שולפים ממנו רק את הערכים המספריים/שם
+   החודש (formatToParts) וממירים בעצמנו לגימטריה. */
+function formatFullHebrewDate(dateStr){
+  if (!dateStr) return '';
+  try{
+    const d = new Date(dateStr + 'T00:00:00Z');
+    const weekday = `יום ${HEBREW_WEEKDAY_LETTERS[d.getUTCDay()]}'`;
+    const parts = new Intl.DateTimeFormat('he-u-ca-hebrew', { day:'numeric', month:'long', year:'numeric', timeZone:'UTC' }).formatToParts(d);
+    const day = parts.find(p=>p.type==='day')?.value;
+    const month = parts.find(p=>p.type==='month')?.value;
+    const year = parts.find(p=>p.type==='year')?.value;
+    const dayHeb = day ? hebrewNumeral(parseInt(day,10)) : '';
+    const yearHeb = year ? hebrewNumeral(parseInt(year,10) % 1000) : '';
+    return `${weekday}, ${dayHeb} ${month} ${yearHeb}`;
+  }catch(err){ return ''; }
+}
 /* מחשב את שם החודש העברי מתאריך לועזי (event_date), דרך לוח השנה העברי המובנה בדפדפן —
    לא תלוי בטקסט "תאריך עברי" החופשי שהמורה מקליד, כדי שהקיבוץ יהיה עקבי גם אם הניסוח שונה. */
 function hebrewMonthOf(dateStr){
@@ -5518,7 +5565,7 @@ async function renderAnnouncements(body){
   let pendingPubEvImage = null;
   body.insertAdjacentHTML('beforeend', `
     <div class="card card-pad" style="margin-top:24px;">
-      <h3 style="margin-top:0;">📅 אירועים קרובים (חלק קבוע בעמוד הבית)</h3>
+      <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;">${ICON.calendar} אירועים קרובים (חלק קבוע בעמוד הבית)</h3>
       <p style="color:var(--ink-soft); font-size:.85rem;">
         אירועים שיוצגו בחלק "אירועים קרובים" בעמוד הבית הציבורי — לדוגמה פרסום פלייר של ערב סליחות ישיבתי עם כמה מילים. תמונת פלייר היא רשות.
       </p>
@@ -5610,6 +5657,113 @@ async function renderAnnouncements(body){
 /* ============================================================
    CLASSES
    ============================================================ */
+/* ============================================================
+   חיפוש תלמידים — למנהל מערכת/ראש הישיבה בלבד (view_all_classes). חיפוש חופשי
+   בכל הכיתות בבת אחת לפי שם תלמיד, שם הורה, טלפון, ת.ז הורה או עיר מגורים —
+   כדי שלא יהיה צריך לעבור כיתה-כיתה כדי למצוא תלמיד/ה ספציפי/ת.
+   כל התלמידים נטענים פעם אחת בלבד (בעצלנות, בהקלדה הראשונה) ומסוננים בצד
+   הלקוח — Firestore לא תומך בחיפוש טקסט חופשי/הכלה, וזה בסדר בגודל של בית ספר.
+   ============================================================ */
+async function renderStudentSearch(body){
+  body.innerHTML = `
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="field" style="margin:0;">
+        <label>חיפוש תלמיד/ה — לפי שם תלמיד/ה, שם הורה, טלפון, ת.ז או עיר מגורים</label>
+        <input type="text" id="studentSearchInput" placeholder="הקלידו לפחות 2 תווים…" autocomplete="off">
+      </div>
+    </div>
+    <div id="studentSearchResults"><p style="color:var(--ink-soft); font-size:.9rem;">הקלידו כדי להתחיל לחפש בכל הכיתות.</p></div>`;
+
+  const resultsEl = document.getElementById('studentSearchResults');
+  const input = document.getElementById('studentSearchInput');
+  let allStudents = null;
+  let classesById = {};
+
+  async function ensureLoaded(){
+    if (allStudents) return;
+    resultsEl.innerHTML = '<p style="color:var(--ink-soft);">טוען את כל התלמידים…</p>';
+    const [studentsSnap, classesSnap] = await Promise.all([
+      db.collection('students').get(),
+      db.collection('classes').get(),
+    ]);
+    classesById = {};
+    classesSnap.docs.forEach(d=>{ classesById[d.id] = d.data().name || ''; });
+    allStudents = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  }
+
+  const normSearch = (s)=> (s||'').toString().trim().toLowerCase();
+  const digitsOnly = (s)=> (s||'').toString().replace(/\D/g,'');
+
+  function renderResults(matches, q){
+    if (!matches.length){
+      resultsEl.innerHTML = `<p style="color:var(--ink-soft);">לא נמצאו תלמידים התואמים "${esc(q)}".</p>`;
+      return;
+    }
+    resultsEl.innerHTML = `
+      <p style="color:var(--ink-soft); font-size:.85rem; margin-bottom:12px;">נמצאו ${matches.length} תלמידים:</p>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        ${matches.map(s=>`
+          <div class="card card-pad" style="padding:16px 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <strong>${esc(s.full_name)}</strong>
+                <div style="font-size:.82rem; color:var(--ink-soft);">כיתה: ${esc(classesById[s.class_id] || 'לא משויך/ת')}</div>
+              </div>
+              ${s.class_id ? `<button class="btn btn-outline btn-sm goto-class-btn" data-class="${esc(s.class_id)}" data-student="${esc(s.id)}">מעבר לכרטיס התלמיד/ה בכיתה</button>` : ''}
+            </div>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:4px; font-size:.86rem; color:var(--ink);">
+              ${s.mother_name ? `<div>👩 אמא: ${esc(s.mother_name)}${s.mother_phone ? ' · <span dir="ltr">'+esc(s.mother_phone)+'</span>' : ''}${s.mother_id ? ' · ת.ז ' + esc(s.mother_id) : ''}</div>` : ''}
+              ${s.father_name ? `<div>👨 אבא: ${esc(s.father_name)}${s.father_phone ? ' · <span dir="ltr">'+esc(s.father_phone)+'</span>' : ''}${s.father_id ? ' · ת.ז ' + esc(s.father_id) : ''}</div>` : ''}
+              ${s.city ? `<div>📍 ${esc(s.city)}</div>` : ''}
+            </div>
+            <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+              ${s.mother_phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(s.mother_phone)}" target="_blank" title="וואטסאפ לאמא">${WA_ICON_SVG}</a>` : ''}
+              ${s.father_phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(s.father_phone)}" target="_blank" title="וואטסאפ לאבא">${WA_ICON_SVG}</a>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>`;
+    resultsEl.querySelectorAll('.goto-class-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const cid = btn.dataset.class;
+        const sid = btn.dataset.student;
+        currentView = 'classes';
+        setActiveNav('classes');
+        document.getElementById('viewTitle').textContent = 'ניהול כיתות';
+        const viewBody = document.getElementById('viewBody');
+        viewBody.innerHTML = '<p style="color:var(--ink-soft);">טוען…</p>';
+        await renderClassRosterView(viewBody, cid);
+        const row = viewBody.querySelector(`.roster-row[data-id="${sid}"]`);
+        if (row){ row.classList.add('open'); row.scrollIntoView({ behavior:'smooth', block:'center' }); }
+      });
+    });
+  }
+
+  async function runSearch(qRaw){
+    const q = normSearch(qRaw);
+    if (q.length < 2){
+      resultsEl.innerHTML = '<p style="color:var(--ink-soft); font-size:.9rem;">הקלידו לפחות 2 תווים לחיפוש.</p>';
+      return;
+    }
+    await ensureLoaded();
+    const qDigits = digitsOnly(qRaw);
+    const matches = allStudents.filter(s=>{
+      const textFields = [s.full_name, s.mother_name, s.father_name, s.city, s.notes, classesById[s.class_id]];
+      const textMatch = textFields.some(f=> f && normSearch(f).includes(q));
+      const numFields = qDigits.length >= 3 ? [s.mother_phone, s.father_phone, s.mother_id, s.father_id] : [];
+      const numMatch = numFields.some(f=> f && digitsOnly(f).includes(qDigits));
+      return textMatch || numMatch;
+    });
+    renderResults(matches, qRaw);
+  }
+
+  let debounceTimer = null;
+  input.addEventListener('input', ()=>{
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(()=> runSearch(input.value), 250);
+  });
+  input.focus();
+}
+
 /* ============================================================
    הגדרות כיתה — קישור לקבוצת וואטסאפ + מקום להרחבות עתידיות
    ============================================================ */
