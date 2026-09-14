@@ -1920,7 +1920,7 @@ function buildTripNoticePreviewHtml(vals){
     <div class="trip-card">
       <div class="section-eyebrow">פרטי ${detailsWord}</div>
       <h2 class="trip-title" style="margin-bottom:${vals.subtitle ? '2px' : ''};">${esc(vals.title || (isEvent ? 'שם האירוע' : 'שם הטיול'))}</h2>
-      ${vals.subtitle ? `<div style="color:var(--ink-soft); font-size:.92rem; font-weight:600; margin-bottom:14px;">${esc(vals.subtitle)}</div>` : ''}
+      ${vals.subtitle ? `<div style="color:var(--ink-soft); font-size:1.1rem; font-weight:600; margin-bottom:14px;">${esc(vals.subtitle)}</div>` : ''}
       ${vals.intro_text ? `<div class="intro-callout">${esc(vals.intro_text)}</div>` : ''}
       ${(vals.hebrew_date || gregDate) ? `<div class="date-line">
         <span class="lbl">תאריך ${detailsWord}</span>
@@ -1966,15 +1966,10 @@ function buildTripNoticePreviewHtml(vals){
     </div>`;
   }
 
-  if (vals.custom_regards){
+  if (vals.custom_regards || vals.head_name || vals.coordinator_name){
     html += `
     <div class="trip-card">
-      <div style="text-align:center; font-weight:700; color:var(--navy);">${esc(vals.custom_regards)}</div>
-    </div>`;
-  } else if (vals.head_name || vals.coordinator_name){
-    html += `
-    <div class="trip-card">
-      <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:8px;">בברכה,</div>
+      <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:8px;">${esc(vals.custom_regards || 'בברכה,')}</div>
       <div class="signatures-row">
         <div class="signature-col">${vals.head_name ? `<b>${esc(vals.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
         <div class="signature-col">${vals.coordinator_name ? `<b>${esc(vals.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
