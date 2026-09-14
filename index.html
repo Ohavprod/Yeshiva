@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ישיבה תיכונית עפולה</title>
+<!-- Open Graph — כדי שבשיתוף הקישור בוואטסאפ/פייסבוק יופיע לוגו הישיבה ולא תצוגה ריקה -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ytafula.netlify.app/">
+<meta property="og:title" content="ישיבה תיכונית עפולה">
+<meta property="og:description" content="עדכונים שוטפים, אירועים, גלריה ומידע לתלמידים, להורים ולצוות החינוכי — אתר הבית הרשמי של ישיבה תיכונית עפולה.">
+<meta property="og:image" content="https://ytafula.netlify.app/assets/img/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="ישיבה תיכונית עפולה">
+<meta name="twitter:description" content="עדכונים שוטפים, אירועים, גלריה ומידע לתלמידים, להורים ולצוות החינוכי.">
+<meta name="twitter:image" content="https://ytafula.netlify.app/assets/img/icon-512.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#16223d">
 <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
@@ -26,6 +38,7 @@
     <div class="nav-links">
       <a href="#about">אודות</a>
       <a href="#gallery">גלריה</a>
+      <a href="#events">אירועים</a>
       <a href="#updates">עדכונים</a>
       <a href="#contact">יצירת קשר</a>
     </div>
@@ -51,8 +64,7 @@
       <h1>כל מה שקורה בישיבה,<br>במקום אחד.</h1>
       <p class="lead">עדכונים שוטפים, אירועים, גלריה ומידע לתלמידים, להורים ולצוות החינוכי — אתר הבית הרשמי של ישיבה תיכונית עפולה.</p>
       <div class="hero-actions">
-        <a href="#updates" class="btn btn-primary">לעדכונים האחרונים</a>
-        <button type="button" id="openEventsBtn" class="btn btn-ghost">📅 אירועים קרובים</button>
+        <a href="#events" class="btn btn-primary">לעדכונים האחרונים</a>
       </div>
     </div>
     <div class="hero-badge">
@@ -67,6 +79,19 @@
     <span>טוען עדכונים…</span>
   </div>
 </div>
+
+<section id="events" class="events-strip">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">לא לפספס</span>
+      <h2>אירועים קרובים</h2>
+      <p>ערבי גיבוש, אירועי חג ופעילויות מיוחדות שקורות בקרוב בישיבה.</p>
+    </div>
+    <div class="events-grid" id="publicEventsGrid">
+      <p style="color:var(--ink-soft);">טוען אירועים…</p>
+    </div>
+  </div>
+</section>
 
 <section id="about">
   <div class="container about-wrap">
@@ -189,6 +214,7 @@
         <h4>ניווט</h4>
         <a href="#about">אודות</a>
         <a href="#gallery">גלריה</a>
+        <a href="#events">אירועים</a>
         <a href="#updates">עדכונים</a>
         <a href="#contact">יצירת קשר</a>
       </div>
@@ -201,12 +227,86 @@
   </div>
 </footer>
 
+<!-- ===================== התקנת האפליקציה (PWA) ===================== -->
+<div id="installBanner" class="install-banner" style="display:none;">
+  <img src="assets/img/logo.png" alt="" class="install-banner-icon">
+  <div class="install-banner-text">
+    <strong>התקינו את האפליקציה של הישיבה</strong>
+    <span>גישה מהירה מהמסך הבית — בלחיצה אחת, בלי לחפש באתר</span>
+  </div>
+  <button type="button" id="installBannerBtn" class="btn btn-primary btn-sm">התקנה</button>
+  <button type="button" id="installBannerClose" class="install-banner-close" aria-label="סגירה">✕</button>
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
+/* ============================================================
+   התקנת האפליקציה למסך הבית (PWA) — חלונית שקופצת לבד, בלי שהמשתמש
+   יצטרך לחפש איך מתקינים. באנדרואיד/כרום יש event מובנה (beforeinstallprompt)
+   שמאפשר התקנה אמיתית בלחיצת כפתור; באייפון (iOS Safari) הדפדפן לא תומך
+   בכך, אז מציגים הנחיה ויזואלית "שיתוף ← הוספה למסך הבית" במקום.
+   ============================================================ */
+let deferredInstallPrompt = null;
+const installBannerEl = document.getElementById('installBanner');
+
+function isStandaloneApp(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIosDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+
+function showInstallBanner(){
+  if (isStandaloneApp() || localStorage.getItem('installBannerDismissed') === '1') return;
+  installBannerEl.style.display = 'flex';
+}
+function hideInstallBanner(remember){
+  installBannerEl.style.display = 'none';
+  if (remember) localStorage.setItem('installBannerDismissed', '1');
+}
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner();
+});
+
+document.getElementById('installBannerClose').addEventListener('click', ()=> hideInstallBanner(true));
+
+document.getElementById('installBannerBtn').addEventListener('click', async ()=>{
+  if (deferredInstallPrompt){
+    hideInstallBanner(true);
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt = null;
+    return;
+  }
+  // אין תמיכה בהתקנה אוטומטית (בעיקר אייפון) — מציגים הנחיה ויזואלית ברורה.
+  showIosInstallSteps();
+});
+
+function showIosInstallSteps(){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box ios-install-box">
+      <h3 style="margin-top:0;">📲 התקנה באייפון</h3>
+      <div class="ios-step"><span class="ios-step-icon">􀈂</span><p>לחצו על כפתור <b>השיתוף</b> בתחתית מסך הדפדפן (הריבוע עם החץ למעלה)</p></div>
+      <div class="ios-step"><span class="ios-step-icon">➕</span><p>גללו ובחרו <b>"הוספה למסך הבית"</b></p></div>
+      <div class="ios-step"><span class="ios-step-icon">✅</span><p>לחצו <b>"הוספה"</b> — האייקון של הישיבה יופיע במסך הבית כאפליקציה</p></div>
+      <div class="confirm-actions"><button type="button" class="btn btn-primary btn-sm" id="iosInstallCloseBtn">הבנתי, תודה</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+  overlay.querySelector('#iosInstallCloseBtn').addEventListener('click', ()=>{ hideInstallBanner(true); close(); });
+}
+
+// באייפון אין beforeinstallprompt כלל — מציגים את הבאנר ביזמתנו לאחר רגע, אם עדיין לא הותקן/נסגר.
+if (isIosDevice() && !isStandaloneApp()){
+  setTimeout(showInstallBanner, 1200);
+}
+
 async function loadTicker(){
   const track = document.getElementById('tickerTrack');
   try{
@@ -234,16 +334,27 @@ async function loadTicker(){
 }
 loadTicker();
 
-/* תצוגה מוגדלת של תמונת גלריה בלחיצה */
+/* עוזר: escaping בטוח להטמעה בתוך attribute של HTML (לא רק תגי < כמו esc()
+   הרגיל למטה) — קריטי לכיתובים/קישורים שעשויים להכיל גרש/גרשיים (למשל "צה"ל",
+   שמות עם '). בלי זה, מרכאות בתוך הטקסט "שוברות" את ה-attribute וגורמות
+   לכיתוב להיראות חתוך. */
+function escAttr(s){
+  return (s||'').toString()
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* תצוגה מוגדלת של תמונה בלחיצה (גלריה + פלייר אירוע) */
 function openLightbox(url, caption){
   if (!url) return;
   const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
+  overlay.className = 'confirm-overlay lightbox-overlay';
   overlay.innerHTML = `
     <div class="lightbox-box">
       <button type="button" class="lightbox-close" aria-label="סגירה">✕</button>
-      <img src="${url}" alt="${caption||''}">
-      ${caption ? `<p class="lightbox-cap">${caption}</p>` : ''}
+      <img src="${escAttr(url)}" alt="${escAttr(caption)}">
+      ${caption ? `<p class="lightbox-cap">${escHtml(caption)}</p>` : ''}
     </div>`;
   document.body.appendChild(overlay);
   const close = ()=>{ overlay.remove(); document.removeEventListener('keydown', onKey); };
@@ -253,46 +364,35 @@ function openLightbox(url, caption){
   document.addEventListener('keydown', onKey);
 }
 
-/* חלון "אירועים קרובים" — לדוגמה פרסום פלייר של ערב סליחות ישיבתי, מנוהל
-   מעמוד הצוות תחת "עדכונים באתר". */
+/* "אירועים קרובים" — חלק קבוע בעמוד הבית (לא חלונית), למשל פלייר של ערב
+   סליחות ישיבתי עם כמה מילים. מנוהל מעמוד הצוות תחת "עדכונים באתר". לחיצה
+   על הפלייר פותחת אותו בתצוגה מוגדלת וקריאה (openLightbox). */
 async function loadPublicEvents(){
+  const grid = document.getElementById('publicEventsGrid');
   try{
     const snap = await db.collection('public_events').where('is_active', '==', true).get();
-    return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (a.order||0) - (b.order||0));
+    const events = snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (a.order||0) - (b.order||0));
+    if (!events.length){
+      grid.innerHTML = '<p style="color:var(--ink-soft);">אין כרגע אירועים קרובים לפרסום — עקבו אחרינו לעדכונים!</p>';
+      return;
+    }
+    grid.innerHTML = events.map(ev => `
+      <div class="event-card-public">
+        ${ev.image_url ? `<img src="${escAttr(ev.image_url)}" alt="${escAttr(ev.title)}" data-url="${escAttr(ev.image_url)}" data-caption="${escAttr(ev.title)}" style="cursor:pointer;">` : ''}
+        <div class="ecp-body">
+          <h4>${escHtml(ev.title)}</h4>
+          ${ev.description ? `<p>${escHtml(ev.description)}</p>` : ''}
+        </div>
+      </div>`).join('');
+    grid.querySelectorAll('.event-card-public img').forEach(img=>{
+      img.addEventListener('click', ()=> openLightbox(img.dataset.url, img.dataset.caption));
+    });
   }catch(err){
     console.error('שגיאה בטעינת אירועים קרובים:', err);
-    return [];
+    grid.innerHTML = '<p style="color:var(--ink-soft);">אין כרגע אירועים קרובים לפרסום.</p>';
   }
 }
-document.getElementById('openEventsBtn').addEventListener('click', async ()=>{
-  const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
-  overlay.innerHTML = `<div class="confirm-box events-box"><p style="text-align:center; color:var(--ink-soft);">טוען אירועים…</p></div>`;
-  document.body.appendChild(overlay);
-  const close = ()=>{ overlay.remove(); document.removeEventListener('keydown', onKey); };
-  function onKey(e){ if (e.key === 'Escape') close(); }
-  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
-  document.addEventListener('keydown', onKey);
-
-  const events = await loadPublicEvents();
-  const box = overlay.querySelector('.events-box');
-  const esc = (s)=> (s||'').toString().replace(/</g,'&lt;');
-  box.innerHTML = `
-    <button type="button" class="lightbox-close" aria-label="סגירה" style="background:var(--steel); top:-14px; inset-inline-start:-14px;">✕</button>
-    <h3 style="margin-top:0;">📅 אירועים קרובים בישיבה</h3>
-    ${events.length ? `<div class="events-list-public">
-      ${events.map(ev=>`
-        <div class="event-card-public">
-          ${ev.image_url ? `<img src="${esc(ev.image_url)}" alt="${esc(ev.title)}">` : ''}
-          <div class="ecp-body">
-            <h4>${esc(ev.title)}</h4>
-            ${ev.description ? `<p>${esc(ev.description)}</p>` : ''}
-          </div>
-        </div>`).join('')}
-    </div>` : '<p style="color:var(--ink-soft); text-align:center; margin-top:16px;">אין כרגע אירועים קרובים לפרסום.</p>'}
-  `;
-  box.querySelector('.lightbox-close').addEventListener('click', close);
-});
+loadPublicEvents();
 
 async function loadGallery(){
   const grid = document.getElementById('galleryGrid');
@@ -308,27 +408,21 @@ async function loadGallery(){
 
     const renderGrid = (filtered) => {
       if (!filtered.length){
-        grid.style.animation = 'none';
         grid.innerHTML = '<div class="gallery-tile"><span class="g-cap">אין תמונות בקטגוריה זו</span></div>';
         return;
       }
       const tileHtml = (g)=>{
-        const url = (g.url||'').replace(/</g,'&lt;');
-        const caption = (g.caption||'').replace(/</g,'&lt;');
-        const category = (g.category||'').trim().replace(/</g,'&lt;');
+        const url = escAttr(g.url);
+        const caption = escAttr(g.caption);
+        const category = escHtml((g.category||'').trim());
         return `<div class="gallery-tile" data-url="${url}" data-caption="${caption}" style="background-image:url('${url}');">
           ${category ? `<span class="g-cat">${category}</span>` : '<span></span>'}
-          ${caption ? `<span class="g-cap">${caption}</span>` : ''}
+          ${g.caption ? `<span class="g-cap">${escHtml(g.caption)}</span>` : ''}
         </div>`;
       };
-      // הרשימה משוכפלת פעמיים בכוונה — זה מה שגורם לכל תמונה "להיראות" פעמיים
-      // בגלריה. זה לא באג: הגלריה היא רצועה נעה (כמו פס העדכונים), וכדי
-      // שהאנימציה (translateX עד 50%-) תיראה כרצועה רציפה ואינסופית בלי "קפיצה"
-      // גלויה בסוף הסבב, חייבים להכפיל את התוכן. לחיצה על כל עותק פותחת את
-      // אותה תמונה בתצוגה מוגדלת.
-      const singlePass = filtered.map(tileHtml).join('');
-      grid.style.animation = '';
-      grid.innerHTML = singlePass + singlePass;
+      // רשת רגילה (בלי שכפול/אנימציה) — כל תמונה מוצגת פעם אחת בלבד.
+      // לחיצה על תמונה פותחת אותה בתצוגה מוגדלת עם הכיתוב המלא.
+      grid.innerHTML = filtered.map(tileHtml).join('');
       grid.querySelectorAll('.gallery-tile').forEach(tile=>{
         tile.addEventListener('click', ()=> openLightbox(tile.dataset.url, tile.dataset.caption));
       });
@@ -338,7 +432,7 @@ async function loadGallery(){
       tabsEl.style.display = '';
       const allLabel = 'הכל';
       tabsEl.innerHTML = [allLabel, ...categories].map((cat,i)=>
-        `<button type="button" class="gallery-tab${i===0?' active':''}" data-cat="${cat===allLabel?'':cat.replace(/"/g,'&quot;')}">${cat}</button>`
+        `<button type="button" class="gallery-tab${i===0?' active':''}" data-cat="${cat===allLabel?'':escAttr(cat)}">${escHtml(cat)}</button>`
       ).join('');
       tabsEl.querySelectorAll('.gallery-tab').forEach(btn=>{
         btn.addEventListener('click', ()=>{
