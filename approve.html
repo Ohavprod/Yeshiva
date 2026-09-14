@@ -254,7 +254,7 @@ async function load(){
     <div class="trip-card">
       <div class="section-eyebrow">פרטי ${detailsWord}</div>
       <h2 class="trip-title" style="margin-bottom:${trip.subtitle ? '2px' : ''};">${esc(trip.title)}</h2>
-      ${trip.subtitle ? `<div style="color:var(--ink-soft); font-size:.95rem; font-weight:600; margin-bottom:14px;">${esc(trip.subtitle)}</div>` : ''}
+      ${trip.subtitle ? `<div style="color:var(--ink-soft); font-size:1.15rem; font-weight:600; margin-bottom:14px;">${esc(trip.subtitle)}</div>` : ''}
       ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
       ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
         <span class="lbl">תאריך ${detailsWord}</span>
@@ -299,11 +299,9 @@ async function load(){
     </div>`;
   }
 
-  if (trip.custom_regards){
-    mainHtml += `<div style="text-align:center; font-weight:700; color:var(--navy);">${esc(trip.custom_regards)}</div>`;
-  } else if (trip.head_name || trip.coordinator_name){
+  if (trip.custom_regards || trip.head_name || trip.coordinator_name){
     mainHtml += `
-    <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:6px;">בברכה,</div>
+    <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:6px;">${esc(trip.custom_regards || 'בברכה,')}</div>
     <div class="signatures-row">
       <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
       <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
