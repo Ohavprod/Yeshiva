@@ -405,19 +405,45 @@ async function load(){
     if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
     if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
 
-    // ההצלבה "מאחורי הקלעים": שם פרטי של ההורה + טלפון + כיתה, מול verify_hashes שנשמרו
-    // מראש על מסמך האישור. אם אין בכלל verify_hashes (קישור ישן מלפני האימות) — ממשיכים
-    // בלי הצלבה, כמו קודם.
+    // ההצלבה "מאחורי הקלעים": שם פרטי של ההורה + טלפון, כל אחד בנפרד מול name_hash/
+    // phone_hash שנשמרו מראש על מסמך האישור (לכל הורה/סלוט בנפרד: אמא/אבא). בזכות
+    // ההפרדה לשני גיבובים (ולא גיבוב אחד משולב) אפשר לומר בדיוק אם השם או הטלפון
+    // (או שניהם) הם אלה שלא תואמים — ולא רק "אחד מהפרטים שגוי".
+    // תמיכה לאחור: קישורי אישור ישנים שנוצרו לפני השינוי הזה עדיין שומרים רק hash
+    // משולב אחד — עבורם ממשיכים לבדוק בשיטה הישנה (בלי אבחון מפורט).
     let matchedSlot = null;
-    if ((approval.verify_hashes||[]).length){
+    const hashes = approval.verify_hashes || [];
+    const hasGranularHashes = hashes.some(h => h.name_hash || h.phone_hash);
+    if (hasGranularHashes){
+      const candidateName = await sha256Hex(`${firstNameOf(name)}|${norm(className)}`);
+      const candidatePhone = await sha256Hex(`${normPhoneDigits(phone)}|${norm(className)}`);
+      const fullMatch = hashes.find(h => h.name_hash === candidateName && h.phone_hash === candidatePhone);
+      if (!fullMatch){
+        const nameOkSlot = hashes.find(h => h.name_hash === candidateName);
+        const phoneOkSlot = hashes.find(h => h.phone_hash === candidatePhone);
+        const relLabel = (slot)=> slot === 'mother' ? 'האמא' : 'האבא';
+        const refCode = 'ה' + studentId.slice(0,4).toUpperCase();
+        let specific;
+        if (nameOkSlot && !phoneOkSlot){
+          specific = `השם הפרטי שהוזן תואם ל${relLabel(nameOkSlot.slot)} הרשום/ה, אבל <b>מספר הטלפון שהוזן שגוי</b> — הוא לא תואם למספר שנמסר למחנך/ת עבור ${relLabel(nameOkSlot.slot)}.`;
+        } else if (!nameOkSlot && phoneOkSlot){
+          specific = `מספר הטלפון שהוזן תואם למספר של ${relLabel(phoneOkSlot.slot)} הרשום/ה, אבל <b>השם הפרטי שהוזן שגוי</b> — יש להזין את השם הפרטי בלבד (בלי שם משפחה) כפי שנמסר למחנך/ת.`;
+        } else {
+          specific = `גם <b>השם הפרטי</b> וגם <b>מספר הטלפון</b> שהוזנו אינם תואמים לאף הורה הרשום עבור ${esc(studentName)} במערכת.`;
+        }
+        verifyErrorBox.innerHTML = `<div class="verify-error" style="text-align:right;">
+          <b>הפרטים שהוזנו אינם תואמים את מה שרשום במערכת עבור ${esc(studentName)}.</b><br>
+          ${specific}<br><br>
+          אם הפרטים נכונים ועדיין מופיעה שגיאה זו — יש לפנות למחנך/ת הכיתה או למנהל המערכת ולמסור את הקוד: <b dir="ltr">${refCode}</b>
+        </div>`;
+        return;
+      }
+      matchedSlot = fullMatch.slot;
+    } else if (hashes.length){
+      // קישורים ישנים (לפני השדרוג) — גיבוב משולב אחד, בלי אבחון מפורט.
       const candidate = await sha256Hex(`${firstNameOf(name)}|${normPhoneDigits(phone)}|${norm(className)}`);
-      const match = approval.verify_hashes.find(h => h.hash === candidate);
+      const match = hashes.find(h => h.hash === candidate);
       if (!match){
-        // אי אפשר לדעת *איזה* מהשניים (שם/טלפון) בדיוק שגוי — ה-hash הוא צירוף אחד
-        // מוצפן של שניהם יחד (כדי לא לחשוף את הפרטים המקוריים במסמך ציבורי-קריא),
-        // ולכן לא ניתן "לפרק" אותו בדיעבד ולומר איזה רכיב נכשל. לכן מציגים לפרטי מה
-        // בדיוק כדאי לבדוק, ובנוסף קוד קצר שההורה יכול למסור למחנך/ת או למנהל המערכת —
-        // כדי שיידעו בדיוק על איזו שגיאה מדובר בלי לנחש.
         const refCode = 'ה' + studentId.slice(0,4).toUpperCase();
         verifyErrorBox.innerHTML = `<div class="verify-error" style="text-align:right;">
           <b>הפרטים שהוזנו אינם תואמים את מה שרשום במערכת עבור ${esc(studentName)}.</b><br>
