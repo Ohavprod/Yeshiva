@@ -243,17 +243,23 @@ section{ padding:88px 0; position:relative; }
 .gallery-tile{
   cursor:pointer; flex:none; width:230px; scroll-snap-align:start;
   border-radius:var(--radius-sm); overflow:hidden;
-  background:var(--surface); border:1px solid var(--line);
-  display:flex; flex-direction:column;
   transition:transform .18s ease, box-shadow .18s ease;
 }
 .gallery-tile:hover{ transform:translateY(-3px); box-shadow:var(--shadow-sm); }
 .gallery-tile .g-cat{
   font-size:.72rem; font-weight:700; color:var(--teal); background:var(--paper-2);
-  padding:6px 14px; border-bottom:1px solid var(--line);
+  padding:6px 14px;
 }
-.gallery-tile .g-img{ height:170px; background-size:cover; background-position:center; background-color:var(--paper-2); }
-.gallery-tile .g-cap{ font-size:.85rem; color:var(--ink); padding:10px 14px; }
+.gallery-tile .g-photo{
+  position:relative; height:190px; background-size:cover; background-position:center;
+  background-color:var(--paper-2);
+  display:flex; align-items:flex-end; padding:14px;
+}
+.gallery-tile .g-photo::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(0deg,rgba(10,20,40,.6),transparent 55%);
+}
+.gallery-tile .g-cap{ position:relative; z-index:1; color:#fff; font-size:.88rem; font-weight:600; }
 
 /* ---------- אירועים קרובים (חלק קבוע בעמוד, לא חלונית) ---------- */
 .events-strip{ background:var(--surface); }
@@ -314,9 +320,9 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
 
   .gallery-track{ gap:10px; }
   .gallery-tile{ width:150px; }
-  .gallery-tile .g-img{ height:110px; }
+  .gallery-tile .g-photo{ height:130px; padding:10px; }
   .gallery-tile .g-cat{ padding:4px 10px; font-size:.66rem; }
-  .gallery-tile .g-cap{ padding:7px 10px; font-size:.78rem; }
+  .gallery-tile .g-cap{ font-size:.78rem; }
   .events-grid{ grid-template-columns:1fr; }
 
   .install-modal-box{ padding:6px 2px; }
