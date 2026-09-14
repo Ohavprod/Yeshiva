@@ -88,7 +88,14 @@ function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
-function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
+function normPhoneDigits(s){
+  let d = (s||'').toString().replace(/\D/g,'');
+  // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
+  // ששני הפורמטים ("0501234567" ו-"972501234567") ינורמלו לאותה מחרוזת בדיוק,
+  // ולא ייתפסו כאי-התאמה שגויה בין הורה שמקליד פורמט שונה מזה שנשמר במערכת.
+  if (d.startsWith('972') && d.length === 12){ d = '0' + d.slice(3); }
+  return d;
+}
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
