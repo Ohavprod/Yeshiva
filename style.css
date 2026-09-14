@@ -639,6 +639,25 @@ html[data-theme="dark"] .approval-row.has-sensitivity{ background:#2a1c1a; borde
 .participants-edit .pe-field{ display:flex; align-items:center; gap:6px; }
 .participants-edit .pe-field input{ width:56px; padding:5px 6px; border:1px solid var(--line); border-radius:8px; font-size:.85rem; text-align:center; background:var(--surface); color:var(--ink); }
 
+/* ---------- number stepper (+/-) — כמות משתתפים בטלפון, שבו לחצני +/- דפדפן
+   ברירת המחדל ל-input[type=number] כמעט ולא נראים/נלחצים ---------- */
+.number-stepper{ display:inline-flex; align-items:center; gap:8px; }
+.number-stepper input[type="number"]{
+  width:52px; text-align:center; -moz-appearance:textfield; padding:8px 4px;
+  border:1px solid var(--line); border-radius:8px; font-size:1rem; background:var(--surface); color:var(--ink);
+}
+.number-stepper input[type="number"]::-webkit-inner-spin-button,
+.number-stepper input[type="number"]::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; }
+.ns-btn{
+  width:38px; height:38px; flex:none; border-radius:10px; border:1px solid var(--line);
+  background:var(--surface); color:var(--navy); font-size:1.2rem; font-weight:700; line-height:1;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+.ns-btn:active{ background:var(--paper-2); }
+.participants-edit .number-stepper{ gap:5px; }
+.participants-edit .ns-btn{ width:28px; height:28px; font-size:.95rem; border-radius:7px; }
+.participants-edit .number-stepper input[type="number"]{ width:42px; padding:4px; font-size:.85rem; }
+
 .task-card{
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   padding:13px 16px; background:var(--surface-2); border:1px solid var(--line);
