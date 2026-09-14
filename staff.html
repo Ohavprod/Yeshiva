@@ -5421,6 +5421,99 @@ async function renderAnnouncements(body){
   });
 
   loadGalleryAdmin();
+
+  /* --- אירועים קרובים (חלון קופץ באתר הציבורי, למשל פלייר ערב סליחות) --- */
+  let publicEventsItems = [];
+  let pendingPubEvImage = null;
+  body.insertAdjacentHTML('beforeend', `
+    <div class="card card-pad" style="margin-top:24px;">
+      <h3 style="margin-top:0;">📅 אירועים קרובים (חלון קופץ בעמוד הבית)</h3>
+      <p style="color:var(--ink-soft); font-size:.85rem;">
+        אירועים שיוצגו בחלון קופץ באתר הציבורי כשלוחצים על הכפתור "אירועים קרובים" — לדוגמה פרסום פלייר של ערב סליחות ישיבתי עם כמה מילים. תמונת פלייר היא רשות.
+      </p>
+      <div class="form-grid" style="margin-bottom:14px;">
+        <div class="field" style="grid-column:1/-1;"><label>כותרת</label><input id="newPubEvTitle" placeholder="לדוגמה: ערב סליחות ישיבתי"></div>
+        <div class="field" style="grid-column:1/-1;"><label>תיאור קצר</label><textarea id="newPubEvDesc" placeholder="כמה מילים על האירוע — מתי, איפה, למי מיועד"></textarea></div>
+        <div class="field">
+          <label>תמונת פלייר (רשות)</label>
+          <button type="button" class="btn btn-outline btn-sm" id="pickPubEvImgBtn">${ICON.plus} בחירת תמונה</button>
+          <span id="pubEvImgMsg" style="font-size:.82rem; color:var(--ink-soft); display:block; margin-top:6px;"></span>
+        </div>
+        <div class="field"><button class="btn btn-primary btn-sm" type="button" id="addPubEvBtn">${ICON.save} הוספת אירוע</button></div>
+      </div>
+      <div id="pubEventsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>`);
+
+  document.getElementById('pickPubEvImgBtn').addEventListener('click', ()=>{
+    pickAndUploadToCloudinary({
+      accept: 'image/*', folder: 'yeshiva-events', preset: CLOUDINARY_PRESET_GALLERY,
+      msgEl: document.getElementById('pubEvImgMsg'),
+      onSuccess: async (info)=>{
+        pendingPubEvImage = info;
+        document.getElementById('pubEvImgMsg').innerHTML = `<span style="color:var(--ok, #1a9c6d);">✓ תמונה נבחרה, תישמר עם האירוע</span>`;
+      },
+    });
+  });
+
+  document.getElementById('addPubEvBtn').addEventListener('click', async ()=>{
+    const title = document.getElementById('newPubEvTitle').value.trim();
+    const description = document.getElementById('newPubEvDesc').value.trim();
+    if (!title){ toast('יש להזין כותרת לאירוע'); return; }
+    const maxOrder = publicEventsItems.length ? Math.max(...publicEventsItems.map(e=>e.order||0)) : 0;
+    try{
+      await db.collection('public_events').add({
+        title, description,
+        image_url: pendingPubEvImage?.secure_url || '',
+        public_id: pendingPubEvImage?.public_id || '',
+        is_active: true, order: maxOrder+1,
+        created_by: myProfile.full_name, created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      document.getElementById('newPubEvTitle').value = '';
+      document.getElementById('newPubEvDesc').value = '';
+      document.getElementById('pubEvImgMsg').textContent = '';
+      pendingPubEvImage = null;
+      toast('האירוע נוסף');
+      loadPubEventsAdmin();
+    }catch(err){ toast('שגיאה: '+err.message); }
+  });
+
+  async function loadPubEventsAdmin(){
+    const snap = await db.collection('public_events').orderBy('order').get();
+    publicEventsItems = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    const listEl = document.getElementById('pubEventsList');
+    listEl.innerHTML = publicEventsItems.map(e=>`
+      <div class="approval-row" data-id="${e.id}" style="cursor:default; align-items:center; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0; flex-wrap:wrap;">
+          ${e.image_url
+            ? `<img src="${esc(e.image_url)}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; flex:none;">`
+            : `<div style="width:64px; height:64px; border-radius:8px; flex:none; background:var(--paper-2); display:flex; align-items:center; justify-content:center; color:var(--ink-soft); font-size:.68rem; text-align:center;">ללא תמונה</div>`}
+          <div style="flex:1; min-width:160px;">
+            <strong>${esc(e.title)}</strong> ${!e.is_active ? '<span class="badge badge-wait">מוסתר</span>' : ''}
+            <div style="font-size:.82rem; color:var(--ink-soft);">${esc(e.description||'')}</div>
+          </div>
+        </div>
+        <div class="a-actions">
+          <button class="icon-btn call pubev-toggle" data-id="${e.id}" title="${e.is_active ? 'הסתרה מהאתר' : 'הצגה באתר'}">${e.is_active ? ICON.eye : '🚫'}</button>
+          <button class="icon-btn call pubev-delete" data-id="${e.id}" title="מחיקה" style="color:var(--danger);">${ICON.trash}</button>
+        </div>
+      </div>`).join('') || '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין אירועים לפרסום.</p>';
+
+    listEl.querySelectorAll('.pubev-toggle').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const item = publicEventsItems.find(x=>x.id===btn.dataset.id);
+        try{ await db.collection('public_events').doc(btn.dataset.id).update({ is_active: !item.is_active }); loadPubEventsAdmin(); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+    listEl.querySelectorAll('.pubev-delete').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if (!(await confirmDialog('למחוק אירוע זה מרשימת האירועים הקרובים?'))) return;
+        try{ await db.collection('public_events').doc(btn.dataset.id).delete(); loadPubEventsAdmin(); }
+        catch(err){ toast('שגיאה: '+err.message); }
+      });
+    });
+  }
+  loadPubEventsAdmin();
 }
 
 /* ============================================================
