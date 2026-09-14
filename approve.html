@@ -197,7 +197,14 @@ function setupSignaturePad(canvas){
 
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
-function normPhoneDigits(s){ return (s||'').toString().replace(/\D/g,''); }
+function normPhoneDigits(s){
+  let d = (s||'').toString().replace(/\D/g,'');
+  // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
+  // ששני הפורמטים ("0501234567" ו-"972501234567") ינורמלו לאותה מחרוזת בדיוק,
+  // ולא ייתפסו כאי-התאמה שגויה בין הורה שמקליד פורמט שונה מזה שנשמר במערכת.
+  if (d.startsWith('972') && d.length === 12){ d = '0' + d.slice(3); }
+  return d;
+}
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -406,7 +413,21 @@ async function load(){
       const candidate = await sha256Hex(`${firstNameOf(name)}|${normPhoneDigits(phone)}|${norm(className)}`);
       const match = approval.verify_hashes.find(h => h.hash === candidate);
       if (!match){
-        verifyErrorBox.innerHTML = `<div class="verify-error">אחד או יותר מהפרטים (שם ההורה, הטלפון) אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
+        // אי אפשר לדעת *איזה* מהשניים (שם/טלפון) בדיוק שגוי — ה-hash הוא צירוף אחד
+        // מוצפן של שניהם יחד (כדי לא לחשוף את הפרטים המקוריים במסמך ציבורי-קריא),
+        // ולכן לא ניתן "לפרק" אותו בדיעבד ולומר איזה רכיב נכשל. לכן מציגים לפרטי מה
+        // בדיוק כדאי לבדוק, ובנוסף קוד קצר שההורה יכול למסור למחנך/ת או למנהל המערכת —
+        // כדי שיידעו בדיוק על איזו שגיאה מדובר בלי לנחש.
+        const refCode = 'ה' + studentId.slice(0,4).toUpperCase();
+        verifyErrorBox.innerHTML = `<div class="verify-error" style="text-align:right;">
+          <b>הפרטים שהוזנו אינם תואמים את מה שרשום במערכת עבור ${esc(studentName)}.</b><br>
+          כדאי לבדוק שוב:
+          <ul style="margin:8px 0 8px 18px; padding:0;">
+            <li>שם פרטי של ההורה בלבד (בלי שם משפחה) — כפי שנמסר למחנך/ת</li>
+            <li>מספר הטלפון בדיוק כפי שנמסר למחנך/ת (למשל אם הוא מתחיל ב-0, לא ב-972+)</li>
+          </ul>
+          אם הפרטים נכונים ועדיין מופיעה שגיאה זו — יש לפנות למחנך/ת הכיתה או למנהל המערכת ולמסור את הקוד: <b dir="ltr">${refCode}</b>
+        </div>`;
         return;
       }
       matchedSlot = match.slot;
@@ -444,6 +465,16 @@ async function load(){
       notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`);
       load();
     }catch(err){
+      // שגיאה כללית של המערכת (לא אי-התאמת פרטים) — למשל בעיית הרשאות/רשת מול
+      // Firestore. מציגים את קוד השגיאה הטכני עצמו (err.code, כמו 'permission-denied'
+      // או 'unavailable') כדי שההורה יוכל למסור אותו בדיוק למנהל המערכת, במקום הודעה
+      // גנרית שאי אפשר לעשות איתה כלום כשמנסים לאבחן מה קרה.
+      console.error('שגיאת שליחת אישור:', err);
+      const errCode = err?.code || err?.message || 'לא ידוע';
+      verifyErrorBox.innerHTML = `<div class="verify-error" style="text-align:right;">
+        <b>אירעה שגיאה טכנית ולא ניתן היה לשלוח את האישור.</b><br>
+        אפשר לנסות שוב בעוד רגע. אם השגיאה חוזרת, יש לפנות למנהל המערכת ולמסור את הקוד: <b dir="ltr">SYS-${esc(errCode)}</b>
+      </div>`;
       toast('אירעה שגיאה, נסו שוב');
       btn.disabled = false; btn.textContent = '✓ שליחת אישור';
     }
