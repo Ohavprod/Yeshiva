@@ -130,6 +130,82 @@
 <script src="firebaseClient.js"></script>
 <script>
 /* ============================================================
+   התקנת האפליקציה למסך הבית (PWA) — חלון מרחף (לא סרגל תחתון) שקופץ
+   לבד באמצע המסך. מוצג גם במסך הכניסה (login) וגם בתוך המערכת. ראו הסבר
+   מפורט בהערה המקבילה ב-index.html.
+   ============================================================ */
+let deferredInstallPrompt = null;
+
+function isStandaloneApp(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIosDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+
+function hideInstallModal(remember){
+  const overlay = document.getElementById('installModalOverlay');
+  if (overlay) overlay.remove();
+  if (remember) localStorage.setItem('installBannerDismissed', '1');
+}
+
+function showInstallModal(){
+  if (isStandaloneApp() || localStorage.getItem('installBannerDismissed') === '1') return;
+  if (document.getElementById('installModalOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'installModalOverlay';
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box install-modal-box">
+      <img src="assets/img/icon-192.png" alt="" class="install-modal-icon">
+      <h3>📲 התקינו את המערכת כאפליקציה</h3>
+      <p>גישה מהירה מהמסך הבית — בלחיצה אחת.</p>
+      <div class="confirm-actions" style="justify-content:center;">
+        <button type="button" class="btn btn-outline btn-sm" id="installModalLater">אולי אחר כך</button>
+        <button type="button" class="btn btn-primary btn-sm" id="installModalBtn">התקנה</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) hideInstallModal(true); });
+  document.getElementById('installModalLater').addEventListener('click', ()=> hideInstallModal(true));
+  document.getElementById('installModalBtn').addEventListener('click', async ()=>{
+    if (deferredInstallPrompt){
+      hideInstallModal(true);
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt = null;
+      return;
+    }
+    hideInstallModal(false);
+    showIosInstallSteps();
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallModal();
+});
+
+function showIosInstallSteps(){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box ios-install-box">
+      <h3 style="margin-top:0;">📲 התקנה באייפון</h3>
+      <div class="ios-step"><span class="ios-step-icon">􀈂</span><p>לחצו על כפתור <b>השיתוף</b> בתחתית מסך הדפדפן (הריבוע עם החץ למעלה)</p></div>
+      <div class="ios-step"><span class="ios-step-icon">➕</span><p>גללו ובחרו <b>"הוספה למסך הבית"</b></p></div>
+      <div class="ios-step"><span class="ios-step-icon">✅</span><p>לחצו <b>"הוספה"</b> — האייקון של הישיבה יופיע במסך הבית כאפליקציה</p></div>
+      <div class="confirm-actions"><button type="button" class="btn btn-primary btn-sm" id="iosInstallCloseBtn">הבנתי, תודה</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+  overlay.querySelector('#iosInstallCloseBtn').addEventListener('click', ()=>{ localStorage.setItem('installBannerDismissed','1'); close(); });
+}
+
+if (isIosDevice() && !isStandaloneApp()){
+  setTimeout(showInstallModal, 1200);
+}
+
+/* ============================================================
    STATE
    ============================================================ */
 let me = null;        // firebase auth user
@@ -334,7 +410,14 @@ async function firestoreCount_(collectionId, opts){
   const parentPath = opts.parentPath ? '/' + opts.parentPath : '';
   const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents${parentPath}:runAggregationQuery`;
   const structuredQuery = { from: [{ collectionId }] };
-  if (opts.where) structuredQuery.where = opts.where;
+  // opts.where יכול להיות פילטר בודד (כמו קודם) או מערך פילטרים שמחוברים ב-AND
+  // (compositeFilter) — לדוגמה status=='approved' וגם class_name==<הכיתה שלי>,
+  // כדי לא לספור אישורים של כיתות אחרות באירוע/טיול רב-כיתתי.
+  if (Array.isArray(opts.where)){
+    structuredQuery.where = { compositeFilter: { op: 'AND', filters: opts.where } };
+  } else if (opts.where){
+    structuredQuery.where = opts.where;
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -1191,7 +1274,13 @@ async function renderHome(body){
         // firestoreCount_ כאן במקום .get() רגיל: נספר כקריאה אחת בלבד ל-Firestore בלי קשר
         // לכמה תלמידים אישרו בפועל (בניגוד ל-.get(), ששם כל מסמך אישור = קריאה נפרדת) —
         // חשוב כי זה רץ בלולאה על כל טיולי הכיתה, בכל טעינה של דף הבית.
-        const approvedCount = await firestoreCount_('approvals', { parentPath: `trips/${t.id}`, where: eqFilter_('status','approved') });
+        // חשוב לא פחות: מסננים גם לפי class_name של המחנך/ת עצמו/ה, לא רק status —
+        // אחרת בטיול/אירוע רב-כיתתי (למשל "כלל ישיבתי"), אישור של הורה מכיתה אחרת
+        // היה נספר גם אצל מחנכים של כיתות אחרות שלא קשורות לאותו אישור.
+        const approvedCount = await firestoreCount_('approvals', {
+          parentPath: `trips/${t.id}`,
+          where: [eqFilter_('status','approved'), eqFilter_('class_name', myProfile.class_name || '')],
+        });
         summaries.push({ trip: t, approvedCount, totalStudents });
       }catch(err){
         summaries.push({ trip: t, approvedCount: null, totalStudents });
@@ -1233,10 +1322,12 @@ async function renderHome(body){
 
   const eventsHtml = `
     <div class="card card-pad events-card" style="margin-top:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <h3 style="margin:0;">📅 אירועים קרובים</h3>
         ${canManageEvents ? `<button class="btn btn-outline btn-sm" id="addEventBtn">${ICON.plus} הוספת אירוע</button>` : ''}
       </div>
       ${canManageEvents ? `<div id="addEventWrap" style="display:none; margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">${eventFormHtml('new')}</div>` : ''}
-      <div id="eventsList" style="${events.length ? 'margin-top:14px;' : ''}">
+      <div id="eventsList" style="margin-top:14px;">
         ${eventsByMonth.map(g=>`
           <div class="month-group-head">${esc(g.month)}</div>
           ${g.items.map(ev=>eventRowHtml(ev, canManageEvents, events.indexOf(ev))).join('')}
