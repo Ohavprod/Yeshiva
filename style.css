@@ -693,6 +693,7 @@ html[data-theme="dark"] .badge-urgent{ background:#3a1e1c; }
 /* ---------- live trip-notice preview (trip creation/edit form) ---------- */
 .notice-preview{ position:sticky; top:20px; }
 .notice-preview .trip-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow-sm); margin-bottom:16px; }
+.notice-preview .notes-card{ background:var(--wait-bg); border-color:var(--wait); border-inline-start:4px solid var(--wait); }
 .notice-preview .section-eyebrow{
   display:inline-block; font-size:.68rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
   background:var(--paper-2); padding:4px 12px; border-radius:999px; margin-bottom:12px;
