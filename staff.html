@@ -174,6 +174,15 @@ function positionMoreActionsMenu(btn, menu){
   if (left + menuWidth > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - margin - menuWidth);
   menu.style.left = `${left}px`;
 }
+/* תפריטי "⋮"/"⋯" ממוקמים לפי מיקום הכפתור ברגע הפתיחה (position:fixed עבור "פעולות
+   נוספות", position:absolute עבור תפריט הקבב) — בלי טיפול נוסף, גלילת העמוד בזמן
+   שהתפריט פתוח משאירה אותו "תלוי" במקום שלא שייך יותר לכפתור שפתח אותו. לכן סוגרים
+   כל תפריט פתוח מהסוג הזה מיד עם תחילת גלילה כלשהי בעמוד (capture:true כדי לתפוס גם
+   גלילה בתוך אזורים פנימיים גוללים, לא רק גלילת החלון עצמו). */
+window.addEventListener('scroll', ()=>{
+  document.querySelectorAll('.more-actions-menu.open').forEach(m=> m.classList.remove('open'));
+  document.querySelectorAll('.kebab-menu[open]').forEach(k=> k.removeAttribute('open'));
+}, true);
 /* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
    ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
 const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
@@ -193,6 +202,22 @@ function fmtCost(v){
   if (!v) return '';
   const s = v.toString().trim();
   return s.includes('₪') ? s : `${s} ₪`;
+}
+/* תאריך לועזי מקוצר (יום.חודש.שנה דו-ספרתית) — לשילוב בסוגריים ליד תאריך עברי,
+   לדוגמה כ"ז אלול תשפ"ז (14.9.26), בהתאם לפורמט שביקש אביב לתאריכי טיולים. */
+function formatGregShort(dateStr){
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getDate()}.${d.getMonth()+1}.${d.getFullYear().toString().slice(-2)}`;
+}
+/* שורת תאריך טיול מאוחדת: תאריך עברי ואז הלועזי בסוגריים לידו — "כ"ז אלול תשפ"ז (14.9.26)".
+   אם יש רק אחד מהשניים, מוצג הוא לבדו בלי סוגריים. */
+function formatTripDateLine(trip){
+  const greg = formatGregShort(trip.trip_date);
+  const heb = (trip.hebrew_date||'').trim();
+  if (heb && greg) return `${heb} (${greg})`;
+  return heb || greg || '';
 }
 /* --- Cloudinary: להחליף בערכים האמיתיים אחרי יצירת חשבון/upload preset ---
    cloud_name נמצא בדשבורד הראשי של Cloudinary. upload_preset הוא preset מסוג
@@ -949,6 +974,7 @@ async function enterApp(){
   show('appShell');
   goto('home');
   setupPushNotifications();
+  checkTaskReminders();
 }
 
 /* --- פוש-נוטיפיקציה: בקשת הרשאה ושמירת ה-FCM token על המשתמש --- */
@@ -1208,7 +1234,7 @@ async function renderHome(body){
   const eventsHtml = `
     <div class="card card-pad" style="margin-top:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <h3 style="margin:0;">${ICON.calendar} לוח אירועים — בקרוב</h3>
+        <h3 style="margin:0; color:var(--steel);">${ICON.calendar} לוח אירועים</h3>
         ${canManageEvents ? `<button class="btn btn-outline btn-sm" id="addEventBtn">${ICON.plus} הוספת אירוע</button>` : ''}
       </div>
       ${canManageEvents ? `<div id="addEventWrap" style="display:none; margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">${eventFormHtml('new')}</div>` : ''}
@@ -1414,7 +1440,7 @@ function eventRowHtml(ev, canManageEvents, idx){
   const badge = idx === 0 ? `<span class="badge badge-ok" style="margin-inline-start:8px;">האירוע הקרוב ביותר</span>`
     : idx === 1 ? `<span class="badge badge-wait" style="margin-inline-start:8px;">האירוע הבא בתור</span>` : '';
   return `
-    <div class="event-row" data-id="${ev.id}">
+    <div class="event-row ${idx === 0 ? 'event-row-next' : ''}" data-id="${ev.id}">
       <div class="event-date-badge">
         <span class="ev-heb">${esc(ev.hebrew_date||'—')}</span>
         <span class="ev-greg">${ev.event_date ? new Date(ev.event_date).toLocaleDateString('he-IL') : ''}</span>
@@ -1884,20 +1910,21 @@ async function removeStudentFromAllTripApprovals(studentId, classId){
 /* בונה תצוגה מקדימה קטנה של חוזר הטיול כפי שהוא ייראה אצל ההורים (trip-notice.html) —
    משמש בטופס יצירת/עריכת טיול כדי לראות ולתקן לפני הפרסום */
 function buildTripNoticePreviewHtml(vals){
-  const gregDate = vals.trip_date ? new Date(vals.trip_date).toLocaleDateString('he-IL') : '';
+  const gregDate = formatGregShort(vals.trip_date);
+  const isEvent = vals.kind === 'event';
+  const detailsWord = isEvent ? 'האירוע' : 'הטיול';
   if (!vals.title && !vals.intro_text && !vals.hebrew_date && !gregDate){
-    return `<div class="np-empty">מלאו את פרטי הטיול כדי לראות כאן תצוגה מקדימה</div>`;
+    return `<div class="np-empty">מלאו את פרטי ${detailsWord} כדי לראות כאן תצוגה מקדימה</div>`;
   }
   let html = `
     <div class="trip-card">
-      <div class="section-eyebrow">פרטי הטיול</div>
-      <h2 class="trip-title">${esc(vals.title || 'שם הטיול')}</h2>
+      <div class="section-eyebrow">פרטי ${detailsWord}</div>
+      <h2 class="trip-title">${esc(vals.title || (isEvent ? 'שם האירוע' : 'שם הטיול'))}</h2>
       ${vals.intro_text ? `<div class="intro-callout">${esc(vals.intro_text)}</div>` : ''}
       ${(vals.hebrew_date || gregDate) ? `<div class="date-line">
-        <span class="lbl">תאריך הטיול</span>
+        <span class="lbl">תאריך ${detailsWord}</span>
         ${vals.hebrew_date ? `<span class="heb">${esc(vals.hebrew_date)}</span>` : ''}
-        ${vals.hebrew_date && gregDate ? '<span class="sep">·</span>' : ''}
-        ${gregDate ? `<span class="greg">${gregDate}</span>` : ''}
+        ${vals.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
       </div>` : ''}
       <div class="meta-badges">
         ${vals.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">יעד</div><div class="m-value">${esc(vals.location)}</div></div>` : ''}
@@ -2002,6 +2029,19 @@ async function renderTrips(body){
       <div class="trip-form-grid">
         <form id="newTripForm" class="form-grid">
           ${classPickerHtml}
+          <div class="field"><label>סוג</label>
+            <select id="t_kind">
+              <option value="trip">טיול</option>
+              <option value="event">אירוע חברתי</option>
+            </select>
+          </div>
+          <div class="field" id="t_requires_reg_wrap" style="display:none;">
+            <label>כולל רישום תלמידים?</label>
+            <select id="t_requires_registration">
+              <option value="yes">כן — נדרש רישום/אישור הורים</option>
+              <option value="no">לא — הודעה בלבד, ללא רישום</option>
+            </select>
+          </div>
           <div class="field" style="grid-column:1/-1;"><label>שם הטיול</label><input required id="t_title" placeholder="לדוגמה: סיור סליחות ישיבתי"></div>
           <div class="field" style="grid-column:1/-1;"><label>פתיח / עיקרי הדברים (יוצג בבלטות בראש החוזר)</label>
             <textarea id="t_intro" placeholder="לדוגמה: שלום הורים יקרים, כהכנה לקראת הימים הנוראים נצא כל הישיבה אי״ה ביום רביעי..."></textarea>
@@ -2056,10 +2096,14 @@ async function renderTrips(body){
   }
 
   if (canCreate){
+    document.getElementById('t_kind').addEventListener('change', (e)=>{
+      document.getElementById('t_requires_reg_wrap').style.display = e.target.value === 'event' ? '' : 'none';
+    });
     const itineraryRowsEl = document.getElementById('itineraryRows');
     const previewBodyEl = document.getElementById('tripPreviewBody');
     const readTripFormForPreview = () => ({
       title: document.getElementById('t_title').value,
+      kind: document.getElementById('t_kind').value,
       intro_text: document.getElementById('t_intro').value,
       hebrew_date: document.getElementById('t_hebrew_date').value,
       trip_date: document.getElementById('t_date').value,
@@ -2109,9 +2153,15 @@ async function renderTrips(body){
       })).filter(r=> r.time || r.activity)
         .sort((a,b)=> a.time.localeCompare(b.time));
 
+      const kind = document.getElementById('t_kind').value; // 'trip' | 'event'
+      // רישום תלמידים רלוונטי לבחירה רק עבור אירוע חברתי — לטיול תמיד יש רישום/אישור הורים.
+      const requiresRegistration = kind === 'trip' ? true : (document.getElementById('t_requires_registration').value === 'yes');
+
       const payload = {
         class_ids,
         is_school_wide: !!isSchoolWide,
+        kind,
+        requires_registration: requiresRegistration,
         title: document.getElementById('t_title').value.trim(),
         intro_text: document.getElementById('t_intro').value.trim(),
         hebrew_date: document.getElementById('t_hebrew_date').value.trim(),
@@ -2131,6 +2181,16 @@ async function renderTrips(body){
       };
       try{
         const tripRef = await db.collection('trips').add(payload);
+        // אירוע חברתי שלא כולל רישום תלמידים: הודעה בלבד, בלי roster_snapshot/אישורים בכלל —
+        // אין למי לשלוח קישור אישי, ואין מה "לאשר". class_options עדיין נשמר כדי שהתצוגה
+        // (שמות כיתות) תעבוד באותה צורה לכל סוגי הטיולים/אירועים.
+        if (!requiresRegistration){
+          const class_options = class_ids.map(cid=>({ id: cid, name: classesCache.find(c=>c.id===cid)?.name || '' }));
+          await tripRef.update({ class_options, roster_snapshot: [] });
+          notifyPush('new_trip', kind === 'event' ? 'נוסף אירוע חברתי חדש' : 'נוצר טיול חדש', payload.title);
+          toast(kind === 'event' ? 'האירוע נוצר' : 'הטיול נוצר'); goto('trips');
+          return;
+        }
         // איחוד תלמידי כל הכיתות שנבחרו — נשלף בקבוצות של עד 10 (מגבלת Firestore ל-'in'), כדי שגם טיול כלל ישיבתי עם הרבה כיתות יעבוד
         const rosterDocs = await fetchStudentDocsForClassIds(class_ids);
         // roster_snapshot: נשמר על הטיול עצמו (מסמך שקריא לכולם ללא התחברות!) ומשמש להצלבה
@@ -2225,29 +2285,28 @@ function renderTripsList(container, trips){
           <div>
             <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span></h3>
             <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
-              ${t.hebrew_date ? esc(t.hebrew_date)+' · ' : ''}
-              ${t.trip_date ? new Date(t.trip_date).toLocaleDateString('he-IL')+' · ' : ''}
+              ${formatTripDateLine(t) ? esc(formatTripDateLine(t))+' · ' : ''}
               ${esc(t.location||'')}
             </div>
           </div>
         </div>
-        <div id="trip-actions-${t.id}" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div id="trip-actions-${t.id}" class="collapsed" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
           <div class="desktop-only-actions">
             ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
             ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
-            ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+            ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
           </div>
-          ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
-          <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} פרטי הטיול המלאים</button>
-          ${showAttendanceBtn ? `<button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} נוכחות ביום הטיול</button>` : ''}
+          ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
+          <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} ${t.kind === 'event' ? 'פרטי האירוע המלאים' : 'פרטי הטיול המלאים'}</button>
+          ${showAttendanceBtn ? `<button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} ${t.kind === 'event' ? 'נוכחות ביום האירוע' : 'נוכחות ביום הטיול'}</button>` : ''}
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
-          ${(canEditInfo || p.view_all_classes || p.create_trips || p.edit_trip_details) ? `
+          ${(canEditInfo || p.view_all_classes || p.create_trips || p.edit_trip_details || p.manage_class_roster) ? `
           <details class="kebab-menu">
             <summary class="icon-btn kebab-btn" title="עוד פעולות">⋮</summary>
             <div class="kebab-panel">
               ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
               ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
-              ${p.create_trips || p.edit_trip_details || p.view_all_classes ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+              ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
             </div>
           </details>` : ''}
         </div>
@@ -2374,6 +2433,10 @@ function renderTripsList(container, trips){
       const actions = document.getElementById('trip-actions-'+id);
       const opening = actions.style.display === 'none';
       actions.style.display = opening ? 'flex' : 'none';
+      // .collapsed נחוץ בנוסף ל-style.display: בנייד יש חוק CSS עם display:flex !important
+      // על שורת הכפתורים (כדי לסדר אותם בעמודה אחידה) שאחרת מנצח תמיד את ה-style inline
+      // ומשאיר את הכפתורים גלויים גם כשהכרטיס "מקופל" למראית עין (רק החץ מסתובב).
+      actions.classList.toggle('collapsed', !opening);
       head.querySelector('.chev')?.classList.toggle('open', opening);
       // בקיפול (לא בפתיחה): סוגרים גם כל תת-פאנל פתוח (עריכה/פרטים/נוכחות/ניהול
       // אישורים) — בלי זה הכרטיס "לא מתקפל" בעין: שורת הכפתורים נעלמת אבל
@@ -2668,7 +2731,7 @@ function buildApprovalDocElement(trip, studentName, studentClassName, approval){
       <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
         <tr><td style="padding:10px 0; color:#4b566d; width:160px; border-bottom:1px solid #dde4ee; font-size:14px;">כיתה</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-weight:700; font-size:15px;">${esc(studentClassName||'')}</td></tr>
         <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תלמיד/ה</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-weight:700; font-size:15px;">${esc(studentName||'')}</td></tr>
-        ${(trip.hebrew_date || gregDate) ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תאריך הטיול</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}</td></tr>` : ''}
+        ${formatTripDateLine(trip) ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תאריך הטיול</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(formatTripDateLine(trip))}</td></tr>` : ''}
         ${trip.location ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">יעד</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(trip.location)}</td></tr>` : ''}
         <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">אושר על ידי</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(approval.approved_by_name||'')}</td></tr>
         <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">ת.ז הורה</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(approval.approved_by_id||'—')}</td></tr>
@@ -2726,7 +2789,7 @@ async function downloadApprovalPdf(trip, studentName, studentClassName, approval
   }catch(err){ toast('שגיאה ביצירת PDF: '+err.message); }
 }
 /* מייצא לקובץ ZIP אחד את כל האישורים המאושרים של הטיול — כל תלמיד/ה כקובץ PDF אמיתי נפרד,
-   כשלכל אחד מוצגת רק הכיתה שלו/ה */
+   מחולק לתיקיות משנה לפי כיתה בתוך ה-ZIP (כל כיתה בתיקייה נפרדת עם קבצי ה-PDF המאושרים שלה) */
 async function exportApprovalsZip(trip, students, approvalsById){
   const approvedList = students.filter(s => approvalsById[s.id]?.status === 'approved');
   if (!approvedList.length){ toast('אין עדיין אישורים מאושרים לטיול זה'); return; }
@@ -2734,15 +2797,17 @@ async function exportApprovalsZip(trip, students, approvalsById){
   try{
     const zip = new JSZip();
     for (const s of approvedList){
-      const studentClassName = classesCache.find(c=>c.id===s.class_id)?.name || '';
+      const studentClassName = classesCache.find(c=>c.id===s.class_id)?.name || 'ללא כיתה';
       const node = buildApprovalDocElement(trip, s.full_name, studentClassName, approvalsById[s.id]);
       const blob = await renderNodeToPdfBlob(node);
-      zip.file(`אישור - ${s.full_name}.pdf`, blob);
+      // תיקיית משנה לפי שם הכיתה — כך שבפתיחת ה-ZIP רואים תיקייה נפרדת לכל כיתה,
+      // ובתוכה רק קבצי ה-PDF המאושרים של אותה כיתה.
+      zip.folder(studentClassName).file(`אישור - ${s.full_name}.pdf`, blob);
     }
     const zipBlob = await zip.generateAsync({ type:'blob' });
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
-    a.href = url; a.download = `אישורים - ${trip.title}.zip`; document.body.appendChild(a); a.click(); a.remove();
+    a.href = url; a.download = `אישורי טיול - ${trip.title}.zip`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=> URL.revokeObjectURL(url), 3000);
     toast(`יוצאו ${approvedList.length} קבצי PDF לקובץ ZIP`);
   }catch(err){ toast('שגיאה בהכנת קובץ ה-ZIP: '+err.message); }
@@ -2769,7 +2834,7 @@ function buildClassRosterPageElement(trip, g, gregDate){
       </div>
       <h1 style="font-size:23px; margin:0 0 10px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
       <div style="font-size:13px; color:#4b566d; margin-bottom:22px;">
-        ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
+        ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
       </div>
       <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(g.className)}</span>
@@ -2778,20 +2843,31 @@ function buildClassRosterPageElement(trip, g, gregDate){
       <table style="width:100%; border-collapse:collapse;">
         <thead>
           <tr>
-            <th style="padding:8px; border-bottom:2px solid #16223d; width:26px;"></th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d;">שם התלמיד/ה</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:150px;">אמא</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:150px;">אבא</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; width:24px;"></th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d;">שם פרטי</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d;">שם משפחה</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:110px;">כתובת</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:110px;">רגישויות</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:130px;">אמא</th>
+            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:130px;">אבא</th>
           </tr>
         </thead>
         <tbody>
-          ${g.students.map((s,i)=>`
+          ${g.students.map((s,i)=>{
+            const nameParts = (s.full_name||'').trim().split(/\s+/);
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+            return `
             <tr>
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; color:#16223d; font-size:13px; font-weight:700; text-align:center; vertical-align:top;">${i+1}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(s.full_name)}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(firstName)}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(lastName)}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:12.5px; color:#4b566d; vertical-align:top;">${esc(s.city||'—')}</td>
+              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:12.5px; color:${s.notes ? '#b3372e' : '#b7bfcc'}; font-weight:${s.notes?'700':'400'}; vertical-align:top;">${esc(s.notes || '—')}</td>
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; vertical-align:top;">${parentCell(s.mother_name, s.mother_phone)}</td>
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; vertical-align:top;">${parentCell(s.father_name, s.father_phone)}</td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
@@ -2907,7 +2983,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
       </div>
       <h1 style="font-size:22px; margin:0 0 8px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
       <div style="font-size:13px; color:#4b566d; margin-bottom:24px;">
-        ${trip.hebrew_date ? esc(trip.hebrew_date) : ''}${trip.hebrew_date && gregDate ? ' · ' : ''}${esc(gregDate)}${trip.location ? ' · ' + esc(trip.location) : ''}
+        ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
       </div>
       ${section('אוטובוסים ואחראים', busesHtml)}
       ${section('חובשים ומע"רים', medicsHtml)}
@@ -3063,7 +3139,13 @@ function matchedCity(city){
   const c = (city||'').trim();
   return RELEVANT_CITIES.find(rc => c.includes(rc)) || null;
 }
-function buildCityAndSensitivityStatsHtml(approvedStudents, heading){
+/* מחזיר true רק לתפקידים שרשאים לראות ריכוז/סטטיסטיקת רגישויות של תלמידים בטיול —
+   מנהל מערכת, רכז חברתי וראש הישיבה. מחנך/ת רגיל/ה לא רואה את הריכוז הזה כלל; הם
+   רואים במקום זאת הדגשה על כרטיס כל תלמיד/ה שלהם עם רגישות, ישירות ברשימת האישורים. */
+function canViewTripSensitivityStats(){
+  return myProfile.role === 'מנהל מערכת' || myProfile.role === 'רכז חברתי' || myProfile.role === 'ראש הישיבה';
+}
+function buildCityAndSensitivityStatsHtml(approvedStudents, heading, showSensitivities){
   if (!approvedStudents.length) return '';
   const cityCounts = {};
   approvedStudents.forEach(s=>{
@@ -3082,11 +3164,11 @@ function buildCityAndSensitivityStatsHtml(approvedStudents, heading){
   return `
     <div class="card-pad" style="background:var(--paper-2); border-radius:14px; padding:14px 16px; margin-bottom:16px;">
       ${heading ? `<div style="font-weight:700; font-size:.85rem; color:var(--ink-soft); margin-bottom:8px;">${esc(heading)}</div>` : ''}
-      <div style="margin-bottom:${sensPills ? '10px' : '0'};">
+      <div style="margin-bottom:${(showSensitivities && sensPills) ? '10px' : '0'};">
         <div style="font-size:.78rem; color:var(--ink-soft); margin-bottom:6px;">לפי מקום מגורים (מאושרים בלבד)</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px;">${cityPills || '<span style="color:var(--ink-soft); font-size:.85rem;">אין עדיין נתונים</span>'}</div>
       </div>
-      ${sensPills ? `<div>
+      ${(showSensitivities && sensPills) ? `<div>
         <div style="font-size:.78rem; color:var(--ink-soft); margin-bottom:6px;">רגישויות (מאושרים בלבד)</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px;">${sensPills}</div>
       </div>` : ''}
@@ -3344,10 +3426,12 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
   const attById = {};
   attSnap.docs.forEach(d=> attById[d.id] = d.data());
 
-  const baseLegs = [
-    { id:'departure', label:'יציאה לטיול' },
-    { id:'return', label:'חזרה מהטיול' },
-  ];
+  const baseLegs = trip.kind === 'event'
+    ? [{ id:'arrival', label:'רישום הגעה לאירוע' }]
+    : [
+        { id:'departure', label:'יציאה לטיול' },
+        { id:'return', label:'חזרה מהטיול' },
+      ];
   let customLegs = (trip.attendance_checkpoints || []).slice();
   const allLegs = () => baseLegs.concat(customLegs);
 
@@ -3548,9 +3632,10 @@ async function renderTripDetail(panel, trip){
     </div>`;
 
   const isMultiClass = tripClassIds.length > 1;
+  const showSens = canViewTripSensitivityStats();
   const cityStatsHtml = isMultiClass
-    ? buildCityAndSensitivityStatsHtml(approvedStudents, 'כלל הכיתות בטיול זה')
-    : buildCityAndSensitivityStatsHtml(approvedStudents, '');
+    ? buildCityAndSensitivityStatsHtml(approvedStudents, 'כלל הכיתות בטיול זה', showSens)
+    : buildCityAndSensitivityStatsHtml(approvedStudents, '', showSens);
 
   const canViewCert = p.view_all_classes || p.manage_trip_certificates;
 
@@ -3571,7 +3656,7 @@ async function renderTripDetail(panel, trip){
           <button id="bulkSendBtn">${ICON.send} שליחה לכל הממתינים</button>
           <button id="exportRosterPdfBtn">${ICON.download} רשימת נוכחות לפי כיתה (PDF)</button>
           <button id="exportTripFullPdfBtn">${ICON.download} אישור טיול + פרטים נלווים (PDF)</button>
-          <button id="exportApprovalsZipBtn">${ICON.archive} ייצוא כל האישורים ל-ZIP</button>
+          <button id="exportApprovalsZipBtn">${ICON.download} הורדת כל אישורי הטיול (PDF)</button>
         </div>
       </div>
     </div>` : ''}
@@ -3613,11 +3698,15 @@ async function renderTripDetail(panel, trip){
     if (s.mother_phone) parents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
     if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
     const classTag = ''; // כפול מיותר כעת שכל כיתה מקובצת תחת כותרת קיפול משלה
+    const hasSensitivity = !!(s.notes && s.notes.trim());
     return `
-      <div class="approval-row" data-student="${s.id}">
+      <div class="approval-row ${hasSensitivity ? 'has-sensitivity' : ''}" data-student="${s.id}">
         <div>
           <strong>${esc(s.full_name)}</strong>${classTag}
-          <div style="margin-top:4px;">${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}</div>
+          <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
+            ${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}
+            ${hasSensitivity ? `<span class="badge badge-urgent" title="${esc(s.notes)}">${ICON.bell} רגישות</span>` : ''}
+          </div>
         </div>
         <div class="a-actions">
           ${parents.map(pr=>`
@@ -3654,7 +3743,7 @@ async function renderTripDetail(panel, trip){
             <span class="cg-summary">${classApproved.length} / ${classStudents.length} אישרו</span>
           </button>
           <div class="class-group-body" id="cgb-${trip.id}-${cid}" style="display:none;">
-            ${isMultiClass ? buildCityAndSensitivityStatsHtml(classApproved, '') : ''}
+            ${isMultiClass ? buildCityAndSensitivityStatsHtml(classApproved, '', showSens) : ''}
             ${classStudents.map(rowHtml).join('')}
           </div>
         </div>`;
@@ -4078,54 +4167,8 @@ async function renderPayments(body){
 }
 
 /* ============================================================
-   SHIRTS (מעלין בקודש) — קטלוג חולצות, שליחת קישורי הזמנה להורים, וטבלת תשלומים למזכירה
+   SHIRTS (מעלין בקודש) — קטלוג חולצות, קישור כללי אחד להזמנת חולצות, וטבלת תשלומים למזכירה
    ============================================================ */
-function showShirtLinksModal(students){
-  const withPhone = students.filter(s=> s.mother_phone || s.father_phone);
-  const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
-  overlay.innerHTML = `
-    <div class="confirm-box" style="max-width:460px;">
-      <h3>שליחת קישור חולצות (${withPhone.length})</h3>
-      <p>לחיצה על כל אייקון פותחת הודעת וואטסאפ מוכנה לשליחה — יש לעבור אחד-אחד.</p>
-      <div id="shirtBulkList" style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
-      <div class="confirm-actions"><button class="btn btn-primary btn-sm bulk-close">סגירה</button></div>
-    </div>`;
-  document.body.appendChild(overlay);
-  const listEl = overlay.querySelector('#shirtBulkList');
-  listEl.innerHTML = withPhone.map(s=>{
-    const parents = [];
-    if (s.mother_phone) parents.push({ label:'אמא', icon:'👩', phone:s.mother_phone });
-    if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
-    return `<div class="approval-row" style="margin-bottom:0;">
-      <strong>${esc(s.full_name)}</strong>
-      <div class="a-actions">
-        ${parents.map(pr=>`
-          <div class="parent-contact-group">
-            <span class="parent-label">${pr.icon} ${pr.label}</span>
-            <div class="parent-icons"><button class="icon-btn wa shirt-send" data-id="${s.id}" data-phone="${pr.phone}" title="שליחה ל${pr.label}">${WA_ICON_SVG}</button></div>
-          </div>`).join('')}
-      </div>
-    </div>`;
-  }).join('') || '<p style="color:var(--ink-soft);">אין תלמידים עם מספר טלפון רשום בכיתה זו.</p>';
-
-  listEl.querySelectorAll('.shirt-send').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const student = students.find(x=>x.id===btn.dataset.id);
-      const phone = btn.dataset.phone;
-      const winRef = window.open('', '_blank');
-      try{
-        await syncStudentPublicRecord(student.id, student);
-        const link = `${siteBaseUrl()}shirt-order.html?s=${student.id}`;
-        const text = encodeURIComponent(`שלום, לקראת מבצע החולצות "מעלין בקודש" נא למלא עבור ${student.full_name} את פרטי ההזמנה בקישור הבא: ${link}`);
-        const waUrl = `https://wa.me/${waPhone(phone)}?text=${text}`;
-        if (winRef) winRef.location.href = waUrl; else window.open(waUrl, '_blank');
-      }catch(err){ if (winRef) winRef.close(); toast('שגיאה: '+err.message); }
-    });
-  });
-  overlay.querySelector('.bulk-close').addEventListener('click', ()=> overlay.remove());
-  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) overlay.remove(); });
-}
 
 const SHIRT_PAYMENT_METHODS = [
   { id:'cash', label:'מזומן' }, { id:'bit', label:'ביט' }, { id:'paybox', label:'פייבוקס' },
@@ -4160,13 +4203,20 @@ async function renderShirtsPanel(panel){
       </div>
     </div>`;
 
+  const generalShirtLink = `${siteBaseUrl()}shirt-order.html`;
   const renderSendSection = () => `
     <div class="card card-pad" style="margin-bottom:16px;">
-      <h3 style="margin-top:0;">שליחת קישור להורים</h3>
-      <div class="form-grid">
-        <div class="field"><label>כיתה</label><select id="shirtSendClass">${classesCache.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="field" style="align-self:flex-end;"><button class="btn btn-outline btn-sm" type="button" id="shirtSendBtn" style="width:100%;">${ICON.send} שליחת קישור לכיתה שנבחרה</button></div>
+      <h3 style="margin-top:0;">שליחת קישור כללי להזמנת חולצות</h3>
+      <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">קישור אחד המתאים לכלל הורי הישיבה — כל הורה מזין בעצמו את כיתת הבן/בת ושם מלא כדי לאתר את הכרטיס ולהמשיך בהזמנה. אין צורך לשלוח קישור נפרד לכל כיתה.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <input readonly id="generalShirtLinkInput" value="${esc(generalShirtLink)}" style="flex:1; min-width:220px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; background:var(--surface-2); color:var(--ink); direction:ltr; text-align:left;">
+        <button class="btn btn-outline btn-sm" type="button" id="copyShirtLinkBtn">${ICON.link} העתקת קישור</button>
+        <button class="btn btn-primary btn-sm" type="button" id="shareShirtLinkBtn">${ICON.send} שיתוף בוואטסאפ</button>
       </div>
+      <p style="color:var(--ink-soft); font-size:.8rem; margin-bottom:0; margin-top:12px;">
+        תלמיד/ה שכרטיס/ה טרם עודכן מעולם לא יימצא/תימצא בחיפוש בקישור הכללי. אם ההזמנות לא מסתדרות לתלמידים ותיקים, אפשר לסנכרן את כל הכרטיסים פעם אחת:
+        <button class="btn btn-outline btn-sm" type="button" id="syncAllShirtPublicBtn" style="margin-inline-start:8px;">סנכרון כל התלמידים</button>
+      </p>
     </div>`;
 
   const renderOrdersTable = () => `
@@ -4202,13 +4252,28 @@ async function renderShirtsPanel(panel){
     });
   });
 
-  panel.querySelector('#shirtSendBtn').addEventListener('click', async ()=>{
-    const classId = document.getElementById('shirtSendClass').value;
-    if (!classId) return;
-    const docs = await fetchStudentDocsForClassIds([classId]);
-    const studs = docs.map(d=>({ id:d.id, ...d.data() }));
-    if (!studs.length){ toast('אין תלמידים בכיתה זו'); return; }
-    showShirtLinksModal(studs);
+  panel.querySelector('#copyShirtLinkBtn').addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(generalShirtLink);
+      toast('הקישור הועתק');
+    }catch(err){
+      const input = document.getElementById('generalShirtLinkInput');
+      input.select();
+      toast('נא להעתיק ידנית מהשדה');
+    }
+  });
+  panel.querySelector('#shareShirtLinkBtn').addEventListener('click', ()=>{
+    const text = encodeURIComponent(`שלום, לקראת מבצע החולצות "מעלין בקודש" נא למלא את פרטי ההזמנה עבור ילדכם/ילדתכם בקישור הבא: ${generalShirtLink}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  });
+  panel.querySelector('#syncAllShirtPublicBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
+    btn.disabled = true; btn.textContent = 'מסנכרן…';
+    try{
+      await Promise.all(allStudents.map(s=> syncStudentPublicRecord(s.id, s)));
+      toast('כל כרטיסי התלמידים סונכרנו לחיפוש בקישור הכללי');
+    }catch(err){ toast('שגיאה: '+err.message); }
+    finally{ btn.disabled = false; btn.textContent = 'סנכרון כל התלמידים'; }
   });
 
   panel.querySelectorAll('.shirt-paid-cb').forEach(cb=>{
@@ -4435,6 +4500,11 @@ async function renderMyTasks(body){
         </div>
         <div class="field" style="grid-column:1/-1;"><label>המשימה</label><input required id="task_text" placeholder="לדוגמה: לתאם אוטובוס"></div>
         <div class="field"><label>תאריך יעד</label><input type="date" id="task_due"></div>
+        <div class="field" style="justify-content:flex-end;">
+          <label class="chip-check" id="task_urgent_chip" style="justify-content:center;">
+            <input type="checkbox" id="task_urgent"> ${ICON.bell} דחיפות גבוהה
+          </label>
+        </div>
         <div class="field"><button class="btn btn-primary" type="submit">${ICON.plus} הוספת משימה</button></div>
       </form>
     </div>
@@ -4446,6 +4516,9 @@ async function renderMyTasks(body){
     box.style.display = opening ? '' : 'none';
     e.currentTarget.classList.toggle('open', opening);
   });
+
+  const urgentChip = document.getElementById('task_urgent_chip');
+  urgentChip.addEventListener('click', ()=> setTimeout(()=> urgentChip.classList.toggle('checked', urgentChip.querySelector('input').checked)));
 
   body.querySelectorAll('.save-assigned-note').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -4463,10 +4536,11 @@ async function renderMyTasks(body){
     const group_title = document.getElementById('task_group').value.trim() || 'כללי';
     const due_date = document.getElementById('task_due').value || null;
     const text = document.getElementById('task_text').value.trim();
+    const urgent = document.getElementById('task_urgent').checked;
     if (!text) return;
     try{
       await db.collection('personal_tasks').add({
-        owner_uid: me.uid, group_title, text, due_date, done:false,
+        owner_uid: me.uid, group_title, text, due_date, urgent, done:false,
         school_year: currentSchoolYear,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
@@ -4474,6 +4548,11 @@ async function renderMyTasks(body){
     }catch(err){ toast('שגיאה: '+err.message); }
   });
 
+  renderTaskGroups(tasks);
+}
+
+/* --- ציור רשימת קבוצות המשימות: קרוב-ראשון (דחוף לפני הכל, אח"כ תאריך יעד הכי קרוב), עם עריכה ותוספת מהירה לנושא --- */
+function renderTaskGroups(tasks){
   const groupsEl = document.getElementById('tasksGroups');
   const byGroup = {};
   tasks.forEach(t=> (byGroup[t.group_title || 'כללי'] = byGroup[t.group_title || 'כללי'] || []).push(t));
@@ -4485,32 +4564,55 @@ async function renderMyTasks(body){
   }
 
   const todayIso = new Date().toISOString().slice(0,10);
-  groupsEl.innerHTML = sortedGroupKeys.map(gname=>{
-    const items = byGroup[gname].slice().sort((a,b)=>{
-      if (!!a.done !== !!b.done) return a.done ? 1 : -1;
-      if (!a.due_date && !b.due_date) return 0;
-      if (!a.due_date) return 1;
-      if (!b.due_date) return -1;
-      return a.due_date.localeCompare(b.due_date);
-    });
+  const sortTasks = (list)=> list.slice().sort((a,b)=>{
+    if (!!a.done !== !!b.done) return a.done ? 1 : -1;
+    if (!!a.urgent !== !!b.urgent) return a.urgent ? -1 : 1;
+    if (!a.due_date && !b.due_date) return 0;
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  });
+
+  const taskCardHtml = (t)=>{
+    const overdue = !t.done && t.due_date && t.due_date < todayIso;
     return `
-      <div class="card card-pad" style="margin-bottom:16px;">
-        <h3 style="margin-top:0;">${esc(gname)}</h3>
-        <div class="task-list">
-          ${items.map(t=>`
-            <div class="task-row ${t.done?'done':''}" data-id="${t.id}">
-              <label class="task-check">
-                <input type="checkbox" class="task-toggle" data-id="${t.id}" ${t.done?'checked':''}>
-                <span class="task-text">${esc(t.text)}</span>
-              </label>
-              <div style="display:flex; align-items:center; gap:8px;">
-                ${t.due_date ? `<span class="badge" style="background:var(--paper-2); color:${(!t.done && t.due_date < todayIso) ? 'var(--danger)' : 'var(--ink-soft)'};">📅 ${new Date(t.due_date).toLocaleDateString('he-IL')}</span>` : ''}
-                <button class="icon-btn call del-task" data-id="${t.id}" title="מחיקה" style="width:34px;height:34px;">🗑</button>
-              </div>
-            </div>`).join('')}
+      <div class="task-card ${t.done?'done':''} ${t.urgent && !t.done?'urgent':''} ${overdue?'overdue':''}" data-id="${t.id}">
+        <label class="task-check">
+          <input type="checkbox" class="task-toggle" data-id="${t.id}" ${t.done?'checked':''}>
+          <span class="task-text">${esc(t.text)}</span>
+        </label>
+        <div class="task-meta">
+          ${t.urgent && !t.done ? `<span class="badge badge-urgent">${ICON.bell} דחוף</span>` : ''}
+          ${t.due_date ? `<span class="badge task-due ${overdue?'overdue':''}">${ICON.calendar} ${new Date(t.due_date).toLocaleDateString('he-IL')}</span>` : ''}
+          <button class="icon-btn call edit-task" data-id="${t.id}" title="עריכה">${ICON.edit}</button>
+          <button class="icon-btn call del-task" data-id="${t.id}" title="מחיקה">${ICON.trash}</button>
         </div>
       </div>`;
+  };
+
+  groupsEl.innerHTML = sortedGroupKeys.map(gname=>{
+    const items = sortTasks(byGroup[gname]);
+    return `
+      <div class="card card-pad" style="margin-bottom:16px;" data-group="${esc(gname)}">
+        <div class="task-group-head">
+          <h3>${esc(gname)}</h3>
+          <button class="icon-btn call quick-add-task" data-group="${esc(gname)}" title="הוספת משימה לנושא זה">${ICON.plus}</button>
+        </div>
+        <div class="task-list">${items.map(taskCardHtml).join('')}</div>
+      </div>`;
   }).join('');
+
+  groupsEl.querySelectorAll('.quick-add-task').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const addCard = document.getElementById('addTaskCard');
+      const toggleBtn = document.getElementById('addTaskToggleBtn');
+      addCard.style.display = '';
+      toggleBtn.classList.add('open');
+      document.getElementById('task_group').value = btn.dataset.group === 'כללי' ? '' : btn.dataset.group;
+      addCard.scrollIntoView({ behavior:'smooth', block:'center' });
+      document.getElementById('task_text').focus();
+    });
+  });
 
   groupsEl.querySelectorAll('.task-toggle').forEach(cb=>{
     cb.addEventListener('change', async ()=>{
@@ -4525,6 +4627,99 @@ async function renderMyTasks(body){
       catch(err){ toast('שגיאה: '+err.message); }
     });
   });
+  groupsEl.querySelectorAll('.edit-task').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const t = tasks.find(x=>x.id===btn.dataset.id);
+      if (t) openTaskEditForm(t);
+    });
+  });
+}
+
+/* --- טופס עריכת משימה קיימת, נפתח בתוך הכרטיס במקום התצוגה הרגילה --- */
+function openTaskEditForm(t){
+  const card = document.querySelector(`.task-card[data-id="${t.id}"]`);
+  if (!card) return;
+  card.innerHTML = `
+    <form class="task-edit-form" id="editTaskForm_${t.id}">
+      <div class="field"><label>המשימה</label><input required id="edit_text_${t.id}" value="${esc(t.text)}"></div>
+      <div class="field-row">
+        <div class="field"><label>כותרת / נושא</label><input id="edit_group_${t.id}" value="${esc(t.group_title||'')}" placeholder="כללי"></div>
+        <div class="field"><label>תאריך יעד</label><input type="date" id="edit_due_${t.id}" value="${t.due_date||''}"></div>
+        <div class="field" style="justify-content:flex-end;">
+          <label class="chip-check ${t.urgent?'checked':''}" id="edit_urgent_chip_${t.id}" style="justify-content:center;">
+            <input type="checkbox" id="edit_urgent_${t.id}" ${t.urgent?'checked':''}> ${ICON.bell} דחוף
+          </label>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline btn-sm" id="editTaskCancel_${t.id}">ביטול</button>
+        <button type="submit" class="btn btn-primary btn-sm">${ICON.save} שמירה</button>
+      </div>
+    </form>`;
+  const chip = document.getElementById(`edit_urgent_chip_${t.id}`);
+  chip.addEventListener('click', ()=> setTimeout(()=> chip.classList.toggle('checked', chip.querySelector('input').checked)));
+  document.getElementById(`editTaskCancel_${t.id}`).addEventListener('click', ()=> goto('mytasks'));
+  document.getElementById(`editTaskForm_${t.id}`).addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    try{
+      await db.collection('personal_tasks').doc(t.id).update({
+        text: document.getElementById(`edit_text_${t.id}`).value.trim(),
+        group_title: document.getElementById(`edit_group_${t.id}`).value.trim() || 'כללי',
+        due_date: document.getElementById(`edit_due_${t.id}`).value || null,
+        urgent: document.getElementById(`edit_urgent_${t.id}`).checked,
+      });
+      toast('המשימה עודכנה'); goto('mytasks');
+    }catch(err){ toast('שגיאה: '+err.message); }
+  });
+}
+
+/* --- תזכורת בתוך האפליקציה למשימות (אישיות + שהוקצו) שמועד היעד שלהן היום או מחר.
+   נבדק פעם אחת ביום (לפי localStorage) כדי לא להטריד בכל כניסה לאפליקציה. --- */
+async function checkTaskReminders(){
+  try{
+    const todayIso = new Date().toISOString().slice(0,10);
+    const tomorrowIso = new Date(Date.now()+86400000).toISOString().slice(0,10);
+    const storageKey = 'yeshiva_task_reminder_date_'+me.uid;
+    if (localStorage.getItem(storageKey) === todayIso) return;
+
+    const personalSnap = await db.collection('personal_tasks').where('owner_uid','==', me.uid).get();
+    let assignedSnap = null;
+    try{ assignedSnap = await db.collection('assigned_tasks').where('assigned_to','==', me.uid).get(); }
+    catch(err){ assignedSnap = null; }
+
+    const dueSoon = (t)=> !t.done && (t.due_date===todayIso || t.due_date===tomorrowIso);
+    const due = [
+      ...personalSnap.docs.map(d=>d.data()).filter(dueSoon),
+      ...(assignedSnap ? assignedSnap.docs.map(d=>d.data()).filter(dueSoon) : []),
+    ];
+
+    localStorage.setItem(storageKey, todayIso);
+    if (!due.length) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box" style="max-width:420px;">
+        <h3 style="display:flex; align-items:center; gap:8px;">${ICON.bell} תזכורת למשימות</h3>
+        <p>יש משימות עם מועד יעד היום או מחר:</p>
+        <div class="task-list" style="margin-bottom:20px;">
+          ${due.map(t=>`
+            <div class="task-row" style="border-bottom:1px dashed var(--line); padding:8px 4px;">
+              <span class="task-text">${esc(t.text)}</span>
+              <span class="badge ${t.due_date===todayIso?'task-due overdue':'task-due'}">${t.due_date===todayIso ? 'היום' : 'מחר'}</span>
+            </div>`).join('')}
+        </div>
+        <div class="confirm-actions">
+          <button class="btn btn-outline btn-sm" id="reminderClose">סגירה</button>
+          <button class="btn btn-primary btn-sm" id="reminderGotoTasks">מעבר למשימות שלי</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = ()=> overlay.remove();
+    overlay.addEventListener('click', (e)=>{ if (e.target===overlay) close(); });
+    overlay.querySelector('#reminderClose').addEventListener('click', close);
+    overlay.querySelector('#reminderGotoTasks').addEventListener('click', ()=>{ close(); goto('mytasks'); });
+  }catch(err){ console.warn('task reminder check failed:', err); }
 }
 
 /* ============================================================
