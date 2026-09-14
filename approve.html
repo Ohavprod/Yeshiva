@@ -347,6 +347,15 @@ async function load(){
             <span>${isEvent ? 'אני מאשר/ת את הגעת בני לאירוע' : 'אני מאשר/ת לבני לצאת ולהשתתף בטיול'}</span>
           </label>
         </div>
+        ${isEvent ? `
+        <div class="field">
+          <label>כמה תלמידים מגיעים (כולל בני הרשום/ה למעלה)</label>
+          <input type="number" id="participantsStudents" min="1" step="1" value="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label>כמה הורים מגיעים</label>
+          <input type="number" id="participantsParents" min="0" step="1" value="1" inputmode="numeric">
+        </div>` : ''}
         <div class="field">
           <label>חתימה</label>
           <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
@@ -396,6 +405,13 @@ async function load(){
     const btn = document.getElementById('submitApproval');
     btn.disabled = true; btn.textContent = 'שולח…';
     try{
+      const extraPayload = {};
+      if (isEvent){
+        const nStudents = parseInt(document.getElementById('participantsStudents').value, 10);
+        const nParents = parseInt(document.getElementById('participantsParents').value, 10);
+        extraPayload.participants_students = Number.isFinite(nStudents) && nStudents > 0 ? nStudents : 1;
+        extraPayload.participants_parents = Number.isFinite(nParents) && nParents >= 0 ? nParents : 0;
+      }
       // set(..., {merge:true}) ולא update(): אם מסמך האישור נמחק בעבר (למשל תלמיד
       // שהוסר מהכיתה וחזר), update() היה נכשל כי אין מסמך לעדכן — וההודעה
       // "אירעה שגיאה" הייתה מוסתרת מכל התהליך, כולל שליחת ה-notifyPush למטה.
@@ -407,6 +423,7 @@ async function load(){
         consent: true,
         signature: pad.dataUrl(),
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
+        ...extraPayload,
       }, { merge: true });
       // שמירת הת.ז שהוזנה לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה באימות (אמא/אבא), ורק אם
       // עדיין ריק שם (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
