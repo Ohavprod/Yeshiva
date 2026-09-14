@@ -32,12 +32,13 @@
   .notice-header .tag{ position:relative; z-index:1; font-size:1rem; font-weight:800; color:#fff; margin-top:5px; letter-spacing:.02em; }
   .notice-body{ padding:0 24px; margin-top:-26px; position:relative; z-index:2; }
   .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
+  .notes-card{ background:var(--wait-bg); border-color:var(--wait); border-inline-start:5px solid var(--wait); }
 
   .section-eyebrow{
     display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
     background:var(--paper-2); padding:5px 14px; border-radius:999px; margin-bottom:14px;
   }
-  .trip-title{ margin:0 0 14px; font-size:1.5rem; }
+  .trip-title{ margin:0 0 14px; font-size:1.5rem; overflow-wrap:break-word; word-break:break-word; }
 
   .intro-callout{
     background:linear-gradient(135deg, #eef6ff, #f6f8fb); border-right:4px solid var(--teal);
@@ -88,6 +89,7 @@
   @media (max-width:480px){
     .notice-body{ padding:0 14px; }
     .trip-card{ padding:20px; }
+    .trip-title{ font-size:1.22rem; overflow-wrap:break-word; word-break:break-word; }
     .meta-badge{ width:78px; }
     .meta-badge .m-icon{ width:44px; height:44px; font-size:1.15rem; }
   }
@@ -252,9 +254,9 @@ async function load(){
 
   if (trip.notes){
     mainHtml += `
-    <div class="trip-card">
-      <div class="section-eyebrow">הערות נוספות</div>
-      <p style="margin:0; color:var(--ink);">${esc(trip.notes)}</p>
+    <div class="trip-card notes-card">
+      <div class="section-eyebrow">⚠️ הערות נוספות</div>
+      <p style="margin:0; color:var(--ink); white-space:pre-line; font-weight:600;">${esc(trip.notes)}</p>
     </div>`;
   }
 
