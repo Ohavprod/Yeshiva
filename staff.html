@@ -357,12 +357,14 @@ async function pickAndUploadToCloudinary({ accept, folder, preset, onSuccess, ms
 }
 /* --- אימות זהות בקישור ההורה: לעולם לא שולחים שם הורה/טלפון גולמיים לדף הציבורי.
    במקום זה שומרים על מסמך האישור (הפתוח לקריאה ציבורית ממילא) רק גיבוב (hash) חד-כיווני
-   של הצירוף שם פרטי של ההורה + טלפון ההורה (+כיתה, לפי ההקשר). approve.html/trip-notice.html
-   מחשבים את אותו גיבוב מהקלט של ההורה ומשווים מחרוזות — כך שגם אם מישהו יקרא את מסמך
-   האישור, לא ניתן לשחזר ממנו את הטלפון/השם המקוריים. ת.ז נשאר שדה חובה בטופס אבל אינו חלק
-   מהאימות (כי לרוב ההורים עדיין אין ת.ז רשומה במערכת) — הוא רק נשמר בהמשך לכרטיס התלמיד.
-   ה-slot ('mother'/'father') נשמר לצד כל hash כדי שדף האישור ידע לאיזה שדה (mother_id/father_id)
-   לשמור את הת.ז שההורה הקליד. */
+   של שם פרטי ההורה וטלפון ההורה — approve.html/trip-notice.html מחשבים את אותם גיבובים
+   מהקלט של ההורה ומשווים מחרוזות — כך שגם אם מישהו יקרא את מסמך האישור, לא ניתן לשחזר
+   ממנו את הטלפון/השם המקוריים. ת.ז נשאר שדה חובה בטופס אבל אינו חלק מהאימות (כי לרוב
+   ההורים עדיין אין ת.ז רשומה במערכת) — הוא רק נשמר בהמשך לכרטיס התלמיד.
+   name_hash ו-phone_hash נשמרים *בנפרד* (ולא רק גיבוב אחד משולב של שניהם יחד) בכוונה —
+   כדי שדף האישור יוכל לאבחן ולומר בדיוק איזה מהשניים שגוי (השם? הטלפון? שניהם?) במקום
+   הודעת "אחד מהפרטים שגוי" גנרית שלא עוזרת להורה לתקן. ה-slot ('mother'/'father') נשמר
+   לצד כל צמד גיבובים כדי שדף האישור ידע לאיזה שדה (mother_id/father_id) לשמור את הת.ז. */
 function normVerify(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return normVerify(s).split(' ')[0] || ''; }
 function normPhoneDigits(s){
@@ -379,8 +381,16 @@ async function sha256Hex(str){
 }
 async function buildVerifyHashes(student, className){
   const hashes = [];
-  if (student.mother_name && student.mother_phone) hashes.push({ slot:'mother', hash: await sha256Hex(`${firstNameOf(student.mother_name)}|${normPhoneDigits(student.mother_phone)}|${normVerify(className)}`) });
-  if (student.father_name && student.father_phone) hashes.push({ slot:'father', hash: await sha256Hex(`${firstNameOf(student.father_name)}|${normPhoneDigits(student.father_phone)}|${normVerify(className)}`) });
+  if (student.mother_name && student.mother_phone) hashes.push({
+    slot:'mother',
+    name_hash: await sha256Hex(`${firstNameOf(student.mother_name)}|${normVerify(className)}`),
+    phone_hash: await sha256Hex(`${normPhoneDigits(student.mother_phone)}|${normVerify(className)}`),
+  });
+  if (student.father_name && student.father_phone) hashes.push({
+    slot:'father',
+    name_hash: await sha256Hex(`${firstNameOf(student.father_name)}|${normVerify(className)}`),
+    phone_hash: await sha256Hex(`${normPhoneDigits(student.father_phone)}|${normVerify(className)}`),
+  });
   return hashes;
 }
 /* גיבוב עבור roster_snapshot (חוזר טיול כללי) — בלי רכיב כיתה, כי שם הכיתה שם נבחר מרשימה
