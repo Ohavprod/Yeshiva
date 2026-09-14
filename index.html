@@ -196,6 +196,10 @@
         <div class="icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg></div>
         <div><h3>טלפון</h3><p dir="ltr">04-6051516</p></div>
       </a>
+      <a class="contact-card" href="https://www.google.com/maps/search/?api=1&query=%D7%94%D7%A8%D7%91%20%D7%A4%D7%A8%D7%A5%20%D7%A6%D7%99%D7%95%D7%A0%D7%99%2033%20%D7%A2%D7%A4%D7%95%D7%9C%D7%94" target="_blank" rel="noopener">
+        <div class="icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></div>
+        <div><h3>כתובת</h3><p style="white-space:normal;">הרב פרץ ציוני 33, עפולה</p></div>
+      </a>
     </div>
   </div>
 </section>
@@ -349,22 +353,47 @@ function escAttr(s){
 }
 function escHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-/* תצוגה מוגדלת של תמונה בלחיצה (גלריה + פלייר אירוע) */
-function openLightbox(url, caption){
+/* תצוגה מוגדלת של תמונה בלחיצה (גלריה + פלייר אירוע). אם מועברת רשימה (list)
+   ואינדקס (index), מוצגים גם חצי דפדוף בין כל התמונות ברשימה (למשל כל הגלריה) —
+   בלי רשימה, נפתחת רק התמונה הבודדת (למשל פלייר אירוע) בלי חצים. */
+function openLightbox(url, caption, list, index){
   if (!url) return;
+  const items = Array.isArray(list) ? list : null;
+  let idx = typeof index === 'number' ? index : -1;
+  const hasNav = !!(items && items.length > 1);
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay lightbox-overlay';
   overlay.innerHTML = `
     <div class="lightbox-box">
       <button type="button" class="lightbox-close" aria-label="סגירה">✕</button>
+      ${hasNav ? `<button type="button" class="lightbox-nav lightbox-prev" aria-label="התמונה הקודמת">‹</button>` : ''}
       <img src="${escAttr(url)}" alt="${escAttr(caption)}">
-      ${caption ? `<p class="lightbox-cap">${escHtml(caption)}</p>` : ''}
+      <p class="lightbox-cap" style="${caption ? '' : 'display:none;'}">${caption ? escHtml(caption) : ''}</p>
+      ${hasNav ? `<button type="button" class="lightbox-nav lightbox-next" aria-label="התמונה הבאה">›</button>` : ''}
     </div>`;
   document.body.appendChild(overlay);
+  const imgEl = overlay.querySelector('img');
+  const capEl = overlay.querySelector('.lightbox-cap');
   const close = ()=>{ overlay.remove(); document.removeEventListener('keydown', onKey); };
-  function onKey(e){ if (e.key === 'Escape') close(); }
+  function show(newIdx){
+    if (!items) return;
+    idx = (newIdx + items.length) % items.length;
+    const it = items[idx];
+    imgEl.src = it.url; imgEl.alt = it.caption || '';
+    if (it.caption){ capEl.textContent = it.caption; capEl.style.display = ''; }
+    else { capEl.textContent = ''; capEl.style.display = 'none'; }
+  }
+  function onKey(e){
+    if (e.key === 'Escape') close();
+    else if (hasNav && e.key === 'ArrowLeft') show(idx + 1);
+    else if (hasNav && e.key === 'ArrowRight') show(idx - 1);
+  }
   overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
   overlay.querySelector('.lightbox-close').addEventListener('click', close);
+  if (hasNav){
+    overlay.querySelector('.lightbox-prev').addEventListener('click', ()=> show(idx + 1));
+    overlay.querySelector('.lightbox-next').addEventListener('click', ()=> show(idx - 1));
+  }
   document.addEventListener('keydown', onKey);
 }
 
@@ -412,23 +441,28 @@ async function loadGallery(){
 
     const renderGrid = (filtered) => {
       if (!filtered.length){
-        grid.innerHTML = '<div class="gallery-tile"><span class="g-cap">אין תמונות בקטגוריה זו</span></div>';
+        grid.innerHTML = '<div class="gallery-tile"><div class="g-cap">אין תמונות בקטגוריה זו</div></div>';
         return;
       }
-      const tileHtml = (g)=>{
+      const navList = filtered.map(g => ({ url: g.url, caption: g.caption || '' }));
+      const tileHtml = (g, i)=>{
         const url = escAttr(g.url);
-        const caption = escAttr(g.caption);
         const category = escHtml((g.category||'').trim());
-        return `<div class="gallery-tile" data-url="${url}" data-caption="${caption}" style="background-image:url('${url}');">
-          ${category ? `<span class="g-cat">${category}</span>` : '<span></span>'}
-          ${g.caption ? `<span class="g-cap">${escHtml(g.caption)}</span>` : ''}
+        return `<div class="gallery-tile" data-idx="${i}">
+          ${category ? `<div class="g-cat">${category}</div>` : ''}
+          <div class="g-img" style="background-image:url('${url}');"></div>
+          ${g.caption ? `<div class="g-cap">${escHtml(g.caption)}</div>` : ''}
         </div>`;
       };
-      // רשת רגילה (בלי שכפול/אנימציה) — כל תמונה מוצגת פעם אחת בלבד.
-      // לחיצה על תמונה פותחת אותה בתצוגה מוגדלת עם הכיתוב המלא.
+      // רצועה אופקית הניתנת לגלילה/החלקה (בלי שכפול תוכן) — כל תמונה מוצגת פעם אחת
+      // בלבד. לחיצה על תמונה פותחת אותה בתצוגה מוגדלת, עם אפשרות לדפדף בין כל
+      // התמונות בקטגוריה הנוכחית באמצעות חצים.
       grid.innerHTML = filtered.map(tileHtml).join('');
       grid.querySelectorAll('.gallery-tile').forEach(tile=>{
-        tile.addEventListener('click', ()=> openLightbox(tile.dataset.url, tile.dataset.caption));
+        tile.addEventListener('click', ()=>{
+          const i = parseInt(tile.dataset.idx, 10);
+          openLightbox(navList[i].url, navList[i].caption, navList, i);
+        });
       });
     };
 
