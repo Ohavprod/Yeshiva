@@ -52,6 +52,7 @@
       <p class="lead">עדכונים שוטפים, אירועים, גלריה ומידע לתלמידים, להורים ולצוות החינוכי — אתר הבית הרשמי של ישיבה תיכונית עפולה.</p>
       <div class="hero-actions">
         <a href="#updates" class="btn btn-primary">לעדכונים האחרונים</a>
+        <button type="button" id="openEventsBtn" class="btn btn-ghost">📅 אירועים קרובים</button>
       </div>
     </div>
     <div class="hero-badge">
@@ -209,22 +210,89 @@
 async function loadTicker(){
   const track = document.getElementById('tickerTrack');
   try{
+    /* חשוב: שאילתה עם where + orderBy על שני שדות שונים דורשת אינדקס מורכב
+       (composite index) ב-Firestore, ובלעדיו השאילתה נכשלת בשקט ונתפסת ב-catch
+       למטה — זו הסיבה שעדכונים לא הופיעו למרות שנוספו במערכת. לכן שולפים רק
+       לפי is_active (לא דורש אינדקס), וממיינים לפי תאריך בצד הלקוח. */
     const snap = await db.collection('announcements')
       .where('is_active', '==', true)
-      .orderBy('created_at', 'desc')
-      .limit(15)
+      .limit(30)
       .get();
     if (snap.empty){
       track.innerHTML = '<span>אין עדכונים חדשים כרגע</span>';
       return;
     }
-    const items = snap.docs.map(d => `<span>${(d.data().body||'').replace(/</g,'&lt;')}</span>`);
+    const items = snap.docs.map(d => d.data())
+      .sort((a,b)=> (b.created_at?.toMillis?.()||0) - (a.created_at?.toMillis?.()||0))
+      .slice(0, 15)
+      .map(data => `<span>${(data.body||'').replace(/</g,'&lt;')}</span>`);
     track.innerHTML = items.join('') + items.join('');
   }catch(err){
+    console.error('שגיאה בטעינת עדכונים:', err);
     track.innerHTML = '<span>אין עדכונים חדשים כרגע</span>';
   }
 }
 loadTicker();
+
+/* תצוגה מוגדלת של תמונת גלריה בלחיצה */
+function openLightbox(url, caption){
+  if (!url) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="lightbox-box">
+      <button type="button" class="lightbox-close" aria-label="סגירה">✕</button>
+      <img src="${url}" alt="${caption||''}">
+      ${caption ? `<p class="lightbox-cap">${caption}</p>` : ''}
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); document.removeEventListener('keydown', onKey); };
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+  overlay.querySelector('.lightbox-close').addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+}
+
+/* חלון "אירועים קרובים" — לדוגמה פרסום פלייר של ערב סליחות ישיבתי, מנוהל
+   מעמוד הצוות תחת "עדכונים באתר". */
+async function loadPublicEvents(){
+  try{
+    const snap = await db.collection('public_events').where('is_active', '==', true).get();
+    return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (a.order||0) - (b.order||0));
+  }catch(err){
+    console.error('שגיאה בטעינת אירועים קרובים:', err);
+    return [];
+  }
+}
+document.getElementById('openEventsBtn').addEventListener('click', async ()=>{
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `<div class="confirm-box events-box"><p style="text-align:center; color:var(--ink-soft);">טוען אירועים…</p></div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); document.removeEventListener('keydown', onKey); };
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
+  const events = await loadPublicEvents();
+  const box = overlay.querySelector('.events-box');
+  const esc = (s)=> (s||'').toString().replace(/</g,'&lt;');
+  box.innerHTML = `
+    <button type="button" class="lightbox-close" aria-label="סגירה" style="background:var(--steel); top:-14px; inset-inline-start:-14px;">✕</button>
+    <h3 style="margin-top:0;">📅 אירועים קרובים בישיבה</h3>
+    ${events.length ? `<div class="events-list-public">
+      ${events.map(ev=>`
+        <div class="event-card-public">
+          ${ev.image_url ? `<img src="${esc(ev.image_url)}" alt="${esc(ev.title)}">` : ''}
+          <div class="ecp-body">
+            <h4>${esc(ev.title)}</h4>
+            ${ev.description ? `<p>${esc(ev.description)}</p>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>` : '<p style="color:var(--ink-soft); text-align:center; margin-top:16px;">אין כרגע אירועים קרובים לפרסום.</p>'}
+  `;
+  box.querySelector('.lightbox-close').addEventListener('click', close);
+});
 
 async function loadGallery(){
   const grid = document.getElementById('galleryGrid');
@@ -248,16 +316,22 @@ async function loadGallery(){
         const url = (g.url||'').replace(/</g,'&lt;');
         const caption = (g.caption||'').replace(/</g,'&lt;');
         const category = (g.category||'').trim().replace(/</g,'&lt;');
-        return `<div class="gallery-tile" style="background-image:url('${url}');">
+        return `<div class="gallery-tile" data-url="${url}" data-caption="${caption}" style="background-image:url('${url}');">
           ${category ? `<span class="g-cat">${category}</span>` : '<span></span>'}
           ${caption ? `<span class="g-cap">${caption}</span>` : ''}
         </div>`;
       };
-      // הרשימה משוכפלת פעמיים כדי שהאנימציה (translateX עד 50%-) תיראה כרצועה
-      // רציפה ואינסופית, בלי "קפיצה" גלויה בסוף הסבב.
+      // הרשימה משוכפלת פעמיים בכוונה — זה מה שגורם לכל תמונה "להיראות" פעמיים
+      // בגלריה. זה לא באג: הגלריה היא רצועה נעה (כמו פס העדכונים), וכדי
+      // שהאנימציה (translateX עד 50%-) תיראה כרצועה רציפה ואינסופית בלי "קפיצה"
+      // גלויה בסוף הסבב, חייבים להכפיל את התוכן. לחיצה על כל עותק פותחת את
+      // אותה תמונה בתצוגה מוגדלת.
       const singlePass = filtered.map(tileHtml).join('');
       grid.style.animation = '';
       grid.innerHTML = singlePass + singlePass;
+      grid.querySelectorAll('.gallery-tile').forEach(tile=>{
+        tile.addEventListener('click', ()=> openLightbox(tile.dataset.url, tile.dataset.caption));
+      });
     };
 
     if (categories.length > 1){
