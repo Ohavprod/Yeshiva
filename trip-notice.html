@@ -255,7 +255,7 @@ async function load(){
   if (trip.notes){
     mainHtml += `
     <div class="trip-card notes-card">
-      <div class="section-eyebrow">⚠️ הערות נוספות</div>
+      <div class="section-eyebrow"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-2px; margin-inline-end:2px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="13"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> הערות נוספות</div>
       <p style="margin:0; color:var(--ink); white-space:pre-line; font-weight:600;">${esc(trip.notes)}</p>
     </div>`;
   }
@@ -323,11 +323,19 @@ async function load(){
         ${isEvent ? `
         <div class="field">
           <label>כמה תלמידים מגיעים (כולל בני הרשום/ה למעלה)</label>
-          <input type="number" id="participantsStudents" min="1" step="1" value="1" inputmode="numeric">
+          <div class="number-stepper">
+            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
+            <input type="number" id="participantsStudents" min="1" step="1" value="1" inputmode="numeric">
+            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
+          </div>
         </div>
         <div class="field">
           <label>כמה הורים מגיעים</label>
-          <input type="number" id="participantsParents" min="0" step="1" value="1" inputmode="numeric">
+          <div class="number-stepper">
+            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
+            <input type="number" id="participantsParents" min="0" step="1" value="1" inputmode="numeric">
+            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
+          </div>
         </div>` : ''}
         <div class="field">
           <label>חתימה</label>
@@ -432,6 +440,21 @@ async function load(){
     }
   });
 }
+/* לחצני +/- ליד שדות כמות המשתתפים — ב-input type=number לבד אין דרך נוחה לגעת
+   בחיצי ברירת המחדל בנייד, אז מוסיפים שני כפתורים גדולים במקום. */
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.ns-btn');
+  if (!btn) return;
+  const input = btn.closest('.number-stepper')?.querySelector('input[type="number"]');
+  if (!input) return;
+  const min = input.min !== '' ? parseFloat(input.min) : -Infinity;
+  const step = parseFloat(input.step) || 1;
+  let val = parseFloat(input.value);
+  if (!Number.isFinite(val)) val = Number.isFinite(min) ? min : 0;
+  val = btn.classList.contains('ns-plus') ? val + step : val - step;
+  if (Number.isFinite(min) && val < min) val = min;
+  input.value = val;
+});
 load();
 </script>
 </body>
