@@ -232,25 +232,20 @@ section{ padding:88px 0; position:relative; }
 }
 .gallery-tab:hover{ border-color:var(--teal); color:var(--teal); }
 .gallery-tab.active{ background:linear-gradient(135deg, var(--steel), var(--teal)); border-color:transparent; color:#fff; }
-.gallery-viewport{
-  position:relative; overflow:hidden;
-  -webkit-mask-image:linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
-  mask-image:linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
-}
+.gallery-viewport{ position:relative; }
 .gallery-track{
-  display:flex; gap:16px; width:max-content;
-  animation:gallery-scroll 45s linear infinite;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:16px;
 }
-.gallery-track:hover{ animation-play-state:paused; }
-@keyframes gallery-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
 .gallery-tile{
-  flex:none; width:270px; height:190px; cursor:pointer;
+  cursor:pointer; height:190px;
   border-radius:var(--radius-sm); overflow:hidden; position:relative;
   background:linear-gradient(135deg,var(--steel),var(--teal));
   background-size:cover; background-position:center;
   display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between;
   padding:14px; color:#fff; font-size:.85rem; font-weight:600;
+  transition:transform .18s ease;
 }
+.gallery-tile:hover{ transform:translateY(-3px); }
 .gallery-tile::after{
   content:""; position:absolute; inset:0; background:linear-gradient(0deg,rgba(10,20,40,.6),transparent 55%);
 }
@@ -261,12 +256,36 @@ section{ padding:88px 0; position:relative; }
 }
 .gallery-tile .g-cap{ font-size:.88rem; }
 
+/* ---------- אירועים קרובים (חלק קבוע בעמוד, לא חלונית) ---------- */
+.events-strip{ background:var(--surface); }
+.events-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:24px; }
+.event-card-public{
+  border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--paper-2);
+  box-shadow:var(--shadow-sm);
+}
+.event-card-public img{ width:100%; height:200px; object-fit:cover; display:block; cursor:pointer; }
+.event-card-public .ecp-body{ padding:16px 18px; }
+.event-card-public h4{ margin:0 0 6px; font-size:1.05rem; font-family:'Rubik',sans-serif; }
+.event-card-public p{ margin:0; color:var(--ink-soft); font-size:.92rem; white-space:pre-line; }
+
 footer.site-footer{ background:var(--navy); color:#c7d4ea; padding:48px 0 28px; }
 footer.site-footer .container{ display:flex; justify-content:space-between; flex-wrap:wrap; gap:24px; }
 footer.site-footer .cols{ display:flex; gap:64px; flex-wrap:wrap; }
 footer.site-footer h4{ color:#fff; font-size:.95rem; margin-bottom:10px; }
 footer.site-footer a{ color:#a9bdda; text-decoration:none; display:block; margin-bottom:6px; font-size:.9rem; }
 footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-align:center; width:100%; }
+
+/* ---------- חלון התקנת אפליקציה (PWA) — חלון מרחף, לא סרגל תחתון ---------- */
+.install-modal-box{ text-align:center; max-width:360px; }
+.install-modal-icon{ width:64px; height:64px; border-radius:16px; margin-bottom:16px; }
+.install-modal-box h3{ margin:0 0 8px; font-size:1.15rem; }
+.ios-install-box{ max-width:400px; }
+.ios-step{ display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+.ios-step-icon{
+  flex:none; width:32px; height:32px; border-radius:9px; background:var(--paper-2);
+  display:flex; align-items:center; justify-content:center; font-size:1.05rem;
+}
+.ios-step p{ margin:0; font-size:.92rem; color:var(--ink); }
 
 @media (max-width:860px){
   .hero .container{ grid-template-columns:1fr; text-align:center; }
@@ -294,8 +313,11 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .ticker-bar .label{ position:static; box-shadow:none; padding:10px 16px; width:100%; justify-content:center; }
   .ticker-track{ padding:14px 16px; gap:40px; }
 
-  .gallery-tile{ width:190px; height:140px; }
-  .gallery-track{ animation-duration:32s; }
+  .gallery-track{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .gallery-tile{ height:130px; }
+  .events-grid{ grid-template-columns:1fr; }
+
+  .install-modal-box{ padding:6px 2px; }
 
   footer.site-footer .container{ flex-direction:column; text-align:center; }
   footer.site-footer .brand{ justify-content:center; }
@@ -507,34 +529,26 @@ table.data tr:last-child td{ border-bottom:none; }
 .confirm-box p{ color:var(--ink-soft); font-size:.92rem; margin-bottom:22px; }
 .confirm-actions{ display:flex; gap:10px; justify-content:flex-end; }
 
-/* ---------- lightbox (הגדלת תמונת גלריה) ---------- */
+/* ---------- lightbox (הגדלת תמונת גלריה / פלייר אירוע) ---------- */
+.lightbox-overlay{ align-items:flex-start; overflow-y:auto; padding:56px 20px; }
 .lightbox-box{
   position:relative; background:transparent; max-width:min(88vw,760px); width:100%;
-  display:flex; flex-direction:column; align-items:center; padding:0;
+  display:flex; flex-direction:column; align-items:center; padding:0; margin:auto;
 }
 .lightbox-box img{
-  width:100%; max-height:78vh; object-fit:contain; border-radius:14px;
+  width:100%; max-height:68vh; object-fit:contain; border-radius:14px;
   box-shadow:0 30px 60px -20px rgba(0,0,0,.5);
 }
-.lightbox-cap{ color:#fff; margin-top:14px; font-size:.95rem; text-align:center; }
+.lightbox-cap{
+  color:#fff; margin:14px 0 0; font-size:.95rem; text-align:center;
+  max-width:60ch; white-space:normal; word-break:break-word;
+}
 .lightbox-close{
   position:absolute; top:-18px; inset-inline-start:-18px; width:38px; height:38px; border-radius:50%;
   background:var(--navy); color:#fff; border:2px solid rgba(255,255,255,.5); cursor:pointer;
   font-size:1rem; line-height:1; display:flex; align-items:center; justify-content:center; z-index:2;
 }
-
-/* ---------- אירועים קרובים (עמוד הבית) ---------- */
-.events-box{ position:relative; max-width:560px; max-height:82vh; overflow-y:auto; overflow-x:hidden; }
-.events-list-public{ display:flex; flex-direction:column; gap:16px; margin-top:16px; }
-.event-card-public{
-  border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; background:var(--paper-2);
-}
-.event-card-public img{ width:100%; max-height:280px; object-fit:cover; display:block; }
-.event-card-public .ecp-body{ padding:14px 16px; }
-.event-card-public h4{ margin:0 0 6px; font-size:1.02rem; }
-.event-card-public p{ margin:0; color:var(--ink-soft); font-size:.9rem; white-space:pre-line; }
 @media (max-width:480px){
-  .events-box{ padding:20px !important; }
   .lightbox-close{ top:-14px; inset-inline-start:-14px; width:34px; height:34px; }
 }
 
