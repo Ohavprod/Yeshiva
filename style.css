@@ -928,18 +928,21 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
 }
 
 /* ---------- events / tasks / meetings — a bit more visual polish ---------- */
-.event-row, .task-row{ border-radius:12px; padding-inline:10px; }
-.event-row{ border-bottom:none; margin-bottom:4px; background:var(--surface-2); border:1px solid var(--line); }
+.event-row, .task-row{ border-radius:14px; padding-inline:14px; }
+.event-row{ border-bottom:none; margin-bottom:8px; padding-block:14px; background:var(--surface-2); border:1px solid var(--line); }
 .event-row:hover{ background:var(--paper-2); box-shadow:var(--shadow-sm); }
-/* האירוע הכי קרוב מודגש כולו — לא רק תג קטן ליד הכותרת — כדי שיבלוט מיד ברשימה */
+/* האירוע הכי קרוב מודגש כולו במילוי צבע מלא (לא רק מסגרת דקה) — כדי שיבלוט מיד ברשימה */
 .event-row.event-row-next{
-  background:linear-gradient(135deg, #eef8f8, var(--surface-2)); border-color:var(--teal); box-shadow:0 4px 16px -8px rgba(28,122,122,.35);
+  background:linear-gradient(135deg, var(--steel), var(--teal)); border-color:transparent;
+  box-shadow:0 8px 22px -10px rgba(28,122,122,.55); padding-block:18px;
 }
-html[data-theme="dark"] .event-row.event-row-next{ background:linear-gradient(135deg, #16302e, var(--surface-2)); }
-.event-row.event-row-next .event-date-badge{ background:var(--teal); }
+.event-row.event-row-next strong{ color:#fff; font-size:1.08em; }
+.event-row.event-row-next .event-row-main > div{ color:rgba(255,255,255,.9); }
+.event-row.event-row-next .badge{ background:rgba(255,255,255,.22) !important; color:#fff !important; }
+.event-row.event-row-next .event-date-badge{ background:rgba(255,255,255,.2); }
 .event-row.event-row-next .event-date-badge .ev-heb{ color:#fff; }
 .event-row.event-row-next .event-date-badge .ev-greg{ color:rgba(255,255,255,.85); }
-.event-row.event-row-next strong{ font-size:1.05em; }
+.event-row.event-row-next .btn-outline{ background:rgba(255,255,255,.94); }
 .task-row{ border-bottom:none; background:var(--paper-2); margin-bottom:6px; }
 .task-row.done{ opacity:.7; }
 .topic-title{ display:inline-block; background:var(--paper-2); padding:4px 12px; border-radius:8px; }
