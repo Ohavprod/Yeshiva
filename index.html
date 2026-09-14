@@ -450,8 +450,9 @@ async function loadGallery(){
         const category = escHtml((g.category||'').trim());
         return `<div class="gallery-tile" data-idx="${i}">
           ${category ? `<div class="g-cat">${category}</div>` : ''}
-          <div class="g-img" style="background-image:url('${url}');"></div>
-          ${g.caption ? `<div class="g-cap">${escHtml(g.caption)}</div>` : ''}
+          <div class="g-photo" style="background-image:url('${url}');">
+            ${g.caption ? `<span class="g-cap">${escHtml(g.caption)}</span>` : ''}
+          </div>
         </div>`;
       };
       // רצועה אופקית הניתנת לגלילה/החלקה (בלי שכפול תוכן) — כל תמונה מוצגת פעם אחת
