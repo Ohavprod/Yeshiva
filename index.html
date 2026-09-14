@@ -227,62 +227,66 @@
   </div>
 </footer>
 
-<!-- ===================== התקנת האפליקציה (PWA) ===================== -->
-<div id="installBanner" class="install-banner" style="display:none;">
-  <img src="assets/img/logo.png" alt="" class="install-banner-icon">
-  <div class="install-banner-text">
-    <strong>התקינו את האפליקציה של הישיבה</strong>
-    <span>גישה מהירה מהמסך הבית — בלחיצה אחת, בלי לחפש באתר</span>
-  </div>
-  <button type="button" id="installBannerBtn" class="btn btn-primary btn-sm">התקנה</button>
-  <button type="button" id="installBannerClose" class="install-banner-close" aria-label="סגירה">✕</button>
-</div>
-
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
 /* ============================================================
-   התקנת האפליקציה למסך הבית (PWA) — חלונית שקופצת לבד, בלי שהמשתמש
-   יצטרך לחפש איך מתקינים. באנדרואיד/כרום יש event מובנה (beforeinstallprompt)
-   שמאפשר התקנה אמיתית בלחיצת כפתור; באייפון (iOS Safari) הדפדפן לא תומך
-   בכך, אז מציגים הנחיה ויזואלית "שיתוף ← הוספה למסך הבית" במקום.
+   התקנת האפליקציה למסך הבית (PWA) — חלון מרחף (לא סרגל תחתון) שקופץ
+   לבד באמצע המסך, בלי שהמשתמש יצטרך לחפש איך מתקינים. באנדרואיד/כרום יש
+   event מובנה (beforeinstallprompt) שמאפשר התקנה אמיתית בלחיצת כפתור;
+   באייפון (iOS Safari) הדפדפן לא תומך בכך, אז מציגים הנחיה ויזואלית
+   "שיתוף ← הוספה למסך הבית" בחלון נפרד.
    ============================================================ */
 let deferredInstallPrompt = null;
-const installBannerEl = document.getElementById('installBanner');
 
 function isStandaloneApp(){
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 function isIosDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
 
-function showInstallBanner(){
-  if (isStandaloneApp() || localStorage.getItem('installBannerDismissed') === '1') return;
-  installBannerEl.style.display = 'flex';
-}
-function hideInstallBanner(remember){
-  installBannerEl.style.display = 'none';
+function hideInstallModal(remember){
+  const overlay = document.getElementById('installModalOverlay');
+  if (overlay) overlay.remove();
   if (remember) localStorage.setItem('installBannerDismissed', '1');
+}
+
+function showInstallModal(){
+  if (isStandaloneApp() || localStorage.getItem('installBannerDismissed') === '1') return;
+  if (document.getElementById('installModalOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'installModalOverlay';
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box install-modal-box">
+      <img src="assets/img/icon-192.png" alt="" class="install-modal-icon">
+      <h3>📲 התקינו את האפליקציה</h3>
+      <p>גישה מהירה מהמסך הבית — בלחיצה אחת, בלי לחפש באתר.</p>
+      <div class="confirm-actions" style="justify-content:center;">
+        <button type="button" class="btn btn-outline btn-sm" id="installModalLater">אולי אחר כך</button>
+        <button type="button" class="btn btn-primary btn-sm" id="installModalBtn">התקנה</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) hideInstallModal(true); });
+  document.getElementById('installModalLater').addEventListener('click', ()=> hideInstallModal(true));
+  document.getElementById('installModalBtn').addEventListener('click', async ()=>{
+    if (deferredInstallPrompt){
+      hideInstallModal(true);
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt = null;
+      return;
+    }
+    hideInstallModal(false);
+    showIosInstallSteps();
+  });
 }
 
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault();
   deferredInstallPrompt = e;
-  showInstallBanner();
-});
-
-document.getElementById('installBannerClose').addEventListener('click', ()=> hideInstallBanner(true));
-
-document.getElementById('installBannerBtn').addEventListener('click', async ()=>{
-  if (deferredInstallPrompt){
-    hideInstallBanner(true);
-    deferredInstallPrompt.prompt();
-    deferredInstallPrompt = null;
-    return;
-  }
-  // אין תמיכה בהתקנה אוטומטית (בעיקר אייפון) — מציגים הנחיה ויזואלית ברורה.
-  showIosInstallSteps();
+  showInstallModal();
 });
 
 function showIosInstallSteps(){
@@ -299,12 +303,12 @@ function showIosInstallSteps(){
   document.body.appendChild(overlay);
   const close = ()=> overlay.remove();
   overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
-  overlay.querySelector('#iosInstallCloseBtn').addEventListener('click', ()=>{ hideInstallBanner(true); close(); });
+  overlay.querySelector('#iosInstallCloseBtn').addEventListener('click', ()=>{ localStorage.setItem('installBannerDismissed','1'); close(); });
 }
 
-// באייפון אין beforeinstallprompt כלל — מציגים את הבאנר ביזמתנו לאחר רגע, אם עדיין לא הותקן/נסגר.
+// באייפון אין beforeinstallprompt כלל — מציגים את החלון ביזמתנו לאחר רגע, אם עדיין לא הותקן/נסגר.
 if (isIosDevice() && !isStandaloneApp()){
-  setTimeout(showInstallBanner, 1200);
+  setTimeout(showInstallModal, 1200);
 }
 
 async function loadTicker(){
