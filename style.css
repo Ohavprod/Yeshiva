@@ -369,9 +369,18 @@ table.data tr:last-child td{ border-bottom:none; }
 }
 .push-prefs-table thead th:first-child{ background:var(--surface); z-index:3; }
 .push-prefs-table .push-pref-cb{ width:20px; height:20px; cursor:pointer; }
+/* התיבות המקוריות (20-22px) קטנות מדי כמטרת נגיעה בנייד — העטיפה הופכת את כל
+   שטח התא ללחיץ, לא רק את הריבוע הקטן עצמו, כדי שיהיה אפשר לסמן בקלות באצבע */
+.push-prefs-scroll{ -webkit-overflow-scrolling:touch; }
+.push-prefs-table td.push-pref-td{ padding:0; }
+.push-pref-cell{
+  display:flex; align-items:center; justify-content:center; width:100%; height:100%;
+  padding:13px 12px; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
 @media (max-width:600px){
   .push-prefs-table td, .push-prefs-table th{ padding:12px 14px; }
   .push-prefs-table .push-pref-cb{ width:22px; height:22px; }
+  .push-pref-cell{ padding:16px 14px; }
 }
 
 .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:.8rem; font-weight:600; }
@@ -600,6 +609,8 @@ html[data-theme="dark"] .approval-row.has-sensitivity{ background:#2a1c1a; borde
 .ev-heb{ display:block; font-size:.72rem; color:var(--teal); font-weight:700; white-space:nowrap; }
 .ev-greg{ display:block; font-size:.78rem; color:var(--ink-soft); margin-top:2px; white-space:nowrap; }
 .event-row-main{ flex:1; min-width:0; }
+.event-meta{ font-size:.82rem; color:var(--ink-soft); margin-top:3px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.view-event-details{ padding:7px 14px; font-size:.85rem; }
 
 /* ---------- staff announcements (dashboard) ---------- */
 .staff-ann-row{
@@ -621,6 +632,12 @@ html[data-theme="dark"] .approval-row.has-sensitivity{ background:#2a1c1a; borde
 .task-group-head h3{ margin:0; }
 .task-group-head .icon-btn{ width:36px; height:36px; }
 .task-group-head .icon-btn svg{ width:17px; height:17px; }
+
+/* ---------- event participant counts (students/parents) next to an approved student ---------- */
+.participants-edit{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:.82rem; color:var(--ink-soft); }
+.participants-edit .pe-label{ font-weight:600; }
+.participants-edit .pe-field{ display:flex; align-items:center; gap:6px; }
+.participants-edit .pe-field input{ width:56px; padding:5px 6px; border:1px solid var(--line); border-radius:8px; font-size:.85rem; text-align:center; background:var(--surface); color:var(--ink); }
 
 .task-card{
   display:flex; align-items:center; justify-content:space-between; gap:12px;
@@ -1073,7 +1090,10 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
   table.data:not(.push-prefs-table) td:not([data-label]){ justify-content:flex-end; padding-top:10px; }
 
   .trip-summary{ flex-direction:column; align-items:stretch !important; }
-  .trip-summary h3.c-title{ font-size:1.1rem; }
+  .trip-summary h3.c-title{
+    font-size:1rem; display:block; max-width:100%;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
 
   /* בנייד: מסתירים את הפעולות המשניות (עריכה/מחיקה/קישור/ניהול אישורים) ומעבירים
      אותן לתפריט "⋮" — שליחת חוזר/פרטי הטיול/נוכחות נשארות גלויות תמיד.
@@ -1146,12 +1166,22 @@ html[data-theme="dark"] .more-actions-menu{ background:var(--surface-2); border-
   .roster-row-head{ padding:15px 16px; }
   .roster-row-name{ font-size:1.08rem; }
 
+  /* כרטיס משימה בנייד — צ'קבוקס+טקסט+תגיות+כפתורי עריכה/מחיקה לא נכנסים בשורה אחת
+     צרה בלי להימרח; התגיות/הכפתורים עוברים לשורה נפרדת מתחת לטקסט המשימה */
+  .task-card{ flex-wrap:wrap; align-items:flex-start; padding:12px 14px; }
+  .task-card .task-check{ flex:1 1 100%; }
+  .task-card .task-meta{ flex:1 1 100%; flex-wrap:wrap; justify-content:flex-end; margin-top:8px; }
+
   /* לוח אירועים בנייד — הכפתורים (צפייה בפרטים/עריכה/מחיקה) עוברים לשורה נפרדת
-     ברוחב מלא, כדי שלא יידחסו לצד תג התאריך והכותרת בשורה אחת צרה מדי */
-  .event-row{ align-items:flex-start; padding:12px 2px; flex-wrap:wrap; }
-  .event-date-badge{ min-width:66px; padding:7px 8px; }
+     ברוחב מלא, כדי שלא יידחסו לצד תג התאריך והכותרת בשורה אחת צרה מדי.
+     גם מצמצמים מעט את הריפוד הצדדי של כרטיס הלוח עצמו וה-gap בין הפריטים בשורה,
+     כדי לפנות עוד קצת רוחב בפועל ולמנוע גלישה בטלפונים צרים. */
+  .events-card{ padding-inline:12px; }
+  .event-row{ align-items:flex-start; padding:12px 2px; gap:8px; flex-wrap:wrap; }
+  .event-date-badge{ min-width:60px; padding:6px 6px; }
   .event-row-main{ flex-basis:0; }
   .event-row-actions{ flex:1 1 100%; justify-content:flex-end; flex-wrap:wrap; margin-top:6px; }
+  .event-row-actions .view-event-details{ padding:7px 12px; font-size:.8rem; }
   .ev-heb{ font-size:.68rem; }
   .ev-greg{ font-size:.72rem; }
   .task-row{ flex-wrap:wrap; }
