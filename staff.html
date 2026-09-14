@@ -1958,9 +1958,9 @@ function buildTripNoticePreviewHtml(vals){
 
   if (vals.notes){
     html += `
-    <div class="trip-card">
-      <div class="section-eyebrow">הערות נוספות</div>
-      <p style="margin:0; color:var(--ink);">${esc(vals.notes)}</p>
+    <div class="trip-card notes-card">
+      <div class="section-eyebrow">⚠️ הערות נוספות</div>
+      <p style="margin:0; color:var(--ink); white-space:pre-line; font-weight:600;">${esc(vals.notes)}</p>
     </div>`;
   }
 
