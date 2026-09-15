@@ -412,27 +412,57 @@ async function refreshTripVerifyHashes(tripId){
   const tripSnap = await db.collection('trips').doc(tripId).get();
   const trip = tripSnap.exists ? tripSnap.data() : null;
   if (!(await confirmDialog(
-    `הפעולה מעדכנת את גיבובי האימות עבור "${trip?.title || 'הטיול'}" לפי הנתונים העדכניים בכרטיסי התלמידים, ומאפשרת אבחון מדויק (שם שגוי / טלפון שגוי) בטופס ההורים. סטטוסי אישור קיימים (מאושר/ממתין) לא ישתנו.`,
+    `הפעולה מעדכנת את גיבובי האימות עבור "${trip?.title || 'הטיול'}" לפי הנתונים העדכניים בכרטיסי התלמידים, ומוסיפה אישור (ממתין) לכל תלמיד/ה בכיתות הטיול שעדיין אין לו/ה — למשל מי שנכנס/ה לכיתה אחרי יצירת הטיול/האירוע. סטטוסי אישור קיימים (מאושר/ממתין) לא ישתנו.`,
     { title:'רענון אימות', confirmText:'כן, רענון', cancelText:'ביטול', danger:false }
   ))) return;
   try{
     toast('מרענן אימות…');
-    const approvalsSnap = await db.collection('trips').doc(tripId).collection('approvals').get();
-    const studentDocs = await Promise.all(approvalsSnap.docs.map(d=> db.collection('students').doc(d.id).get()));
+    // לאירוע/טיול "כלל ישיבתי" (is_school_wide) לוקחים את *כל* הכיתות הפעילות כרגע —
+    // ולא רק את class_ids השמור על הטיול — כי כיתה שנוספה למערכת אחרי יצירת הטיול לא
+    // נכנסת אוטומטית ל-class_ids שלו (ר' ההערה המקבילה למעלה ב-renderTrips), ולכן
+    // התלמידים שלה היו מוחסרים גם מהרענון הזה בלי הטיפול המיוחד הזה.
+    const classIds = trip?.is_school_wide
+      ? classesCache.filter(inCurrentYear).map(c=>c.id)
+      : (trip?.class_ids || (trip?.class_id ? [trip.class_id] : []));
+    const [approvalsSnap, studentDocs] = await Promise.all([
+      db.collection('trips').doc(tripId).collection('approvals').get(),
+      fetchStudentDocsForClassIds(classIds),
+    ]);
     const studentById = {};
-    studentDocs.forEach(d=>{ if (d.exists) studentById[d.id] = d.data(); });
+    studentDocs.forEach(d=>{ studentById[d.id] = d.data(); });
+    const existingApprovalIds = new Set(approvalsSnap.docs.map(d=>d.id));
+
     const batch = db.batch();
-    let updated = 0, skipped = 0;
+    let updated = 0, added = 0, skipped = 0;
+
+    // 1) מעדכן את גיבוב האימות של כל אישור קיים, לפי הנתונים העדכניים בכרטיס התלמיד/ה.
     for (const doc of approvalsSnap.docs){
       const sd = studentById[doc.id];
-      if (!sd){ skipped++; continue; }
+      if (!sd){ skipped++; continue; } // תלמיד/ה שכבר לא קיים/ת בכרטיסיה (למשל נמחק/ה) — לא נוגעים
       const approval = doc.data();
       const verify_hashes = await buildVerifyHashes(sd, approval.class_name || '');
       batch.update(doc.ref, { verify_hashes });
       updated++;
     }
+
+    // 2) מוסיף אישור "ממתין" חדש לכל תלמיד/ה בכיתות הטיול שעדיין אין לו/ה מסמך אישור —
+    //    זו הסיבה השכיחה לפער בין "כמה תלמידים יש בפועל בכיתות" לבין "כמה אישורים יש
+    //    בטיול": תלמיד/ה שנכנס/ה לכיתה אחרי יצירת הטיול/האירוע לא מקבל/ת אישור אוטומטית.
+    for (const d of studentDocs){
+      if (existingApprovalIds.has(d.id)) continue;
+      const sd = d.data();
+      const className = classesCache.find(c=>c.id===sd.class_id)?.name || '';
+      batch.set(db.collection('trips').doc(tripId).collection('approvals').doc(d.id), {
+        student_name: sd.full_name, class_name: className,
+        verify_hashes: await buildVerifyHashes(sd, className),
+        status: 'pending', notified: false,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      added++;
+    }
+
     await batch.commit();
-    toast(`אימות עודכן ל-${updated} תלמידים${skipped ? ` (${skipped} דולגו — לא נמצא כרטיס תלמיד תואם)` : ''}`);
+    toast(`רענון הושלם: ${updated} אישורים עודכנו${added ? `, ${added} תלמידים חדשים נוספו` : ''}${skipped ? `, ${skipped} דולגו (לא נמצא כרטיס תלמיד/ה)` : ''}`);
   }catch(err){ toast('שגיאה: '+err.message); }
 }
 /* שומר/מעדכן רשומה ציבורית-בטוחה על תלמיד/ה — נגישה ללא התחברות (approve.html / shirt-order.html),
@@ -3870,7 +3900,12 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     totalStudents += Number.isFinite(appr.participants_students) ? appr.participants_students : 1;
     totalParents += Number.isFinite(appr.participants_parents) ? appr.participants_parents : 0;
   });
-  el.textContent = `${totalStudents} תלמידים · ${totalParents} הורים · סה"כ ${totalStudents + totalParents}`;
+  el.innerHTML = `
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <span class="as-count as-count-sm as-steel"><span class="as-icon">${ICON.cap}</span><span class="as-text"><span class="as-num">${totalStudents}</span><span class="as-lbl">תלמידים</span></span></span>
+      <span class="as-count as-count-sm as-teal"><span class="as-icon">${ICON.user}</span><span class="as-text"><span class="as-num">${totalParents}</span><span class="as-lbl">הורים</span></span></span>
+      <span class="as-count as-count-sm as-total"><span class="as-icon">${ICON.check}</span><span class="as-text"><span class="as-num">${totalStudents + totalParents}</span><span class="as-lbl">סה"כ</span></span></span>
+    </div>`;
 }
 
   const totalCount = students.length;
@@ -3901,8 +3936,8 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
   const showEventTotals = trip.kind === 'event' && canViewEventParticipantTotals();
   const eventTotalsHtml = showEventTotals ? `
     <div class="card card-pad" id="eventParticipantsTotalCard" style="margin-bottom:16px; background:var(--paper-2);">
-      <h3 style="margin:0 0 6px; font-size:1rem;">👥 סך כל המשתתפים באירוע</h3>
-      <div id="eventParticipantsTotal" style="font-size:1.4rem; font-weight:700; color:var(--navy);"></div>
+      <h3 style="margin:0 0 10px; font-size:1rem; display:flex; align-items:center; gap:8px;">${ICON.user} סך כל המשתתפים באירוע</h3>
+      <div id="eventParticipantsTotal"></div>
     </div>` : '';
 
   const canViewCert = p.view_all_classes || p.manage_trip_certificates;
