@@ -476,7 +476,23 @@ async function refreshTripVerifyHashes(tripId){
     }
 
     await batch.commit();
-    toast(`רענון הושלם: ${updated} אישורים עודכנו${added ? `, ${added} תלמידים חדשים נוספו` : ''}${skipped ? `, ${skipped} דולגו (לא נמצא כרטיס תלמיד/ה)` : ''}`);
+
+    // 3) בונה מחדש גם את roster_snapshot של הטיול עצמו (שם/גיבוב לכל תלמיד/ה) מהנתונים
+    //    העדכניים בכרטיסיה — זה מה ש-trip-notice.html (קישור כללי ללא כניסה אישית) משתמש
+    //    בו כדי לזהות תלמיד לפי שם+כיתה. בלי זה, תיקון בכרטיס תלמיד/ה (למשל סדר שם הפוך,
+    //    שם הורה שגוי) לא היה משפיע על הזיהוי בקישור הכללי, כי roster_snapshot הוא תמונת
+    //    מצב קפואה מרגע יצירת הטיול. מדלגים על טיולים/אירועים בלי הרשמה (requires_registration === false).
+    let rosterRebuilt = false;
+    if (trip?.requires_registration !== false){
+      const roster_snapshot = await Promise.all(studentDocs.map(async d=>{
+        const sd = d.data();
+        return { id: d.id, full_name: sd.full_name, class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
+      }));
+      await db.collection('trips').doc(tripId).update({ roster_snapshot });
+      rosterRebuilt = true;
+    }
+
+    toast(`רענון הושלם: ${updated} אישורים עודכנו${added ? `, ${added} תלמידים חדשים נוספו` : ''}${skipped ? `, ${skipped} דולגו (לא נמצא כרטיס תלמיד/ה)` : ''}${rosterRebuilt ? ', רשימת התלמידים בקישור הכללי עודכנה' : ''}`);
   }catch(err){ toast('שגיאה: '+err.message); }
 }
 /* שומר/מעדכן רשומה ציבורית-בטוחה על תלמיד/ה — נגישה ללא התחברות (approve.html / shirt-order.html),
