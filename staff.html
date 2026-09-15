@@ -401,6 +401,40 @@ async function buildRosterVerifyHashes(student){
   if (student.father_name && student.father_phone) hashes.push({ slot:'father', hash: await sha256Hex(`${firstNameOf(student.father_name)}|${normPhoneDigits(student.father_phone)}`) });
   return hashes;
 }
+/* "רענון אימות" — מנהל מערכת בלבד, מתוך תפריט "⋮" של כל טיול. מחשב מחדש את
+   verify_hashes של כל אישורי הטיול (name_hash/phone_hash נפרדים, ר' buildVerifyHashes
+   למעלה) לפי הנתונים העדכניים בכרטיסי התלמידים — למשל עבור טיולים שנוצרו לפני שדרוג
+   האבחון המדויק (שם/טלפון בנפרד), או אם פרטי הורה עודכנו בכרטיס התלמיד אחרי יצירת
+   הטיול. לא נוגע בסטטוס אישור קיים (מאושר/ממתין) — רק בגיבובי האימות עצמם. */
+async function refreshTripVerifyHashes(tripId){
+  // שולף את הטיול ישירות מ-Firestore (ולא מהמשתנה המקומי trips שבתוך renderTrips) —
+  // הפונקציה הזו מוגדרת ברמת הקובץ, בלי גישה ל-closure של renderTrips.
+  const tripSnap = await db.collection('trips').doc(tripId).get();
+  const trip = tripSnap.exists ? tripSnap.data() : null;
+  if (!(await confirmDialog(
+    `הפעולה מעדכנת את גיבובי האימות עבור "${trip?.title || 'הטיול'}" לפי הנתונים העדכניים בכרטיסי התלמידים, ומאפשרת אבחון מדויק (שם שגוי / טלפון שגוי) בטופס ההורים. סטטוסי אישור קיימים (מאושר/ממתין) לא ישתנו.`,
+    { title:'רענון אימות', confirmText:'כן, רענון', cancelText:'ביטול', danger:false }
+  ))) return;
+  try{
+    toast('מרענן אימות…');
+    const approvalsSnap = await db.collection('trips').doc(tripId).collection('approvals').get();
+    const studentDocs = await Promise.all(approvalsSnap.docs.map(d=> db.collection('students').doc(d.id).get()));
+    const studentById = {};
+    studentDocs.forEach(d=>{ if (d.exists) studentById[d.id] = d.data(); });
+    const batch = db.batch();
+    let updated = 0, skipped = 0;
+    for (const doc of approvalsSnap.docs){
+      const sd = studentById[doc.id];
+      if (!sd){ skipped++; continue; }
+      const approval = doc.data();
+      const verify_hashes = await buildVerifyHashes(sd, approval.class_name || '');
+      batch.update(doc.ref, { verify_hashes });
+      updated++;
+    }
+    await batch.commit();
+    toast(`אימות עודכן ל-${updated} תלמידים${skipped ? ` (${skipped} דולגו — לא נמצא כרטיס תלמיד תואם)` : ''}`);
+  }catch(err){ toast('שגיאה: '+err.message); }
+}
 /* שומר/מעדכן רשומה ציבורית-בטוחה על תלמיד/ה — נגישה ללא התחברות (approve.html / shirt-order.html),
    ומכילה רק שם + כיתה + גיבוב אימות. לעולם לא ת.ז/טלפון/רגישויות/כתובת גולמיים. */
 async function syncStudentPublicRecord(studentId, student){
@@ -661,6 +695,7 @@ const ICON = {
   eye: fIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle>', 15),
   calendar: fIcon('<rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>', 16),
   search: fIcon('<circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>'),
+  refresh: fIcon('<polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>', 15),
 };
 
 /* נתיב הבסיס לקישורים ציבוריים (approve.html) — עמיד גם מול Netlify Clean URLs
@@ -2460,18 +2495,20 @@ function renderTripsList(container, trips){
             ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
             ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
             ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+            ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm refresh-verify-hashes" data-id="${t.id}" title="רענון בדיקת ההתאמה מול שם/טלפון ההורים העדכניים בכרטיסי התלמידים">${ICON.refresh} רענון אימות</button>` : ''}
           </div>
           ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} ${t.kind === 'event' ? 'פרטי האירוע המלאים' : 'פרטי הטיול המלאים'}</button>
           ${showAttendanceBtn ? `<button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} ${t.kind === 'event' ? 'נוכחות ביום האירוע' : 'נוכחות ביום הטיול'}</button>` : ''}
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
-          ${(canEditInfo || p.view_all_classes || p.create_trips || p.edit_trip_details || p.manage_class_roster) ? `
+          ${(canEditInfo || p.view_all_classes || p.create_trips || p.edit_trip_details || p.manage_class_roster || myProfile.role === 'מנהל מערכת') ? `
           <details class="kebab-menu">
             <summary class="icon-btn kebab-btn" title="עוד פעולות">⋮</summary>
             <div class="kebab-panel">
               ${canEditInfo ? `<button class="btn btn-outline btn-sm edit-trip" data-id="${t.id}" title="עריכת פרטי הטיול">${ICON.edit} עריכה</button>` : ''}
               ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
               ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
+              ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm refresh-verify-hashes" data-id="${t.id}" title="רענון בדיקת ההתאמה מול שם/טלפון ההורים העדכניים בכרטיסי התלמידים">${ICON.refresh} רענון אימות</button>` : ''}
             </div>
           </details>` : ''}
         </div>
@@ -2542,6 +2579,10 @@ function renderTripsList(container, trips){
       }
       catch(err){ toast('שגיאה: '+err.message); }
     });
+  });
+
+  container.querySelectorAll('.refresh-verify-hashes').forEach(btn=>{
+    btn.addEventListener('click', ()=> refreshTripVerifyHashes(btn.dataset.id));
   });
 
   // תפריט "⋮" בכל טיול (בנייד): ממוקם עם position:fixed מחושב לפי מיקום הכפתור בפועל —
