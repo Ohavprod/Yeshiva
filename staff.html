@@ -2701,12 +2701,23 @@ function renderTripsList(container, trips){
       const trip = trips.find(t=>t.id===btn.dataset.id);
       const link = `${siteBaseUrl()}trip-notice.html?t=${trip.id}`;
       const text = `שלום, זהו אישור טיול "${trip.title}"\nלצפייה בכל פרטי הטיול ולחתימה על האישור: ${link}`;
-      const groups = classIdsOf(trip)
+      // מחנך/ת רגיל/ה רואה ויכול/ה לשלוח רק לקבוצת הכיתה שלו/ה עצמו/ה, גם בטיול/אירוע
+      // כלל-ישיבתי המשותף לכמה כיתות — כדי שלא ישלח/תשלח בטעות חוזר לכיתה שאינה שלו/ה.
+      // מנהל מערכת, ראש הישיבה ומזכירה ממשיכים לראות ולבחור מכל הכיתות של הטיול.
+      const canSendAllClasses = ['מנהל מערכת','ראש הישיבה','מזכירה'].includes(myProfile.role);
+      const relevantClassIds = canSendAllClasses
+        ? classIdsOf(trip)
+        : classIdsOf(trip).filter(cid => cid === myProfile.class_id);
+      const groups = relevantClassIds
         .map(cid=>({ name: classesCache.find(c=>c.id===cid)?.name, link: classesCache.find(c=>c.id===cid)?.whatsapp_group_link }))
         .filter(g=> g.link);
 
+      if (!canSendAllClasses && classIdsOf(trip).length && !relevantClassIds.length){
+        toast('הטיול הזה לא משויך לכיתה שלך');
+        return;
+      }
       if (groups.length === 0){
-        // אין קישור קבוצה מוגדר לאף אחת מהכיתות — פותחים את בורר הצ'אטים הכללי של וואטסאפ
+        // אין קישור קבוצה מוגדר לאף אחת מהכיתות (הרלוונטיות) — פותחים את בורר הצ'אטים הכללי של וואטסאפ
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
         return;
       }
