@@ -97,13 +97,23 @@
     .trip-title{ font-size:1.22rem; overflow-wrap:break-word; word-break:break-word; }
     .meta-badge{ width:78px; }
     .meta-badge .m-icon{ width:44px; height:44px; font-size:1.15rem; }
+  .notice-header .refresh-btn{
+    position:absolute; top:12px; left:12px; z-index:2;
+    display:flex; align-items:center; gap:5px;
+    background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.35);
+    border-radius:999px; padding:6px 12px; font-size:.78rem; font-weight:700; cursor:pointer;
   }
+  .notice-header .refresh-btn:active{ background:rgba(255,255,255,.28); }
 </style>
 </head>
 <body>
 <div class="basd-line">בס״ד</div>
 <div class="notice-wrap">
   <div class="notice-header">
+    <!-- כפתור רענון: אם אביב עדכן משהו במערכת (למשל תיקן טלפון/שם) אחרי שההורה כבר פתח
+         את הדף, לחיצה כאן פשוט טוענת הכל מחדש — במקום לבקש מההורה למצוא את כפתור הרענון
+         של הדפדפן בעצמו. -->
+    <button type="button" class="refresh-btn" id="refreshPageBtn" title="רענון">🔄 רענון</button>
     <div class="ring">
       <svg width="100%" height="100%" viewBox="0 0 400 220" preserveAspectRatio="none" style="position:absolute; inset:0;">
         <circle cx="360" cy="10" r="140" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
@@ -128,6 +138,16 @@ function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2600);
+}
+/* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
+   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script.
+   classId (אופציונלי): class_id של התלמיד/ה, כדי שהשרת יוכל לסנן את ההתראה למחנך/ת
+   הכיתה הנכונה בלבד (ולא לכל מחנכי הכיתות בטיול/אירוע כלל-ישיבתי). */
+const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
+const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
+function notifyPush(type, title, body, classId){
+  if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body, class_id: classId || null }) }).catch(()=>{});
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
@@ -334,14 +354,6 @@ async function load(){
         </div>
         ${isEvent ? `
         <div class="field">
-          <label>כמה תלמידים מגיעים (כולל בני הרשום/ה למעלה)</label>
-          <div class="number-stepper">
-            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
-            <input type="number" id="participantsStudents" min="1" step="1" value="1" inputmode="numeric">
-            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
-          </div>
-        </div>
-        <div class="field">
           <label>כמה הורים מגיעים</label>
           <div class="number-stepper">
             <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
@@ -443,9 +455,10 @@ async function load(){
     try{
       const extraPayload = {};
       if (isEvent){
-        const nStudents = parseInt(document.getElementById('participantsStudents').value, 10);
+        // התלמיד/ה שעבורו/ה מאשרים נספר/ת אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
+        // רק את מספר ההורים המגיעים.
         const nParents = parseInt(document.getElementById('participantsParents').value, 10);
-        extraPayload.participants_students = Number.isFinite(nStudents) && nStudents > 0 ? nStudents : 1;
+        extraPayload.participants_students = 1;
         extraPayload.participants_parents = Number.isFinite(nParents) && nParents >= 0 ? nParents : 0;
       }
       await approvalRef.update({
@@ -464,6 +477,13 @@ async function load(){
         const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
         db.collection('students').doc(studentId).update({ [field]: approverId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
       }
+      const matchedClassName = classOptions.find(c=>c.id===matchedStudent.class_id)?.name || '';
+      notifyPush(
+        'trip_approved',
+        isEvent ? 'אישור הגעה חדש' : 'אישור טיול חדש',
+        `${matchedStudent.full_name}${matchedClassName ? ' (' + matchedClassName + ')' : ''} אושר/ה ${isEvent ? 'להגעה ל' : 'לטיול'} "${trip.title}"`,
+        matchedStudent.class_id
+      );
       document.getElementById('formArea').style.display = 'none';
       document.getElementById('resultArea').innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="margin:0;">האישור נקלט, תודה!</p></div>`;
     }catch(err){
@@ -486,6 +506,9 @@ document.addEventListener('click', (e)=>{
   val = btn.classList.contains('ns-plus') ? val + step : val - step;
   if (Number.isFinite(min) && val < min) val = min;
   input.value = val;
+});
+document.getElementById('refreshPageBtn').addEventListener('click', ()=>{
+  location.reload();
 });
 load();
 </script>
