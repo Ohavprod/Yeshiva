@@ -97,23 +97,13 @@
     .trip-title{ font-size:1.22rem; overflow-wrap:break-word; word-break:break-word; }
     .meta-badge{ width:78px; }
     .meta-badge .m-icon{ width:44px; height:44px; font-size:1.15rem; }
-  .notice-header .refresh-btn{
-    position:absolute; top:12px; left:12px; z-index:2;
-    display:flex; align-items:center; gap:5px;
-    background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.35);
-    border-radius:999px; padding:6px 12px; font-size:.78rem; font-weight:700; cursor:pointer;
   }
-  .notice-header .refresh-btn:active{ background:rgba(255,255,255,.28); }
 </style>
 </head>
 <body>
 <div class="basd-line">בס״ד</div>
 <div class="notice-wrap">
   <div class="notice-header">
-    <!-- כפתור רענון: אם אביב עדכן משהו במערכת (למשל תיקן טלפון/שם) אחרי שההורה כבר פתח
-         את הדף, לחיצה כאן פשוט טוענת הכל מחדש — במקום לבקש מההורה למצוא את כפתור הרענון
-         של הדפדפן בעצמו. -->
-    <button type="button" class="refresh-btn" id="refreshPageBtn" title="רענון">🔄 רענון</button>
     <div class="ring">
       <svg width="100%" height="100%" viewBox="0 0 400 220" preserveAspectRatio="none" style="position:absolute; inset:0;">
         <circle cx="360" cy="10" r="140" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
@@ -506,9 +496,6 @@ document.addEventListener('click', (e)=>{
   val = btn.classList.contains('ns-plus') ? val + step : val - step;
   if (Number.isFinite(min) && val < min) val = min;
   input.value = val;
-});
-document.getElementById('refreshPageBtn').addEventListener('click', ()=>{
-  location.reload();
 });
 load();
 </script>
