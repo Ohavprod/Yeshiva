@@ -2,6 +2,11 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
+<!-- This site is hosted on Netlify. Anyone can build and deploy a site
+     like this one for free: https://netlify.new/?utm_campaign=ai-legible&utm_source=comment&utm_medium=referral&utm_id=467dee05-b9a1-4a16-b253-c88a05f64c1e
+     Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
+<meta name="hosting-provider" content="Netlify">
+<meta name="netlify-deploy" content="https://netlify.new/?utm_campaign=ai-legible&amp;utm_source=meta&amp;utm_medium=referral&amp;utm_id=467dee05-b9a1-4a16-b253-c88a05f64c1e">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מערכת ניהול — ישיבה תיכונית עפולה</title>
 <link rel="manifest" href="manifest.json">
@@ -43,7 +48,7 @@
     <p style="font-size:.8rem; color:var(--ink-soft); margin-top:18px; text-align:center;">
       חשבון חדש? חשבונות נוצרים אך ורק על ידי מנהל המערכת, דרך קישור הזמנה שנשלח לדוא״ל.
     </p>
-    <a href="index.html" style="display:block; text-align:center; margin-top:10px; font-size:.85rem; color:var(--steel);">← חזרה לאתר הראשי</a>
+    <a href='/' style='display:block; text-align:center; margin-top:10px; font-size:.85rem; color:var(--steel);'>← חזרה לאתר הראשי</a>
   </div>
 </div>
 
@@ -88,7 +93,7 @@
 <div id="appShell" class="app-shell" style="display:none;">
   <div class="side-backdrop" id="sideBackdrop"></div>
   <aside class="app-side" id="appSide">
-    <a class="brand" href="index.html">
+    <a class='brand' href='/'>
       <img src="assets/img/logo.png" alt="" style="height:46px;width:46px;">
       <div>
         <div class="t1" style="font-size:.95rem;">ישיבה תיכונית עפולה</div>
@@ -2472,6 +2477,24 @@ async function renderTrips(body){
 }
 
 /* חלון לבחירת קבוצה לשליחה, כשלטיול משותף יש כמה קבוצות וואטסאפ מוגדרות (אחת לכל כיתה) */
+/* מעתיקים ללוח *ולפני* פתיחת הקבוצה, וממתינים (await) שההעתקה אכן הסתיימה — קודם
+   פתחנו את הקבוצה כמעט מיד אחרי writeText() בלי לחכות לו, ובחלק מהדפדפנים (בעיקר
+   בנייד) פתיחת החלון החדש מעבירה פוקוס בדיוק באמצע קריאת ההרשאה של ה-Clipboard API,
+   מה שגורם לה להיכשל בשקט: הקבוצה נפתחת, אבל הלוח נשאר ריק ואין מה להדביק.
+   אם ההעתקה בכל זאת נכשלת (או שה-API לא זמין בדפדפן) יש נפילה חזרה לחלון prompt,
+   שמאפשר לבחור ולהעתיק את הטקסט ידנית (Ctrl+C) לפני שהקבוצה נפתחת. */
+async function copyThenOpenGroup(text, link){
+  let copied = false;
+  try{ await navigator.clipboard.writeText(text); copied = true; }
+  catch(e){ copied = false; }
+  if (copied){
+    toast('הטקסט הועתק ללוח — יש להדביק (Ctrl+V) ולשלוח בקבוצה שנפתחת');
+  } else {
+    window.prompt('ההעתקה האוטומטית נכשלה — יש לבחור ולהעתיק (Ctrl+C), ואז ללחוץ אישור כדי לפתוח את הקבוצה:', text);
+  }
+  window.open(link, '_blank');
+}
+
 function showGroupSendModal(groups, text){
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -2488,10 +2511,8 @@ function showGroupSendModal(groups, text){
       <span>${esc(g.name||'כיתה')}</span><span>פתיחה ↗</span>
     </button>`).join('');
   overlay.querySelectorAll('.open-group').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      navigator.clipboard.writeText(text);
-      toast('הטקסט הועתק — יש להדביק ולשלוח');
-      window.open(groups[btn.dataset.i].link, '_blank');
+    btn.addEventListener('click', async ()=>{
+      await copyThenOpenGroup(text, groups[btn.dataset.i].link);
     });
   });
   overlay.querySelector('.gm-close').addEventListener('click', ()=> overlay.remove());
@@ -2676,7 +2697,7 @@ function renderTripsList(container, trips){
   });
 
   container.querySelectorAll('.send-notice').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', async ()=>{
       const trip = trips.find(t=>t.id===btn.dataset.id);
       const link = `${siteBaseUrl()}trip-notice.html?t=${trip.id}`;
       const text = `שלום, זהו אישור טיול "${trip.title}"\nלצפייה בכל פרטי הטיול ולחתימה על האישור: ${link}`;
@@ -2690,9 +2711,7 @@ function renderTripsList(container, trips){
         return;
       }
       if (groups.length === 1){
-        navigator.clipboard.writeText(text);
-        toast('הטקסט הועתק ללוח — יש להדביק (Ctrl+V) ולשלוח בקבוצה שנפתחת');
-        window.open(groups[0].link, '_blank');
+        await copyThenOpenGroup(text, groups[0].link);
         return;
       }
       showGroupSendModal(groups, text);
@@ -3440,7 +3459,7 @@ function canViewTripSensitivityStats(){
 }
 /* אותם שלושה תפקידים בלבד רואים את סך כל המשתתפים (תלמידים+הורים) באירוע חברתי */
 function canViewEventParticipantTotals(){
-  return myProfile.role === 'מנהל מערכת' || myProfile.role === 'רכז חברתי' || myProfile.role === 'ראש הישיבה';
+  return myProfile.role === 'מנהל מערכת' || myProfile.role === 'רכז חברתי' || myProfile.role === 'ראש הישיבה' || myProfile.role === 'מזכירה';
 }
 function buildCityAndSensitivityStatsHtml(approvedStudents, heading, showSensitivities){
   if (!approvedStudents.length) return '';
@@ -4366,9 +4385,11 @@ async function renderPayments(body){
         </div>
         <div class="form-grid" style="margin-top:6px; border-top:1px dashed var(--line); padding-top:18px;">
           <div class="field"><label>טיול</label><select id="exp_trip">${tripsWithCost.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('') || '<option value="">אין עדיין טיולים עם מחיר</option>'}</select></div>
+          <div class="field"><label>כיתה (לדוח לפי כיתה)</label><select id="exp_class"><option value="">כל הכיתות</option></select></div>
           <div class="field"><label>תלמיד/ה</label><select id="exp_student"><option value="">טוען…</option></select></div>
           <div class="field" style="display:flex; gap:10px; grid-column:1/-1; flex-wrap:wrap;">
             <button class="btn btn-outline btn-sm" id="exportTripFullBtn">${ICON.download} ייצוא דוח מלא לטיול זה (כל התלמידים)</button>
+            <button class="btn btn-outline btn-sm" id="exportTripClassBtn">${ICON.download} ייצוא דוח לפי כיתה</button>
             <button class="btn btn-outline btn-sm" id="exportStudentTripBtn">${ICON.download} תשלום התלמיד/ה בטיול זה</button>
             <button class="btn btn-outline btn-sm" id="exportStudentHistoryBtn">${ICON.download} היסטוריית תשלומים של התלמיד/ה (כל הטיולים)</button>
           </div>
@@ -4405,16 +4426,35 @@ async function renderPayments(body){
   const exportFormat = () => document.getElementById('exportFormat').value;
 
   const tripSelect = document.getElementById('exp_trip');
+  const classSelect = document.getElementById('exp_class');
   const studentSelect = document.getElementById('exp_student');
+
+  const refreshClassOptions = () => {
+    const trip = tripsWithCost.find(t=>t.id===tripSelect.value);
+    const classIds = trip ? (trip.class_ids || (trip.class_id ? [trip.class_id] : [])) : [];
+    const classes = classIds.map(cid=>classesCache.find(c=>c.id===cid)).filter(Boolean);
+    classSelect.innerHTML = '<option value="">כל הכיתות</option>' + classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  };
+
   const refreshStudentOptions = async () => {
     const trip = tripsWithCost.find(t=>t.id===tripSelect.value);
     if (!trip){ studentSelect.innerHTML = '<option value="">אין תלמידים</option>'; return; }
     const docs = await fetchStudentDocsForClassIds(trip.class_ids || (trip.class_id?[trip.class_id]:[]));
     const studs = docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> a.full_name.localeCompare(b.full_name,'he'));
-    studentSelect.innerHTML = studs.map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('') || '<option value="">אין תלמידים בכיתות המשויכות</option>';
+    // קיבוץ ל-optgroup לפי כיתה — כדי שלא יהיה צריך לנחש איזה תלמיד שייך לאיזו כיתה,
+    // בעיקר בטיולים/אירועים שמשותפים לכמה כיתות (למשל אירוע כלל ישיבתי).
+    const byClass = {};
+    studs.forEach(s=>{
+      const cname = classesCache.find(c=>c.id===s.class_id)?.name || 'ללא כיתה';
+      (byClass[cname] = byClass[cname] || []).push(s);
+    });
+    const classNames = Object.keys(byClass).sort((a,b)=> a.localeCompare(b,'he'));
+    studentSelect.innerHTML = classNames.map(cname =>
+      `<optgroup label="${esc(cname)}">${byClass[cname].map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('')}</optgroup>`
+    ).join('') || '<option value="">אין תלמידים בכיתות המשויכות</option>';
   };
-  if (tripSelect.value) await refreshStudentOptions();
-  tripSelect.addEventListener('change', refreshStudentOptions);
+  if (tripSelect.value){ refreshClassOptions(); await refreshStudentOptions(); }
+  tripSelect.addEventListener('change', ()=>{ refreshClassOptions(); refreshStudentOptions(); });
 
   document.getElementById('exportRangeBtn').addEventListener('click', async ()=>{
     const from = document.getElementById('exp_from').value;
@@ -4454,6 +4494,28 @@ async function renderPayments(body){
     });
     if (rows.length === 1){ toast('אין תלמידים בכיתות המשויכות לטיול'); return; }
     exportTable(rows, `דוח תשלומים - ${trip.title}`, exportFormat());
+  });
+
+  document.getElementById('exportTripClassBtn').addEventListener('click', async ()=>{
+    const trip = tripsWithCost.find(t=>t.id===tripSelect.value);
+    const classId = classSelect.value;
+    if (!trip){ toast('יש לבחור טיול'); return; }
+    if (!classId){ toast('יש לבחור כיתה ספציפית (לא "כל הכיתות")'); return; }
+    const className = classesCache.find(c=>c.id===classId)?.name || '';
+    const [studentDocs, paymentsSnap] = await Promise.all([
+      fetchStudentDocsForClassIds([classId]),
+      db.collection('trips').doc(trip.id).collection('payments').get(),
+    ]);
+    const studs = studentDocs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> a.full_name.localeCompare(b.full_name,'he'));
+    const paymentsById = {};
+    paymentsSnap.docs.forEach(d=> paymentsById[d.id] = { id:d.id, ...d.data() });
+    const rows = [['תלמיד/ה','סטטוס','סכום','תאריך תשלום','אופן תשלום']];
+    studs.forEach(s=>{
+      const pay = paymentsById[s.id];
+      rows.push([s.full_name, pay?'שולם':'טרם שולם', pay?.amount||'', pay?.payment_date||'', pay?methodLabel(pay.payment_method, pay.payment_method_other):'']);
+    });
+    if (rows.length === 1){ toast('אין תלמידים בכיתה זו'); return; }
+    exportTable(rows, `דוח תשלומים - ${trip.title} - כיתה ${className}`, exportFormat());
   });
 
   document.getElementById('exportStudentTripBtn').addEventListener('click', async ()=>{
