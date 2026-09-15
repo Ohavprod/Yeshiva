@@ -367,14 +367,6 @@ async function load(){
         </div>
         ${isEvent ? `
         <div class="field">
-          <label>כמה תלמידים מגיעים (כולל בני הרשום/ה למעלה)</label>
-          <div class="number-stepper">
-            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
-            <input type="number" id="participantsStudents" min="1" step="1" value="1" inputmode="numeric">
-            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
-          </div>
-        </div>
-        <div class="field">
           <label>כמה הורים מגיעים</label>
           <div class="number-stepper">
             <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
@@ -473,9 +465,10 @@ async function load(){
     try{
       const extraPayload = {};
       if (isEvent){
-        const nStudents = parseInt(document.getElementById('participantsStudents').value, 10);
+        // התלמיד/ה שעבורו/ה מאשרים נספר/ת אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
+        // רק את מספר ההורים המגיעים (כמו בטופס הכללי, trip-notice.html).
         const nParents = parseInt(document.getElementById('participantsParents').value, 10);
-        extraPayload.participants_students = Number.isFinite(nStudents) && nStudents > 0 ? nStudents : 1;
+        extraPayload.participants_students = 1;
         extraPayload.participants_parents = Number.isFinite(nParents) && nParents >= 0 ? nParents : 0;
       }
       // set(..., {merge:true}) ולא update(): אם מסמך האישור נמחק בעבר (למשל תלמיד
