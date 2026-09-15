@@ -149,6 +149,7 @@ function formatGregShort(dateStr){
 }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
+function lastNameOf(s){ return norm(s).split(' ').slice(1).join(' '); }
 function normPhoneDigits(s){
   let d = (s||'').toString().replace(/\D/g,'');
   // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
@@ -414,16 +415,31 @@ async function load(){
       const match = (matchedStudent.verify_hashes||[]).find(h => h.hash === candidateHash);
       if (match){ identityVerified = true; matchedSlot = match.slot; }
     } else {
-      // יותר מתלמיד אחד עם אותו שם פרטי באותה כיתה — כאן כן צריך את ההצלבה כדי לדעת על מי
-      // בדיוק מדובר. אם היא לא מצליחה לצמצם לתלמיד יחיד, מבקשים שם מלא במקום לחסום לגמרי.
-      const verifiedMatches = nameMatches.filter(r => (r.verify_hashes||[]).some(h => h.hash === candidateHash));
-      if (verifiedMatches.length === 1){
-        matchedStudent = verifiedMatches[0];
-        identityVerified = true;
-        matchedSlot = matchedStudent.verify_hashes.find(h => h.hash === candidateHash).slot;
+      // יותר מתלמיד אחד עם אותו שם פרטי באותה כיתה — קודם מנסים לצמצם לפי שם המשפחה
+      // שההורה הקליד (תומך גם בשם משפחה מכמה מילים, כי lastNameOf לוקח הכל אחרי המילה
+      // הראשונה). רק אם זה לא הצליח לצמצם לתלמיד יחיד, נופלים חזרה על ההצלבה מול פרטי
+      // ההורה (verify_hashes) כפי שהיה קודם.
+      const typedLastName = lastNameOf(studentName);
+      let candidates = nameMatches;
+      if (typedLastName){
+        const byLastName = nameMatches.filter(r => lastNameOf(r.full_name) === typedLastName);
+        if (byLastName.length === 1) candidates = byLastName;
+      }
+
+      if (candidates.length === 1){
+        matchedStudent = candidates[0];
+        const match = (matchedStudent.verify_hashes||[]).find(h => h.hash === candidateHash);
+        if (match){ identityVerified = true; matchedSlot = match.slot; }
       } else {
-        matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין שם משפחה מלא כדי לזהות את הילד/ה הנכון/ה, או לפנות למחנך/ת.</p>`;
-        return;
+        const verifiedMatches = nameMatches.filter(r => (r.verify_hashes||[]).some(h => h.hash === candidateHash));
+        if (verifiedMatches.length === 1){
+          matchedStudent = verifiedMatches[0];
+          identityVerified = true;
+          matchedSlot = matchedStudent.verify_hashes.find(h => h.hash === candidateHash).slot;
+        } else {
+          matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין גם שם משפחה מלא ומדויק (כפי שנמסר למחנך/ת) כדי לזהות את הילד/ה הנכון/ה, או לפנות למחנך/ת.</p>`;
+          return;
+        }
       }
     }
 
