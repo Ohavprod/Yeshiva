@@ -42,7 +42,10 @@
       <a href="#updates">עדכונים</a>
       <a href="#contact">יצירת קשר</a>
     </div>
-    <a class="btn btn-ghost btn-sm" href="staff.html">כניסת צוות חינוכי</a>
+    <a class="btn btn-ghost btn-sm staff-login-btn" href="staff.html">
+      <span class="full-label">כניסת צוות חינוכי</span>
+      <span class="short-label">כניסה</span>
+    </a>
   </div>
 </nav>
 
@@ -335,12 +338,31 @@ async function loadTicker(){
       .slice(0, 15)
       .map(data => `<span>${(data.body||'').replace(/</g,'&lt;')}</span>`);
     track.innerHTML = items.join('') + items.join('');
+    // מהירות קבועה (פיקסלים לשנייה) במקום משך-זמן קבוע לאנימציה: ב-32 שניות קבועות,
+    // ככל שיש יותר עדכונים (טקסט מלא ארוך יותר) הגלילה מהר יותר בפועל, עד שלא מספיקים
+    // לקרוא הכל בסבב אחד לפני שהיא חוזרת לולאה — זו הסיבה שבנייד (מסך צר, פחות טקסט
+    // גלוי בו-זמנית) זה הרגיש כאילו "לא כל העדכונים מוצגים". קובעים משך לפי אורך
+    // התוכן בפועל כדי לשמור על קצב קריאה נוח קבוע, לא משנה כמה עדכונים יש.
+    requestAnimationFrame(()=>{
+      const oneCopyWidth = track.scrollWidth / 2;
+      const pxPerSecond = 55;
+      track.style.animationDuration = `${Math.max(18, oneCopyWidth / pxPerSecond)}s`;
+    });
   }catch(err){
     console.error('שגיאה בטעינת עדכונים:', err);
     track.innerHTML = '<span>אין עדכונים חדשים כרגע</span>';
   }
 }
 loadTicker();
+// מגע ממושך (touch) עוצר את הגלילה זמנית לקריאה נוחה יותר בנייד — מקביל להשהיה
+// בהעברת עכבר (:hover) שכבר קיימת ב-CSS למחשב, אבל hover לא אמין במגע.
+(() => {
+  const tickerBar = document.querySelector('.ticker-bar');
+  const track = document.getElementById('tickerTrack');
+  if (!tickerBar || !track) return;
+  tickerBar.addEventListener('touchstart', ()=>{ track.style.animationPlayState = 'paused'; }, { passive:true });
+  tickerBar.addEventListener('touchend', ()=>{ track.style.animationPlayState = 'running'; }, { passive:true });
+})();
 
 /* עוזר: escaping בטוח להטמעה בתוך attribute של HTML (לא רק תגי < כמו esc()
    הרגיל למטה) — קריטי לכיתובים/קישורים שעשויים להכיל גרש/גרשיים (למשל "צה"ל",
