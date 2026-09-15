@@ -242,13 +242,22 @@ function positionMoreActionsMenu(btn, menu){
   menu.style.position = 'fixed';
   menu.style.insetInlineEnd = 'auto';
   menu.style.top = `${r.bottom + 6}px`;
-  menu.style.left = '0px'; // מדידה ראשונית כדי לקבל רוחב אמיתי, מתוקן מיד למטה
+  menu.style.left = '0px'; // מדידה ראשונית כדי לקבל רוחב/גובה אמיתיים, מתוקן מיד למטה
   const margin = 10;
   const menuWidth = menu.offsetWidth || 220;
   let left = r.right - menuWidth;
   if (left < margin) left = margin;
   if (left + menuWidth > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - margin - menuWidth);
   menu.style.left = `${left}px`;
+  // אם אין מספיק מקום מתחת לכפתור עד תחתית המסך, פותחים כלפי מעלה במקום כלפי מטה —
+  // בלי זה, בתפריט עם כמה פריטים (כמו כאן: שליחה לממתינים + 3 ייצואי PDF), החלק
+  // התחתון שלו יכול לחרוג מתחתית המסך ולהיות בלתי נגיש בלי לגלול/להקטין תצוגה (זום אאוט).
+  const menuHeight = menu.offsetHeight || 160;
+  const spaceBelow = window.innerHeight - r.bottom - margin;
+  const spaceAbove = r.top - margin;
+  if (menuHeight > spaceBelow && spaceAbove > spaceBelow){
+    menu.style.top = `${Math.max(margin, r.top - menuHeight - 6)}px`;
+  }
 }
 /* תפריטי "⋮"/"⋯" ממוקמים לפי מיקום הכפתור ברגע הפתיחה (position:fixed עבור "פעולות
    נוספות", position:absolute עבור תפריט הקבב) — בלי טיפול נוסף, גלילת העמוד בזמן
@@ -1299,15 +1308,22 @@ async function renderHome(body){
     for (const t of openTrips){
       try{
         const classIds = t.class_ids || (t.class_id ? [t.class_id] : []);
-        // כאן צריך רק *מספרים* לתגיות "אישרו/ממתינים" — לא את רשימת התלמידים עצמה.
-        // count() נספר כקריאה אחת בלבד ל-Firestore בלי קשר לכמה תלמידים/אישורים יש
-        // בפועל, בניגוד ל-.get() הרגיל ששם כל מסמך = קריאה נפרדת. הפירוט המלא
-        // (שמות, מי אישר ומי לא) נטען רק בלחיצה על הטיול — ראו renderAdminTripBreakdown.
-        const [totalStudents, approvedCount0] = await Promise.all([
-          countStudentsForClassIds(classIds),
-          firestoreCount_('approvals', { parentPath: `trips/${t.id}`, where: eqFilter_('status','approved') }),
+        // חשוב: סופרים "אישרו" רק מול תלמידים שעדיין נמצאים בפועל בכיתות הטיול כרגע —
+        // לא סתם כל מסמך אישור עם status=='approved' בתת-האוסף. בלי הצלבה מול הרשימה
+        // החיה, תלמיד/ה שאושר/ה ואז עבר/ה כיתה או נמחק/ה מהרשימה עדיין נספר/ת כ"אישר/ה",
+        // בעוד totalStudents (שנספר מהרשימה החיה) כבר לא כולל אותו/ה — מה שגרם ל"ממתינים"
+        // להיראות נמוך מהאמת (בדיוק כמו שדווח: 1 ממתין בדף הבית מול 2 בפועל בלשונית
+        // "טיולים ואישורים", ששם הספירה תמיד הייתה נכונה כי היא כן מצליבה מול הרשימה החיה).
+        const [studentDocs, approvalsSnap] = await Promise.all([
+          fetchStudentDocsForClassIds(classIds),
+          db.collection('trips').doc(t.id).collection('approvals').get(),
         ]);
-        const approvedCount = Math.min(approvedCount0, totalStudents);
+        const totalStudents = studentDocs.length;
+        const studentIds = new Set(studentDocs.map(d=>d.id));
+        let approvedCount = 0;
+        approvalsSnap.docs.forEach(d=>{
+          if (studentIds.has(d.id) && d.data().status === 'approved') approvedCount++;
+        });
         pendingCount += Math.max(totalStudents - approvedCount, 0);
         tripSummaries0.push({ trip:t, approvedCount, totalStudents, classIds });
       }catch(err){
@@ -1348,23 +1364,24 @@ async function renderHome(body){
 
   let teacherTripsHtml = '';
   if (!isAdminLevel && myProfile.class_id && p.manage_class_roster){
-    const [tripsSnap, totalStudents] = await Promise.all([
+    const [tripsSnap, studentDocsForClass] = await Promise.all([
       db.collection('trips').where('class_ids','array-contains', myProfile.class_id).orderBy('created_at','desc').get(),
-      firestoreCount_('students', { where: eqFilter_('class_id', myProfile.class_id) }),
+      db.collection('students').where('class_id','==', myProfile.class_id).get(),
     ]);
+    const myStudentIds = new Set(studentDocsForClass.docs.map(d=>d.id));
+    const totalStudents = myStudentIds.size;
     const tripsForClass = tripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
     const summaries = [];
     for (const t of tripsForClass){
       try{
-        // firestoreCount_ כאן במקום .get() רגיל: נספר כקריאה אחת בלבד ל-Firestore בלי קשר
-        // לכמה תלמידים אישרו בפועל (בניגוד ל-.get(), ששם כל מסמך אישור = קריאה נפרדת) —
-        // חשוב כי זה רץ בלולאה על כל טיולי הכיתה, בכל טעינה של דף הבית.
-        // חשוב לא פחות: מסננים גם לפי class_name של המחנך/ת עצמו/ה, לא רק status —
-        // אחרת בטיול/אירוע רב-כיתתי (למשל "כלל ישיבתי"), אישור של הורה מכיתה אחרת
-        // היה נספר גם אצל מחנכים של כיתות אחרות שלא קשורות לאותו אישור.
-        const approvedCount = await firestoreCount_('approvals', {
-          parentPath: `trips/${t.id}`,
-          where: [eqFilter_('status','approved'), eqFilter_('class_name', myProfile.class_name || '')],
+        // מצליבים מול הרשימה החיה של הכיתה (בדיוק כמו בלשונית "טיולים ואישורים") —
+        // ולא רק סופרים status=='approved' בתת-האוסף, כי זה היה סופר גם אישור ישן
+        // ("תקוע") של תלמיד/ה שכבר עבר/ה כיתה או נמחק/ה, ומראה פחות "ממתינים" משיש
+        // בפועל. גם לא תלוי בהתאמת מחרוזת class_name בין מסמך האישור לפרופיל המחנך/ת.
+        const approvalsSnap = await db.collection('trips').doc(t.id).collection('approvals').get();
+        let approvedCount = 0;
+        approvalsSnap.docs.forEach(d=>{
+          if (myStudentIds.has(d.id) && d.data().status === 'approved') approvedCount++;
         });
         summaries.push({ trip: t, approvedCount, totalStudents });
       }catch(err){
@@ -2636,6 +2653,15 @@ function renderTripsList(container, trips){
         if (left < margin) left = margin;
         if (left + w > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - margin - w);
         panel.style.left = `${left}px`;
+        // אם אין מספיק מקום מתחת לכפתור עד תחתית המסך, פותחים כלפי מעלה במקום כלפי
+        // מטה — אחרת בתפריט עם כמה פריטים (למשל אחרי הוספת "רענון אימות") החלק
+        // התחתון שלו יכול לחרוג מתחתית המסך ולהיות בלתי נגיש בלי לגלול/להקטין תצוגה.
+        const h = panel.offsetHeight || 0;
+        const spaceBelow = window.innerHeight - r.bottom - margin;
+        const spaceAbove = r.top - margin;
+        if (h > spaceBelow && spaceAbove > spaceBelow){
+          panel.style.top = `${Math.max(margin, r.top - h - 6)}px`;
+        }
       });
     });
   });
