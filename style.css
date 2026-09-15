@@ -298,12 +298,19 @@ footer.site-footer .fine{ font-size:.8rem; color:#7f92b3; margin-top:32px; text-
   .info-grid{ grid-template-columns:1fr; }
   .about-wrap{ grid-template-columns:1fr; }
   .nav-links{ display:none; }
-  .site-nav .container{ height:60px; gap:10px; }
+  .site-nav .container{ height:60px; gap:8px; padding-inline:14px; }
   .site-nav .brand{ min-width:0; flex:1 1 auto; overflow:hidden; }
   .site-nav .brand .t1{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.92rem; }
-  .site-nav .brand img{ height:38px; width:38px; flex:none; }
+  .site-nav .brand img{ height:36px; width:36px; flex:none; }
   .site-nav .brand .t2{ display:none; }
   .site-nav .btn{ padding:8px 12px; font-size:.74rem; flex:none; white-space:nowrap; }
+  .staff-login-btn .short-label{ display:none; }
+  @media (max-width:400px){
+    .site-nav .brand img{ height:32px; width:32px; }
+    .site-nav .brand .t1{ font-size:.82rem; }
+    .staff-login-btn .full-label{ display:none; }
+    .staff-login-btn .short-label{ display:inline; }
+  }
   .contact-grid{ grid-template-columns:1fr !important; }
   .contact-card{ padding:16px 18px !important; gap:12px !important; }
 
@@ -837,6 +844,16 @@ html[data-theme="dark"] .badge-urgent{ background:#3a1e1c; }
 .as-count.as-wait .as-num{ color:var(--wait); }
 .as-lbl{ font-size:.76rem; color:var(--ink-soft); font-weight:600; }
 .as-count .as-text{ display:flex; flex-direction:column; align-items:flex-start; }
+.as-count.as-steel{ background:linear-gradient(135deg, var(--paper-2), rgba(46,109,164,.08)); border:1.5px solid rgba(46,109,164,.3); }
+.as-count.as-steel .as-icon{ background:var(--steel); color:#fff; }
+.as-count.as-steel .as-num{ color:var(--steel); }
+.as-count.as-teal{ background:linear-gradient(135deg, var(--paper-2), rgba(28,122,122,.08)); border:1.5px solid rgba(28,122,122,.3); }
+.as-count.as-teal .as-icon{ background:var(--teal); color:#fff; }
+.as-count.as-teal .as-num{ color:var(--teal); }
+.as-count.as-total{ background:linear-gradient(135deg, var(--navy), var(--navy-2)); border:1.5px solid transparent; box-shadow:0 4px 14px -6px rgba(22,34,61,.5); }
+.as-count.as-total .as-icon{ background:rgba(255,255,255,.2); color:#fff; }
+.as-count.as-total .as-num{ color:#fff; }
+.as-count.as-total .as-lbl{ color:rgba(255,255,255,.8); }
 
 /* גרסה קומפקטית לשימוש ברשימות (לוח הבקרה — כמה טיולים ברצף) */
 .as-count-sm{ padding:6px 12px; gap:8px; min-width:auto; border-radius:12px; }
