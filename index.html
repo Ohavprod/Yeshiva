@@ -126,11 +126,9 @@
       <p>קטעים נבחרים מהחיים בישיבה — טיולים, אירועים ופעילויות.</p>
     </div>
     <div class="gallery-viewport">
-      <button type="button" class="gallery-nav gallery-nav-prev" id="galleryPrev" aria-label="הקודם">›</button>
       <div class="gallery-track" id="galleryGrid">
         <div class="gallery-tile"><span class="g-cap">טוען תמונות…</span></div>
       </div>
-      <button type="button" class="gallery-nav gallery-nav-next" id="galleryNext" aria-label="הבא">‹</button>
     </div>
   </div>
 </section>
@@ -488,37 +486,46 @@ async function loadGallery(){
     </div>`;
 
     grid.innerHTML = categoryNames.map(coverTileHtml).join('') + uncategorized.map(soloTileHtml).join('');
-
-    grid.querySelectorAll('.gallery-cover').forEach(tile=>{
-      tile.addEventListener('click', ()=>{
-        const navList = byCategory[tile.dataset.cat].map(g=>({ url: g.url, caption: g.caption || '' }));
-        openLightbox(navList[0].url, navList[0].caption, navList, 0);
-      });
-    });
     const uncatNav = uncategorized.map(g=>({ url: g.url, caption: g.caption || '' }));
-    grid.querySelectorAll('[data-solo-idx]').forEach(tile=>{
-      tile.addEventListener('click', ()=>{
-        const i = parseInt(tile.dataset.soloIdx, 10);
-        openLightbox(uncatNav[i].url, uncatNav[i].caption, uncatNav, i);
+
+    // "סרט נע" רציף כמו פס העדכונים: משכפלים את התוכן פעם אחת (בלי זה אין ממה "לגלוש"
+    // בלי קפיצה כשמגיעים לסוף), ומחשבים משך אנימציה לפי הרוחב בפועל כדי לשמור על קצב
+    // צפייה נוח קבוע — לא משנה כמה תמונות/קטגוריות יש בגלריה. חיצי דפדוף נשארים רק
+    // בתצוגה המוגדלת (לייטבוקס); כאן התנועה אוטומטית ורציפה, בלי צורך בלחיצה.
+    if (grid.children.length){
+      grid.innerHTML += grid.innerHTML;
+      grid.querySelectorAll('.gallery-cover').forEach(tile=>{
+        tile.addEventListener('click', ()=>{
+          const navList = byCategory[tile.dataset.cat].map(g=>({ url: g.url, caption: g.caption || '' }));
+          openLightbox(navList[0].url, navList[0].caption, navList, 0);
+        });
       });
-    });
+      grid.querySelectorAll('[data-solo-idx]').forEach(tile=>{
+        tile.addEventListener('click', ()=>{
+          const i = parseInt(tile.dataset.soloIdx, 10);
+          openLightbox(uncatNav[i].url, uncatNav[i].caption, uncatNav, i);
+        });
+      });
+      requestAnimationFrame(()=>{
+        const oneCopyWidth = grid.scrollWidth / 2;
+        const pxPerSecond = 40;
+        grid.style.animationDuration = `${Math.max(14, oneCopyWidth / pxPerSecond)}s`;
+      });
+    }
   }catch(err){
     grid.innerHTML = '<div class="gallery-tile"><span>שגיאה בטעינת הגלריה</span></div>';
   }
 }
 loadGallery();
 
-// חצי דפדוף לרצועת הגלריה — בלי זה, הדרך היחידה "להזיז" את התמונות הייתה גלילה/החלקה
-// לא-מודגשת בתוך הרצועה, שהרגישה כאילו "התמונות לא זזות" במיוחד לגולשי עכבר. ב-RTL
-// מודרני, גלילה הלאה (עוד תמונות) היא לכיוון שלילי (שמאלה); "הקודם" חיובי (ימינה).
+// מגע ממושך עוצר את הגלילה זמנית — מקביל להשהיה בהעברת עכבר (:hover) שכבר קיימת
+// ב-CSS למחשב, אבל hover לא אמין במגע. אותו רעיון בדיוק כמו בפס העדכונים.
 (() => {
   const track = document.getElementById('galleryGrid');
-  const prevBtn = document.getElementById('galleryPrev');
-  const nextBtn = document.getElementById('galleryNext');
-  if (!track || !prevBtn || !nextBtn) return;
-  const step = () => Math.min(track.clientWidth * 0.9, 640);
-  nextBtn.addEventListener('click', ()=> track.scrollBy({ left: -step(), behavior:'smooth' }));
-  prevBtn.addEventListener('click', ()=> track.scrollBy({ left: step(), behavior:'smooth' }));
+  const viewport = document.querySelector('.gallery-viewport');
+  if (!track || !viewport) return;
+  viewport.addEventListener('touchstart', ()=>{ track.style.animationPlayState = 'paused'; }, { passive:true });
+  viewport.addEventListener('touchend', ()=>{ track.style.animationPlayState = 'running'; }, { passive:true });
 })();
 async function loadInfoCards(){
   try{
