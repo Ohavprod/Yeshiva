@@ -125,11 +125,12 @@
       <h2>גלריה</h2>
       <p>קטעים נבחרים מהחיים בישיבה — טיולים, אירועים ופעילויות.</p>
     </div>
-    <div class="gallery-tabs" id="galleryTabs" style="display:none;"></div>
     <div class="gallery-viewport">
+      <button type="button" class="gallery-nav gallery-nav-prev" id="galleryPrev" aria-label="הקודם">›</button>
       <div class="gallery-track" id="galleryGrid">
         <div class="gallery-tile"><span class="g-cap">טוען תמונות…</span></div>
       </div>
+      <button type="button" class="gallery-nav gallery-nav-next" id="galleryNext" aria-label="הבא">‹</button>
     </div>
   </div>
 </section>
@@ -449,7 +450,6 @@ loadPublicEvents();
 
 async function loadGallery(){
   const grid = document.getElementById('galleryGrid');
-  const tabsEl = document.getElementById('galleryTabs');
   try{
     const snap = await db.collection('gallery_images').orderBy('order').get();
     if (snap.empty){
@@ -457,59 +457,69 @@ async function loadGallery(){
       return;
     }
     const items = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-    const categories = [...new Set(items.map(g=>(g.category||'').trim()).filter(Boolean))];
 
-    const renderGrid = (filtered) => {
-      if (!filtered.length){
-        grid.innerHTML = '<div class="gallery-tile"><div class="g-cap">אין תמונות בקטגוריה זו</div></div>';
-        return;
-      }
-      const navList = filtered.map(g => ({ url: g.url, caption: g.caption || '' }));
-      const tileHtml = (g, i)=>{
-        const url = escAttr(g.url);
-        const category = escHtml((g.category||'').trim());
-        return `<div class="gallery-tile" data-idx="${i}">
-          ${category ? `<div class="g-cat">${category}</div>` : ''}
-          <div class="g-photo" style="background-image:url('${url}');">
-            ${g.caption ? `<span class="g-cap">${escHtml(g.caption)}</span>` : ''}
-          </div>
-        </div>`;
-      };
-      // רצועה אופקית הניתנת לגלילה/החלקה (בלי שכפול תוכן) — כל תמונה מוצגת פעם אחת
-      // בלבד. לחיצה על תמונה פותחת אותה בתצוגה מוגדלת, עם אפשרות לדפדף בין כל
-      // התמונות בקטגוריה הנוכחית באמצעות חצים.
-      grid.innerHTML = filtered.map(tileHtml).join('');
-      grid.querySelectorAll('.gallery-tile').forEach(tile=>{
-        tile.addEventListener('click', ()=>{
-          const i = parseInt(tile.dataset.idx, 10);
-          openLightbox(navList[i].url, navList[i].caption, navList, i);
-        });
-      });
+    // מקבצים לפי קטגוריה: כל קטגוריה הופכת ל"כריכת אלבום" אחת בתצוגה הכללית — התמונה
+    // הראשונה שהועלתה אליה (לפי order) משמשת כתמונת השער, עם תגית מספר התמונות.
+    // לחיצה על כריכה פותחת את כל תמונות הקטגוריה בתצוגה המוגדלת (לייטבוקס), כולל דפדוף
+    // בין כולן. תמונות בלי קטגוריה כלל ממשיכות להופיע כאריחים בודדים, כמו קודם.
+    const byCategory = {};
+    const uncategorized = [];
+    items.forEach(g=>{
+      const cat = (g.category||'').trim();
+      if (cat) (byCategory[cat] = byCategory[cat] || []).push(g);
+      else uncategorized.push(g);
+    });
+    const categoryNames = Object.keys(byCategory);
+
+    const coverTileHtml = (cat) => {
+      const photos = byCategory[cat];
+      const cover = photos[0];
+      return `<div class="gallery-tile gallery-cover" data-cat="${escAttr(cat)}">
+        <div class="g-photo" style="background-image:url('${escAttr(cover.url)}');">
+          <span class="g-count">${photos.length} תמונות</span>
+          <span class="g-cap g-cap-cat">${escHtml(cat)}</span>
+        </div>
+      </div>`;
     };
+    const soloTileHtml = (g, i) => `<div class="gallery-tile" data-solo-idx="${i}">
+      <div class="g-photo" style="background-image:url('${escAttr(g.url)}');">
+        ${g.caption ? `<span class="g-cap">${escHtml(g.caption)}</span>` : ''}
+      </div>
+    </div>`;
 
-    if (categories.length > 1){
-      tabsEl.style.display = '';
-      const allLabel = 'הכל';
-      tabsEl.innerHTML = [allLabel, ...categories].map((cat,i)=>
-        `<button type="button" class="gallery-tab${i===0?' active':''}" data-cat="${cat===allLabel?'':escAttr(cat)}">${escHtml(cat)}</button>`
-      ).join('');
-      tabsEl.querySelectorAll('.gallery-tab').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          tabsEl.querySelectorAll('.gallery-tab').forEach(b=> b.classList.toggle('active', b===btn));
-          const cat = btn.dataset.cat;
-          renderGrid(cat ? items.filter(g=> (g.category||'').trim() === cat) : items);
-        });
+    grid.innerHTML = categoryNames.map(coverTileHtml).join('') + uncategorized.map(soloTileHtml).join('');
+
+    grid.querySelectorAll('.gallery-cover').forEach(tile=>{
+      tile.addEventListener('click', ()=>{
+        const navList = byCategory[tile.dataset.cat].map(g=>({ url: g.url, caption: g.caption || '' }));
+        openLightbox(navList[0].url, navList[0].caption, navList, 0);
       });
-    } else {
-      tabsEl.style.display = 'none';
-    }
-
-    renderGrid(items);
+    });
+    const uncatNav = uncategorized.map(g=>({ url: g.url, caption: g.caption || '' }));
+    grid.querySelectorAll('[data-solo-idx]').forEach(tile=>{
+      tile.addEventListener('click', ()=>{
+        const i = parseInt(tile.dataset.soloIdx, 10);
+        openLightbox(uncatNav[i].url, uncatNav[i].caption, uncatNav, i);
+      });
+    });
   }catch(err){
     grid.innerHTML = '<div class="gallery-tile"><span>שגיאה בטעינת הגלריה</span></div>';
   }
 }
 loadGallery();
+
+// חצי דפדוף לרצועת הגלריה — בלי זה, הדרך היחידה "להזיז" את התמונות הייתה גלילה/החלקה
+// לא-מודגשת בתוך הרצועה, שהרגישה כאילו "התמונות לא זזות" במיוחד לגולשי עכבר. ב-RTL
+// מודרני, גלילה הלאה (עוד תמונות) היא לכיוון שלילי (שמאלה); "הקודם" חיובי (ימינה).
+(() => {
+  const track = document.getElementById('galleryGrid');
+  const prevBtn = document.getElementById('galleryPrev');
+  const nextBtn = document.getElementById('galleryNext');
+  if (!track || !prevBtn || !nextBtn) return;
+  const step = () => Math.min(track.clientWidth * 0.9, 640);
+  nextBtn.addEventListener('click', ()=> track.scrollBy({ left: -step(), behavior:'smooth' }));
+  prevBtn.addEventListener('click', ()=> track.scrollBy({ left: step(), behavior:'smooth' }));
+})();
 async function loadInfoCards(){
   try{
     const snap = await db.collection('settings').doc('public_info_cards').get();
