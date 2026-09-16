@@ -228,10 +228,11 @@ section{ padding:88px 0; position:relative; }
 .gallery-viewport{ position:relative; overflow:hidden; }
 .gallery-track{
   display:flex; gap:16px; width:max-content;
-  animation:gallery-scroll 30s linear infinite;
+  --gallery-shift:50%;
 }
-.gallery-viewport:hover .gallery-track{ animation-play-state:paused; }
-@keyframes gallery-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+.gallery-track.is-scrolling{ animation:gallery-scroll 30s linear infinite; }
+.gallery-viewport:hover .gallery-track.is-scrolling{ animation-play-state:paused; }
+@keyframes gallery-scroll{ from{ transform:translateX(0); } to{ transform:translateX(calc(-1 * var(--gallery-shift))); } }
 .gallery-tile{
   cursor:pointer; flex:none; width:230px;
   border-radius:var(--radius-sm); overflow:hidden;
