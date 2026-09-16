@@ -2600,8 +2600,22 @@ function renderTripsList(container, trips){
   // טיולים שתאריכם כבר עבר עוברים אוטומטית לארכיון מקופל בתחתית הרשימה
   const todayStr = new Date().toISOString().slice(0,10);
   const isPastTrip = (t) => !!t.trip_date && t.trip_date < todayStr;
-  const upcomingTrips = trips.filter(t=> !isPastTrip(t));
-  const pastTrips = trips.filter(isPastTrip);
+  // מיון לפי הכי קרוב ומה שאחריו: הקרובים ממוינים מהתאריך הקרוב ביותר והלאה, וללא-תאריך
+  // בסוף; הארכיון (עבר) ממוין הפוך — האחרון שהיה הכי קרוב לעכשיו קודם, ומה שאחריו אחריו.
+  const byDateAsc = (a,b) => {
+    if (!a.trip_date && !b.trip_date) return 0;
+    if (!a.trip_date) return 1;
+    if (!b.trip_date) return -1;
+    return new Date(a.trip_date) - new Date(b.trip_date);
+  };
+  const byDateDesc = (a,b) => {
+    if (!a.trip_date && !b.trip_date) return 0;
+    if (!a.trip_date) return 1;
+    if (!b.trip_date) return -1;
+    return new Date(b.trip_date) - new Date(a.trip_date);
+  };
+  const upcomingTrips = trips.filter(t=> !isPastTrip(t)).sort(byDateAsc);
+  const pastTrips = trips.filter(isPastTrip).sort(byDateDesc);
 
   const classIdsOf = (t) => t.class_ids || (t.class_id ? [t.class_id] : []);
   const classNamesOf = (t) => t.is_school_wide ? 'כלל ישיבתי' : classIdsOf(t).map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
@@ -3163,11 +3177,12 @@ async function renderNodeToPdfBlob(node){
     await Promise.all(Array.from(node.querySelectorAll('img')).map(img =>
       img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
     ));
-    const canvas = await html2canvas(node.firstElementChild, { scale:2, backgroundColor:'#ffffff', useCORS:true });
+    const canvas = await html2canvas(node.firstElementChild, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
     // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
     // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
-    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד.
-    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד. 0.92 (במקום 0.85) לחדות טובה יותר
+    // בטקסט תוך שמירה על קובץ קטן בודדות ה-MB — לא לחזור ל-PNG/סקייל גבוה שמנפחים ל-60-70MB.
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit:'pt', format:'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -3307,11 +3322,11 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       await Promise.all(Array.from(node.querySelectorAll('img')).map(img =>
         img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
       ));
-      const canvas = await html2canvas(node.firstElementChild, { scale:2, backgroundColor:'#ffffff', useCORS:true });
+      const canvas = await html2canvas(node.firstElementChild, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
       // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
     // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
-    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד.
-    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד. 0.92 לחדות טובה יותר, עדיין קובץ קטן.
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
       const imgWidth = pageWidth - margin*2;
       const imgHeight = canvas.height * (imgWidth / canvas.width);
       let heightLeft = imgHeight;
@@ -4517,40 +4532,59 @@ function downloadCsv(filename, rows){
   a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=> URL.revokeObjectURL(url), 3000);
 }
-/* פותח חלון הדפסה מעוצב עברית עבור טבלת דוח — "שמירה כ-PDF" דרך חלון ההדפסה של הדפדפן */
-function openPrintableTable(title, rows){
-  const w = window.open('', '_blank');
-  if (!w){ toast('הדפדפן חסם את חלון ההדפסה — יש לאשר חלונות קופצים'); return; }
+/* בונה אלמנט DOM מעוצב (לוגו + פס עליון בצבע, כותרות טבלה כהות, שורות לסירוגין) לדוח
+   טבלה כללי — באותו סגנון בדיוק כמו מסמכי האישור/נוכחות של הטיולים, כדי שכל הדוחות
+   (כולל ייצוא כיתה, תשלומים וכו') ייראו אחידים ומעוצבים ולא כמו טבלת HTML פשוטה. */
+function buildStyledReportElement(title, rows){
   const [header, ...body] = rows;
-  w.document.write(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8">
-    <title>${esc(title)}</title>
-    <style>
-      body{ font-family:Arial,sans-serif; padding:32px; color:#16203a; }
-      h1{ font-size:20px; margin-bottom:4px; }
-      .sub{ color:#4b566d; margin-bottom:20px; font-size:13px; }
-      table{ width:100%; border-collapse:collapse; }
-      th,td{ border:1px solid #dde4ee; padding:8px 10px; text-align:right; font-size:13px; }
-      th{ background:#eef2f8; }
-    </style></head><body>
-    <h1>${esc(title)}</h1>
-    <div class="sub">הופק בתאריך ${new Date().toLocaleDateString('he-IL')}</div>
-    <table>
-      <thead><tr>${(header||[]).map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
-      <tbody>${body.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
-    </table>
-    <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
-  </body></html>`);
-  w.document.close();
+  const width = Math.max(700, Math.min(1100, (header||[]).length * 115));
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `position:fixed; top:-10000px; right:0; width:${width}px; z-index:-1; background:#fff;`;
+  wrap.innerHTML = `
+    <div style="width:${width}px; background:#fff; padding:40px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:22px; padding-bottom:18px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:56px; width:56px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:20px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:12px; color:#4b566d; margin-top:2px;">הופק בתאריך ${new Date().toLocaleDateString('he-IL')}</div>
+        </div>
+      </div>
+      <h1 style="font-size:21px; margin:0 0 18px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(title)}</h1>
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>${(header||[]).map(h=>`<th style="padding:9px 10px; background:#16223d; color:#fff; text-align:right; font-size:12px; font-weight:700; border:1px solid #16223d;">${esc(h)}</th>`).join('')}</tr>
+        </thead>
+        <tbody>
+          ${body.map((r,i)=>`<tr style="background:${i%2 ? '#f4f7fb' : '#ffffff'};">${r.map(c=>`<td style="padding:8px 10px; border:1px solid #dde4ee; font-size:12.5px; vertical-align:top;">${esc(c===null||c===undefined?'':c)}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:20px; padding-top:14px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה
+      </div>
+    </div>`;
+  return wrap;
 }
-/* מייצא טבלת שורות (rows: מערך מערכים, שורה ראשונה = כותרות) בפורמט הנבחר: אקסל / PDF (הדפסה) / CSV */
-function exportTable(rows, filenameBase, format){
+/* מייצר PDF מעוצב (צילום DOM אמיתי, לא חלון הדפסה של הדפדפן) עבור טבלת דוח */
+async function openPrintableTable(title, rows){
+  try{
+    const node = buildStyledReportElement(title, rows);
+    const blob = await renderNodeToPdfBlob(node);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${title}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  }catch(err){ toast('שגיאה ביצירת PDF: '+err.message); }
+}
+/* מייצא טבלת שורות (rows: מערך מערכים, שורה ראשונה = כותרות) בפורמט הנבחר: אקסל / PDF (מעוצב) / CSV */
+async function exportTable(rows, filenameBase, format){
   if (format === 'xlsx'){
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'דוח');
     XLSX.writeFile(wb, `${filenameBase}.xlsx`);
   } else if (format === 'pdf'){
-    openPrintableTable(filenameBase, rows);
+    toast('מכין PDF…');
+    await openPrintableTable(filenameBase, rows);
   } else {
     downloadCsv(`${filenameBase}.csv`, rows);
   }
