@@ -39,13 +39,12 @@
   .notice-header .school{ position:relative; z-index:1; font-family:'Rubik',sans-serif; font-weight:800; font-size:1.3rem; }
   .notice-header .tag{ position:relative; z-index:1; font-size:1rem; font-weight:800; color:#fff; margin-top:5px; letter-spacing:.02em; }
   .notice-body{ padding:0 24px; margin-top:-26px; position:relative; z-index:2; }
-  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
-  .notes-card{ background:var(--wait-bg); border-color:var(--wait); border-inline-start:5px solid var(--wait); }
 
-  .section-eyebrow{
-    display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
-    background:var(--paper-2); padding:5px 14px; border-radius:999px; margin-bottom:14px;
-  }
+  .notice-sheet{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; margin-bottom:20px; }
+  .notice-section{ padding:28px; }
+  .notice-rule{ height:1px; background:var(--line); margin:0 28px; }
+  .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
+
   .trip-title{ margin:0 0 14px; font-size:1.5rem; overflow-wrap:break-word; word-break:break-word; }
 
   .intro-callout{
@@ -53,32 +52,52 @@
     border-radius:12px; padding:16px 18px; margin-bottom:20px; font-size:1rem; color:var(--navy); font-weight:500; line-height:1.7;
   }
 
-  .date-line{ font-size:1.05rem; margin-bottom:18px; text-align:center; }
+  .date-line{ font-size:1.05rem; margin-bottom:22px; text-align:center; }
   .date-line .lbl{ color:var(--ink-soft); font-size:.85rem; display:block; margin-bottom:4px; }
   .date-line .heb{ font-weight:800; color:var(--navy); }
   .date-line .sep{ color:var(--ink-soft); margin:0 8px; }
   .date-line .greg{ color:var(--ink-soft); }
 
-  .meta-badges{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; margin-top:6px; }
-  .meta-badge{ width:96px; text-align:center; }
+  .meta-badges{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; }
+  .meta-badge{ width:100px; text-align:center; }
   .meta-badge .m-icon{
     width:52px; height:52px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center;
-    font-size:1.4rem; background:var(--paper-2); color:var(--steel);
+    background:var(--navy); color:#fff;
   }
-  .meta-badge:nth-child(odd) .m-icon{ background:var(--navy); color:#fff; }
+  .meta-badge .m-icon svg{ width:22px; height:22px; }
   .meta-badge .m-label{ font-size:.7rem; color:var(--ink-soft); }
   .meta-badge .m-value{ font-size:.85rem; font-weight:700; color:var(--navy); line-height:1.3; }
 
-  .itinerary-list{ display:flex; flex-direction:column; gap:2px; }
-  .itinerary-item{ display:flex; gap:14px; padding:10px 0; border-bottom:1px dashed var(--line); }
-  .itinerary-item:last-child{ border-bottom:none; }
-  .itinerary-item .it-time{
-    flex:none; width:64px; font-weight:800; color:#fff; background:var(--teal);
-    border-radius:8px; text-align:center; padding:4px 0; font-size:.85rem; height:fit-content;
+  .notice-heading{
+    display:flex; align-items:center; gap:9px; margin:0 0 18px;
+    font-family:'Rubik',sans-serif; font-size:1.08rem; font-weight:800; color:var(--navy);
   }
-  .itinerary-item .it-activity{ padding-top:3px; color:var(--ink); }
+  .notice-heading .nh-icon{
+    flex:none; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background:var(--paper-2); color:var(--teal);
+  }
+  .notice-heading .nh-icon svg{ width:18px; height:18px; }
 
-  .signatures-row{ display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
+  .timeline-item{ display:flex; gap:14px; }
+  .timeline-rail{ flex:none; width:12px; display:flex; flex-direction:column; align-items:center; }
+  .timeline-dot{ flex:none; width:12px; height:12px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px var(--paper-2); margin-top:4px; }
+  .timeline-rail-line{ flex:1; width:2px; background:var(--line); margin-top:3px; min-height:8px; }
+  .timeline-body{ padding-bottom:20px; flex:1; }
+  .timeline-item:last-child .timeline-body{ padding-bottom:0; }
+  .timeline-time{ font-weight:800; color:var(--navy); font-size:.9rem; }
+  .timeline-activity{ color:var(--ink); margin-top:2px; line-height:1.5; }
+
+  .prep-row{ margin-bottom:16px; }
+  .prep-row:last-child{ margin-bottom:0; }
+  .prep-label{ display:block; font-size:.78rem; font-weight:700; color:var(--steel); margin-bottom:5px; }
+  .prep-row p{ margin:0; color:var(--ink); white-space:pre-line; line-height:1.65; }
+  .prep-notes{ background:var(--wait-bg); border-inline-start:3px solid var(--wait); border-radius:10px; padding:14px 16px; }
+  .prep-notes .prep-label{ color:var(--wait); }
+
+  .signature-block{ position:relative; text-align:center; }
+  .signature-block .seal-ring{ position:absolute; inset:-30px auto auto 50%; transform:translateX(-50%); width:220px; height:220px; opacity:.06; pointer-events:none; }
+  .signature-block .regards{ position:relative; font-weight:700; color:var(--navy); margin-bottom:10px; }
+  .signatures-row{ position:relative; display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
   .signature-col{ text-align:center; font-size:.92rem; color:var(--navy); line-height:1.7; }
   .signature-col .sig-title{ color:var(--ink-soft); font-size:.78rem; margin-top:2px; }
 
@@ -87,6 +106,8 @@
   .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
   .approved-card{ text-align:center; padding:40px 24px; }
   .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
+  .approval-heading-wrap{ position:relative; text-align:center; margin-bottom:6px; }
+  .approval-heading-wrap .seal-ring{ position:absolute; inset:-40px auto auto 50%; transform:translateX(-50%); width:200px; height:200px; opacity:.07; pointer-events:none; }
   .consent-check{
     display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:14px 16px;
     border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
@@ -94,10 +115,13 @@
   .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
   @media (max-width:480px){
     .notice-body{ padding:0 14px; }
+    .notice-section{ padding:20px; }
+    .notice-rule{ margin:0 20px; }
     .trip-card{ padding:20px; }
     .trip-title{ font-size:1.22rem; overflow-wrap:break-word; word-break:break-word; }
-    .meta-badge{ width:78px; }
-    .meta-badge .m-icon{ width:44px; height:44px; font-size:1.15rem; }
+    .meta-badge{ width:80px; }
+    .meta-badge .m-icon{ width:44px; height:44px; }
+    .meta-badge .m-icon svg{ width:18px; height:18px; }
   }
 </style>
 </head>
@@ -131,6 +155,12 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const ICON_PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>';
+const ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+const ICON_BANKNOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v0M18 15v0"/></svg>';
+const ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>';
+const ICON_BACKPACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8V6a4 4 0 0 1 8 0v2"/><rect x="5" y="8" width="14" height="13" rx="3"/><path d="M9 8v4h6V8M9 15h6"/></svg>';
+const SEAL_RING_SVG = '<svg class="seal-ring" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"><circle cx="110" cy="110" r="100" fill="none" stroke="var(--navy)" stroke-width="1.5"/><circle cx="110" cy="110" r="78" fill="none" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="3 8"/></svg>';
 /* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
    ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
 const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
@@ -269,64 +299,64 @@ async function load(){
   function renderTripAndApprovalForm(){
   let mainHtml = `
     ${studentName ? `<div class="match-confirm">אישור ${isEvent ? 'הגעה' : 'טיול'} עבור: ${esc(studentName)}${className ? ' · כיתה ' + esc(className) : ''}</div>` : ''}
-    <div class="trip-card">
-      <div class="section-eyebrow">פרטי ${detailsWord}</div>
-      <h2 class="trip-title" style="margin-bottom:${trip.subtitle ? '2px' : ''};">${esc(trip.title)}</h2>
-      ${trip.subtitle ? `<div style="color:var(--ink-soft); font-size:1.15rem; font-weight:600; margin-bottom:14px;">${esc(trip.subtitle)}</div>` : ''}
-      ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
-      ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
-        <span class="lbl">תאריך ${detailsWord}</span>
-        ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
-        ${trip.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
-      </div>` : ''}
-      <div class="meta-badges">
-        ${trip.location ? `<div class="meta-badge"><div class="m-icon">📍</div><div class="m-label">${isEvent ? 'מיקום האירוע' : 'יעד'}</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
-        ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">${isEvent ? 'תחילת האירוע' : 'שעת יציאה מהישיבה'}</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
-        ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">🕐</div><div class="m-label">${isEvent ? 'סיום האירוע' : 'שעת חזרה לישיבה'}</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
-        ${trip.cost ? `<div class="meta-badge"><div class="m-icon">💰</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(trip.cost))}</div></div>` : ''}
-      </div>
-    </div>`;
+    <div class="notice-sheet">
+      <div class="notice-section">
+        <h2 class="trip-title" style="margin-bottom:${trip.subtitle ? '2px' : ''};">${esc(trip.title)}</h2>
+        ${trip.subtitle ? `<div style="color:var(--ink-soft); font-size:1.15rem; font-weight:600; margin-bottom:14px;">${esc(trip.subtitle)}</div>` : ''}
+        ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
+        ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
+          <span class="lbl">תאריך ${detailsWord}</span>
+          ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
+          ${trip.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
+        </div>` : ''}
+        <div class="meta-badges">
+          ${trip.location ? `<div class="meta-badge"><div class="m-icon">${ICON_PIN}</div><div class="m-label">${isEvent ? 'מיקום האירוע' : 'יעד'}</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
+          ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">${ICON_CLOCK}</div><div class="m-label">${isEvent ? 'תחילת האירוע' : 'שעת יציאה מהישיבה'}</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
+          ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">${ICON_CLOCK}</div><div class="m-label">${isEvent ? 'סיום האירוע' : 'שעת חזרה לישיבה'}</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
+          ${trip.cost ? `<div class="meta-badge"><div class="m-icon">${ICON_BANKNOTE}</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(trip.cost))}</div></div>` : ''}
+        </div>
+      </div>`;
 
   if (itinerary.length){
     mainHtml += `
-    <div class="trip-card">
-      <div class="section-eyebrow">מה בתוכנית</div>
-      <div class="itinerary-list">
-        ${itinerary.map(it=>`
-          <div class="itinerary-item">
-            <div class="it-time">${esc(it.time)}</div>
-            <div class="it-activity">${esc(it.activity)}</div>
+      <div class="notice-rule"></div>
+      <div class="notice-section">
+        <h3 class="notice-heading"><span class="nh-icon">${ICON_LIST}</span> מה בתוכנית</h3>
+        ${itinerary.map((it,i)=>`
+          <div class="timeline-item">
+            <div class="timeline-rail"><div class="timeline-dot"></div>${i < itinerary.length-1 ? '<div class="timeline-rail-line"></div>' : ''}</div>
+            <div class="timeline-body">
+              <div class="timeline-time">${esc(it.time)}</div>
+              <div class="timeline-activity">${esc(it.activity)}</div>
+            </div>
           </div>`).join('')}
-      </div>
-    </div>`;
+      </div>`;
   }
 
-  if (trip.equipment){
+  if (trip.equipment || trip.notes){
     mainHtml += `
-    <div class="trip-card">
-      <div class="section-eyebrow">ציוד נדרש</div>
-      <p style="margin:0; color:var(--ink); white-space:pre-line;">${esc(trip.equipment)}</p>
-    </div>`;
-  }
-
-  if (trip.notes){
-    mainHtml += `
-    <div class="trip-card notes-card">
-      <div class="section-eyebrow"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-2px; margin-inline-end:2px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="13"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> הערות נוספות</div>
-      <p style="margin:0; color:var(--ink); white-space:pre-line; font-weight:600;">${esc(trip.notes)}</p>
-    </div>`;
+      <div class="notice-rule"></div>
+      <div class="notice-section">
+        <h3 class="notice-heading"><span class="nh-icon">${ICON_BACKPACK}</span> לקראת ${isEvent ? 'האירוע' : 'היציאה'}</h3>
+        ${trip.equipment ? `<div class="prep-row"><span class="prep-label">ציוד נדרש</span><p>${esc(trip.equipment)}</p></div>` : ''}
+        ${trip.notes ? `<div class="prep-row prep-notes"><span class="prep-label">שימו לב</span><p>${esc(trip.notes)}</p></div>` : ''}
+      </div>`;
   }
 
   if (trip.custom_regards || trip.head_name || trip.coordinator_name){
     mainHtml += `
-    <div style="text-align:center; font-weight:700; color:var(--navy); margin-bottom:6px;">${esc(trip.custom_regards || 'בברכה,')}</div>
-    <div class="signatures-row">
-      <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
-      <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
-    </div>`;
+      <div class="notice-rule"></div>
+      <div class="notice-section signature-block">
+        ${SEAL_RING_SVG}
+        <div class="regards">${esc(trip.custom_regards || 'בברכה,')}</div>
+        <div class="signatures-row">
+          <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
+          <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+        </div>
+      </div>`;
   }
 
-  mainHtml += `<div class="section-divider"></div>`;
+  mainHtml += `</div><div class="section-divider"></div>`;
 
   const nameParts = (()=>{
     const parts = (studentName||'').trim().split(/\s+/);
@@ -335,8 +365,11 @@ async function load(){
 
   content.innerHTML = mainHtml + `
     <div class="trip-card" id="approvalCard">
-      <div class="section-eyebrow">${isEvent ? 'רישום הגעה' : 'אישור יציאה'}</div>
-      <h3 class="trip-title" style="font-size:1.2rem;">${isEvent ? 'אישור השתתפות באירוע' : 'אישור השתתפות בטיול'}</h3>
+      <div class="approval-heading-wrap">
+        ${SEAL_RING_SVG}
+        <h3 class="trip-title" style="font-size:1.2rem; margin-bottom:4px;">${isEvent ? 'אישור השתתפות באירוע' : 'אישור השתתפות בטיול'}</h3>
+        <div style="color:var(--ink-soft); font-size:.85rem; font-weight:600;">${isEvent ? 'רישום הגעה' : 'אישור יציאה'}</div>
+      </div>
       <div class="student-summary" style="display:flex; gap:22px; flex-wrap:wrap; margin-bottom:20px; padding:14px 16px; background:var(--paper-2); border-radius:12px;">
         <div><div style="font-size:.72rem; color:var(--ink-soft);">שם פרטי</div><div style="font-weight:700;">${esc(nameParts.first)}</div></div>
         <div><div style="font-size:.72rem; color:var(--ink-soft);">שם משפחה</div><div style="font-weight:700;">${esc(nameParts.last)}</div></div>
