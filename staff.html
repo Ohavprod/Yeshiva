@@ -1338,7 +1338,9 @@ async function renderHome(body){
       db.collection('trips').orderBy('created_at','desc').get(),
     ]);
     classesList = classSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-    const allTripsList = tripSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
+    // טיולים מוסתרים (טיוטה) לא מוצגים בעמוד הבית לאף אחד — גם לא לתפקידי ניהול — רק
+    // בלשונית "טיולים ואישורים" עצמה, ורק למי שבאמת יכול/ה לפרסם/להסתיר (ר' renderTrips).
+    const allTripsList = tripSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear).filter(t=> t.is_published !== false);
 
     // בוחר את הטיולים ה"פתוחים" — בלי תאריך שעבר — עד 6, לחישוב סטטוס אישורים חי לכל הישיבה
     const todayIso0 = new Date().toISOString().slice(0,10);
@@ -1389,7 +1391,7 @@ async function renderHome(body){
         ${tripSummaries.map((s,i)=>`
           <div class="admin-trip-row" data-idx="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:10px; cursor:pointer;">
               <div>
-                <b>${esc(s.trip.title)}</b>${s.trip.is_published === false ? ` <span class="badge badge-wait" title="גלוי רק לתפקידי ניהול, עד שמנהל מערכת יפרסם">טיוטה — מוסתר</span>` : ''}
+                <b>${esc(s.trip.title)}</b>
                 <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? `${formatFullHebrewDate(s.trip.trip_date)} · ${new Date(s.trip.trip_date).toLocaleDateString('he-IL')}` : 'ללא תאריך'}</div>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -2281,7 +2283,11 @@ async function renderTrips(body){
   const myClassIdsForFilter = myProfile.class_id ? [myProfile.class_id] : [];
   let trips = [];
   if (p.view_all_classes){
-    trips = (await db.collection('trips').orderBy('created_at','desc').get()).docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
+    // טיולים מוסתרים (טיוטה) מוצגים כאן רק למי שבאמת יכול/ה לפרסם/להסתיר טיול (כרגע:
+    // מנהל מערכת בלבד) — לא לכל בעל/ת view_all_classes (מזכירה/ראש הישיבה/רכז חברתי
+    // וכו' רואים רק טיולים שכבר פורסמו, בדיוק כמו מחנך/ת רגיל/ה).
+    const canSeeDrafts = myProfile.role === 'מנהל מערכת';
+    trips = (await db.collection('trips').orderBy('created_at','desc').get()).docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear).filter(t=> canSeeDrafts || t.is_published !== false);
   } else if (myClassIdsForFilter.length){
     // שתי שאילתות בנפרד ומיזוג: טיולים שהכיתה שלי משויכת אליהם במפורש, וגם טיולים "כלל
     // ישיבתי" (is_school_wide) — כך שגם כיתה שנוספה למערכת אחרי יצירת הטיול תראה אותו.
@@ -4605,6 +4611,9 @@ async function renderPayments(body){
   classesCache = classesCache.length ? classesCache : sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
   const allTrips = (await db.collection('trips').orderBy('created_at','desc').get()).docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
   const tripsWithCost = allTrips.filter(t=> parseCost(t.cost) > 0);
+  // שם מחנך/ת לכל כיתה — לצורך הצגה ליד הכותרת בדוח תשלומים לפי כיתה ספציפית
+  const paymentsUsersSnap = await db.collection('users').get().catch(()=>({docs:[]}));
+  const teacherNameForClass = (classId) => paymentsUsersSnap.docs?.find?.(d=>d.data().class_id===classId)?.data()?.full_name || '';
 
   body.innerHTML = `
     <div id="paymentsTripsList"></div>
@@ -4758,7 +4767,8 @@ async function renderPayments(body){
       rows.push([s.full_name, pay?'שולם':'טרם שולם', pay?.amount||'', pay?.payment_date||'', pay?methodLabel(pay.payment_method, pay.payment_method_other):'']);
     });
     if (rows.length === 1){ toast('אין תלמידים בכיתה זו'); return; }
-    exportTable(rows, `דוח תשלומים - ${trip.title} - כיתה ${className}`, exportFormat());
+    const teacherName = teacherNameForClass(classId);
+    exportTable(rows, `דוח תשלומים - ${trip.title} - כיתה ${className}`, exportFormat(), teacherName ? `מחנך/ת: ${teacherName}` : '');
   });
 
   document.getElementById('exportStudentTripBtn').addEventListener('click', async ()=>{
