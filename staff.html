@@ -780,6 +780,7 @@ const ICON = {
   shirt: fIcon('<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 .55.45 1 1 1h10c.55 0 1-.45 1-1V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>', 15),
   pin: fIcon('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle>', 15),
   eye: fIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle>', 15),
+  eyeOff: fIcon('<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.3 20.3 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a20.5 20.5 0 0 1-2.16 3.19"></path><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>', 15),
   calendar: fIcon('<rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>', 16),
   search: fIcon('<circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>'),
   refresh: fIcon('<polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>', 15),
@@ -1388,7 +1389,7 @@ async function renderHome(body){
         ${tripSummaries.map((s,i)=>`
           <div class="admin-trip-row" data-idx="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:10px; cursor:pointer;">
               <div>
-                <b>${esc(s.trip.title)}</b>
+                <b>${esc(s.trip.title)}</b>${s.trip.is_published === false ? ` <span class="badge badge-wait" title="גלוי רק לתפקידי ניהול, עד שמנהל מערכת יפרסם">טיוטה — מוסתר</span>` : ''}
                 <div style="font-size:.8rem; color:var(--ink-soft);">${s.trip.trip_date ? `${formatFullHebrewDate(s.trip.trip_date)} · ${new Date(s.trip.trip_date).toLocaleDateString('he-IL')}` : 'ללא תאריך'}</div>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1924,9 +1925,21 @@ async function renderClassRosterView(container, classId){
             <div class="more-actions-menu" id="classMoreActionsMenu">
               <button id="toggleAddStudentBtn">${ICON.plus} הוספת תלמיד</button>
               <button id="excelImport_trigger">${ICON.upload} ייבוא מאקסל</button>
+              <button id="exportClassRosterBtn">${ICON.download} ייצוא דוח כיתה</button>
             </div>
           </div>
         </div>
+      </div>
+      <div id="classExportPanel" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); align-items:flex-end; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="max-width:220px; margin-bottom:0;">
+          <label>פורמט ייצוא</label>
+          <select id="classExportFormat">
+            <option value="xlsx">קובץ אקסל (מומלץ)</option>
+            <option value="pdf">PDF (הדפסה / שמירה)</option>
+            <option value="csv">CSV</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" id="classExportGoBtn">${ICON.download} ייצוא דוח תלמידי הכיתה</button>
       </div>
       ${(p.manage_classes || p.view_all_classes || (p.manage_class_roster && classId === myProfile.class_id)) ? `
       <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--line); display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
@@ -2129,6 +2142,22 @@ async function renderClassRosterView(container, classId){
     classMoreMenu?.classList.remove('open');
   });
 
+  document.getElementById('exportClassRosterBtn').addEventListener('click', ()=>{
+    const panel = document.getElementById('classExportPanel');
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    classMoreMenu?.classList.remove('open');
+  });
+  document.getElementById('classExportGoBtn').addEventListener('click', ()=>{
+    if (!students.length){ toast('אין תלמידים בכיתה זו לייצוא'); return; }
+    const header = ['שם פרטי','שם משפחה','שם האב','שם האם','טלפון אמא','טלפון אבא','עיר מגורים','רגישויות / הערות רפואיות','הערות נוספות'];
+    const rows = [header, ...students.map(s=>{
+      const fl = getFirstLast(s);
+      return [fl.first, fl.last, s.father_name||'', s.mother_name||'', s.mother_phone||'', s.father_phone||'', s.city||'', s.notes||'', s.extra_notes||''];
+    })];
+    const format = document.getElementById('classExportFormat').value;
+    exportTable(rows, `דוח תלמידי כיתה - ${cls.name||''}`, format);
+  });
+
   wireExcelImportWidget('excelImport', ()=>classId, ()=>cls.name||'', refresh);
 
   document.getElementById('addStudentForm').addEventListener('submit', async (e)=>{
@@ -2169,7 +2198,7 @@ const NOTICE_ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const NOTICE_ICON_BANKNOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v0M18 15v0"/></svg>';
 const NOTICE_ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>';
 const NOTICE_ICON_BACKPACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8V6a4 4 0 0 1 8 0v2"/><rect x="5" y="8" width="14" height="13" rx="3"/><path d="M9 8v4h6V8M9 15h6"/></svg>';
-const NOTICE_SEAL_RING_SVG = '<svg class="seal-ring" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"><circle cx="110" cy="110" r="100" fill="none" stroke="var(--navy)" stroke-width="1.5"/><circle cx="110" cy="110" r="78" fill="none" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="3 8"/></svg>';
+const NOTICE_ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
 
 function buildTripNoticePreviewHtml(vals){
   const gregDate = formatGregShort(vals.trip_date);
@@ -2184,11 +2213,14 @@ function buildTripNoticePreviewHtml(vals){
         <h2 class="trip-title" style="margin-bottom:${vals.subtitle ? '2px' : ''};">${esc(vals.title || (isEvent ? 'שם האירוע' : 'שם הטיול'))}</h2>
         ${vals.subtitle ? `<div style="color:var(--ink-soft); font-size:1.1rem; font-weight:600; margin-bottom:14px;">${esc(vals.subtitle)}</div>` : ''}
         ${vals.intro_text ? `<div class="intro-callout">${esc(vals.intro_text)}</div>` : ''}
-        ${(vals.hebrew_date || gregDate) ? `<div class="date-line">
-          <span class="lbl">תאריך ${detailsWord}</span>
-          ${vals.hebrew_date ? `<span class="heb">${esc(vals.hebrew_date)}</span>` : ''}
-          ${vals.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
-        </div>` : ''}
+        ${(vals.hebrew_date || gregDate) ? `<div class="date-line"><div class="date-chip">
+          <div class="dc-icon">${NOTICE_ICON_CALENDAR}</div>
+          <div>
+            <span class="lbl">תאריך ${detailsWord}</span>
+            ${vals.hebrew_date ? `<span class="heb">${esc(vals.hebrew_date)}</span>` : ''}
+            ${vals.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
+          </div>
+        </div></div>` : ''}
         <div class="meta-badges">
           ${vals.location ? `<div class="meta-badge"><div class="m-icon">${NOTICE_ICON_PIN}</div><div class="m-label">${isEvent ? 'מיקום האירוע' : 'יעד'}</div><div class="m-value">${esc(vals.location)}</div></div>` : ''}
           ${vals.departure_time ? `<div class="meta-badge"><div class="m-icon">${NOTICE_ICON_CLOCK}</div><div class="m-label">${isEvent ? 'תחילת האירוע' : 'שעת יציאה'}</div><div class="m-value">${esc(vals.departure_time)}</div></div>` : ''}
@@ -2228,7 +2260,6 @@ function buildTripNoticePreviewHtml(vals){
     html += `
       <div class="notice-rule"></div>
       <div class="notice-section signature-block">
-        ${NOTICE_SEAL_RING_SVG}
         <div class="regards">${esc(vals.custom_regards || 'בברכה,')}</div>
         <div class="signatures-row">
           <div class="signature-col">${vals.head_name ? `<b>${esc(vals.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
@@ -2600,7 +2631,7 @@ function renderTripsList(container, trips){
             ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
             ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
             ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm refresh-verify-hashes" data-id="${t.id}" title="רענון בדיקת ההתאמה מול שם/טלפון ההורים העדכניים בכרטיסי התלמידים">${ICON.refresh} רענון אימות</button>` : ''}
-            ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm toggle-publish-trip" data-id="${t.id}" data-next="${t.is_published === false ? 'true' : 'false'}" title="${t.is_published === false ? 'פרסום הטיול — יופיע לצוות ולהורים' : 'הסתרת הטיול כטיוטה (לא יופיע לצוות)'}">${t.is_published === false ? `${ICON.eye} פרסום` : '🙈 הסתרה'}</button>` : ''}
+            ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm toggle-publish-trip" data-id="${t.id}" data-next="${t.is_published === false ? 'true' : 'false'}" title="${t.is_published === false ? 'פרסום הטיול — יופיע לצוות ולהורים' : 'הסתרת הטיול כטיוטה (לא יופיע לצוות)'}">${t.is_published === false ? `${ICON.eye} פרסום` : `${ICON.eyeOff} הסתרה`}</button>` : ''}
           </div>
           ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm send-notice" data-id="${t.id}" title="שליחת חוזר הטיול לקבוצת ההורים">${ICON.megaphone} שליחת חוזר</button>` : ''}
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} ${t.kind === 'event' ? 'פרטי האירוע המלאים' : 'פרטי הטיול המלאים'}</button>
@@ -2614,7 +2645,7 @@ function renderTripsList(container, trips){
               ${p.view_all_classes ? `<button class="btn btn-outline btn-sm del-trip" data-id="${t.id}" title="מחיקת הטיול" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקה</button>` : ''}
               ${p.create_trips || p.edit_trip_details || p.view_all_classes || p.manage_class_roster ? `<button class="btn btn-outline btn-sm copy-notice-link" data-id="${t.id}" title="העתקת קישור לחוזר">${ICON.link} העתקת קישור</button>` : ''}
               ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm refresh-verify-hashes" data-id="${t.id}" title="רענון בדיקת ההתאמה מול שם/טלפון ההורים העדכניים בכרטיסי התלמידים">${ICON.refresh} רענון אימות</button>` : ''}
-            ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm toggle-publish-trip" data-id="${t.id}" data-next="${t.is_published === false ? 'true' : 'false'}" title="${t.is_published === false ? 'פרסום הטיול — יופיע לצוות ולהורים' : 'הסתרת הטיול כטיוטה (לא יופיע לצוות)'}">${t.is_published === false ? `${ICON.eye} פרסום` : '🙈 הסתרה'}</button>` : ''}
+            ${myProfile.role === 'מנהל מערכת' ? `<button class="btn btn-outline btn-sm toggle-publish-trip" data-id="${t.id}" data-next="${t.is_published === false ? 'true' : 'false'}" title="${t.is_published === false ? 'פרסום הטיול — יופיע לצוות ולהורים' : 'הסתרת הטיול כטיוטה (לא יופיע לצוות)'}">${t.is_published === false ? `${ICON.eye} פרסום` : `${ICON.eyeOff} הסתרה`}</button>` : ''}
             </div>
           </details>` : ''}
         </div>
@@ -3133,7 +3164,10 @@ async function renderNodeToPdfBlob(node){
       img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
     ));
     const canvas = await html2canvas(node.firstElementChild, { scale:2, backgroundColor:'#ffffff', useCORS:true });
-    const imgData = canvas.toDataURL('image/png');
+    // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
+    // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
+    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד.
+    const imgData = canvas.toDataURL('image/jpeg', 0.85);
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit:'pt', format:'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -3143,12 +3177,12 @@ async function renderNodeToPdfBlob(node){
     const imgHeight = canvas.height * (imgWidth / canvas.width);
     let heightLeft = imgHeight;
     let position = margin;
-    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
     heightLeft -= (pageHeight - margin*2);
     while (heightLeft > 0){
       position = heightLeft - imgHeight + margin;
       pdf.addPage();
-      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
       heightLeft -= (pageHeight - margin*2);
     }
     return pdf.output('blob');
@@ -3274,19 +3308,22 @@ async function renderNodesToMultiPagePdfBlob(nodes){
         img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
       ));
       const canvas = await html2canvas(node.firstElementChild, { scale:2, backgroundColor:'#ffffff', useCORS:true });
-      const imgData = canvas.toDataURL('image/png');
+      // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
+    // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
+    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד.
+    const imgData = canvas.toDataURL('image/jpeg', 0.85);
       const imgWidth = pageWidth - margin*2;
       const imgHeight = canvas.height * (imgWidth / canvas.width);
       let heightLeft = imgHeight;
       let position = margin;
       if (!firstPage) pdf.addPage();
       firstPage = false;
-      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
       heightLeft -= (pageHeight - margin*2);
       while (heightLeft > 0){
         position = heightLeft - imgHeight + margin;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
         heightLeft -= (pageHeight - margin*2);
       }
     } finally {
