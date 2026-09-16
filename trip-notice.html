@@ -53,11 +53,21 @@
     border-radius:12px; padding:16px 18px; margin-bottom:20px; font-size:1rem; color:var(--navy); font-weight:500; line-height:1.7;
   }
 
-  .date-line{ font-size:1.05rem; margin-bottom:22px; text-align:center; }
-  .date-line .lbl{ color:var(--ink-soft); font-size:.85rem; display:block; margin-bottom:4px; }
-  .date-line .heb{ font-weight:800; color:var(--navy); }
-  .date-line .sep{ color:var(--ink-soft); margin:0 8px; }
-  .date-line .greg{ color:var(--ink-soft); }
+  .date-line{ margin-bottom:24px; text-align:center; }
+  .date-chip{
+    display:inline-flex; align-items:center; gap:12px; text-align:right;
+    background:linear-gradient(135deg, #eef6ff, var(--paper-2)); border:1px solid var(--line);
+    border-radius:999px; padding:10px 22px 10px 18px;
+  }
+  .date-chip .dc-icon{
+    flex:none; width:34px; height:34px; border-radius:50%; background:var(--navy); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .date-chip .dc-icon svg{ width:17px; height:17px; }
+  .date-line .lbl{ color:var(--ink-soft); font-size:.72rem; display:block; }
+  .date-line .heb{ font-weight:800; color:var(--navy); font-size:1.02rem; }
+  .date-line .sep{ color:var(--ink-soft); margin:0 6px; }
+  .date-line .greg{ color:var(--ink-soft); font-size:.85rem; }
 
   /* שורת עובדות מפתח: אייקוני קו עקביים (currentColor) במקום אימוג'י צבעוני — זה מה
      שגרם לתחושת "אפליקציה גנרית". כל האייקונים באותו טיפול חזותי (עיגול נייבי, קו
@@ -83,15 +93,19 @@
   .notice-heading .nh-icon svg{ width:18px; height:18px; }
 
   /* תוכנייה כציר זמן: התוכן אכן רציף-כרונולוגי, ולכן ציר עם נקודות שעה מוצדק כאן
-     (שלא כמו סימון "01/02/03" גנרי על תוכן שאינו רצף אמיתי). */
+     (שלא כמו סימון "01/02/03" גנרי על תוכן שאינו רצף אמיתי). השעה עצמה מקבלת "כפתור"
+     צבוע כדי שתבלוט בסריקה מהירה של התוכנייה, ולא רק טקסט מודגש. */
   .timeline-item{ display:flex; gap:14px; }
   .timeline-rail{ flex:none; width:12px; display:flex; flex-direction:column; align-items:center; }
-  .timeline-dot{ flex:none; width:12px; height:12px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px var(--paper-2); margin-top:4px; }
+  .timeline-dot{ flex:none; width:12px; height:12px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px var(--paper-2); margin-top:9px; }
   .timeline-rail-line{ flex:1; width:2px; background:var(--line); margin-top:3px; min-height:8px; }
   .timeline-body{ padding-bottom:20px; flex:1; }
   .timeline-item:last-child .timeline-body{ padding-bottom:0; }
-  .timeline-time{ font-weight:800; color:var(--navy); font-size:.9rem; }
-  .timeline-activity{ color:var(--ink); margin-top:2px; line-height:1.5; }
+  .timeline-time{
+    display:inline-block; font-weight:800; color:#fff; background:var(--navy); line-height:1;
+    font-size:.82rem; padding:5px 11px; border-radius:7px;
+  }
+  .timeline-activity{ color:var(--ink); margin-top:7px; line-height:1.5; }
 
   /* ציוד + הערות מאוחדים לבלוק אחד ("לקראת היציאה") במקום שני כרטיסים כמעט-זהים —
      ההערות מודגשות רק בטקסט עצמו (רקע רך + פס צד), לא בכל הסעיף. */
@@ -103,10 +117,9 @@
   .prep-notes .prep-label{ color:var(--wait); }
 
   .closing-block{ text-align:left; color:var(--navy); font-style:italic; font-size:.95rem; line-height:1.7; white-space:pre-line; padding-top:4px; }
-  .signature-block{ position:relative; text-align:center; }
-  .signature-block .seal-ring{ position:absolute; inset:-30px auto auto 50%; transform:translateX(-50%); width:220px; height:220px; opacity:.06; pointer-events:none; }
-  .signature-block .regards{ position:relative; font-weight:700; color:var(--navy); margin-bottom:10px; }
-  .signatures-row{ position:relative; display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
+  .signature-block{ text-align:center; }
+  .signature-block .regards{ font-weight:700; color:var(--navy); margin-bottom:10px; }
+  .signatures-row{ display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
   .signature-col{ text-align:center; font-size:.92rem; color:var(--navy); line-height:1.7; }
   .signature-col .sig-title{ color:var(--ink-soft); font-size:.78rem; margin-top:2px; }
 
@@ -115,8 +128,7 @@
   .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
   .approved-card{ text-align:center; padding:40px 24px; }
   .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
-  .approval-heading-wrap{ position:relative; text-align:center; margin-bottom:6px; }
-  .approval-heading-wrap .seal-ring{ position:absolute; inset:-40px auto auto 50%; transform:translateX(-50%); width:200px; height:200px; opacity:.07; pointer-events:none; }
+  .approval-heading-wrap{ text-align:center; margin-bottom:6px; }
   .consent-check{
     display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:14px 16px;
     border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
@@ -182,9 +194,7 @@ const ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON_BANKNOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v0M18 15v0"/></svg>';
 const ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>';
 const ICON_BACKPACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8V6a4 4 0 0 1 8 0v2"/><rect x="5" y="8" width="14" height="13" rx="3"/><path d="M9 8v4h6V8M9 15h6"/></svg>';
-// טבעת "חותמת" (מהדהדת את טבעות הלוגו) — אלמנט חד ומכוון אחד שמדגיש "אישור רשמי",
-// במקום דקורציה מפוזרת. שקוף כמעט, רק רמז חזותי.
-const SEAL_RING_SVG = '<svg class="seal-ring" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"><circle cx="110" cy="110" r="100" fill="none" stroke="var(--navy)" stroke-width="1.5"/><circle cx="110" cy="110" r="78" fill="none" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="3 8"/></svg>';
+const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function formatGregShort(dateStr){
   if (!dateStr) return '';
@@ -301,11 +311,14 @@ async function load(){
         <h2 class="trip-title" style="margin-bottom:${trip.subtitle ? '2px' : ''};">${esc(trip.title)}</h2>
         ${trip.subtitle ? `<div style="color:var(--ink-soft); font-size:1.15rem; font-weight:600; margin-bottom:14px;">${esc(trip.subtitle)}</div>` : ''}
         ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
-        ${(trip.hebrew_date || gregDate) ? `<div class="date-line">
-          <span class="lbl">תאריך ${detailsWord}</span>
-          ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
-          ${trip.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
-        </div>` : ''}
+        ${(trip.hebrew_date || gregDate) ? `<div class="date-line"><div class="date-chip">
+          <div class="dc-icon">${ICON_CALENDAR}</div>
+          <div>
+            <span class="lbl">תאריך ${detailsWord}</span>
+            ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
+            ${trip.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
+          </div>
+        </div></div>` : ''}
         <div class="meta-badges">
           ${trip.location ? `<div class="meta-badge"><div class="m-icon">${ICON_PIN}</div><div class="m-label">${isEvent ? 'מיקום האירוע' : 'יעד'}</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
           ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">${ICON_CLOCK}</div><div class="m-label">${isEvent ? 'תחילת האירוע' : 'שעת יציאה מהישיבה'}</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
@@ -344,7 +357,6 @@ async function load(){
     mainHtml += `
       <div class="notice-rule"></div>
       <div class="notice-section signature-block">
-        ${SEAL_RING_SVG}
         <div class="regards">${esc(trip.custom_regards || 'בברכה,')}</div>
         <div class="signatures-row">
           <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
@@ -370,7 +382,6 @@ async function load(){
   content.innerHTML = mainHtml + `
     <div class="trip-card" id="approvalCard">
       <div class="approval-heading-wrap">
-        ${SEAL_RING_SVG}
         <h2 class="trip-title" style="font-size:1.2rem; margin-bottom:4px;">${isEvent ? 'אישור השתתפות באירוע' : 'אישור השתתפות בטיול'}</h2>
         <div style="color:var(--ink-soft); font-size:.85rem; font-weight:600;">${isEvent ? 'רישום הגעה' : 'אישור יציאה'}</div>
       </div>
