@@ -3283,9 +3283,14 @@ function buildClassRosterPageElement(trip, g, gregDate){
         </thead>
         <tbody>
           ${g.students.map((s,i)=>{
+            // כמו ב"דוח תלמידי הכיתה" (getFirstLast): קודם כל שם פרטי/משפחה השמורים בכרטיס
+            // התלמיד/ה, אם קיימים בכלל — ורק לתלמידים ישנים בלי פיצול שמור עושים ניחוש זמני
+            // מהשם המלא (מילה ראשונה = שם פרטי, השאר = שם משפחה). בלי זה, שם פרטי או משפחה
+            // עם שתי מילים (למשל "בן דוד") היה מתפצל לא נכון גם כשהיה פיצול תקין שמור בכרטיס.
             const nameParts = (s.full_name||'').trim().split(/\s+/);
-            const firstName = nameParts[0] || '';
-            const lastName = nameParts.slice(1).join(' ') || '';
+            const hasSavedSplit = !!(s.first_name || s.last_name);
+            const firstName = hasSavedSplit ? (s.first_name||'') : (nameParts[0]||'');
+            const lastName = hasSavedSplit ? (s.last_name||'') : nameParts.slice(1).join(' ');
             return `
             <tr>
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; color:#16223d; font-size:13px; font-weight:700; text-align:center; vertical-align:top;">${i+1}</td>
