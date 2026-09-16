@@ -488,28 +488,42 @@ async function loadGallery(){
     grid.innerHTML = categoryNames.map(coverTileHtml).join('') + uncategorized.map(soloTileHtml).join('');
     const uncatNav = uncategorized.map(g=>({ url: g.url, caption: g.caption || '' }));
 
-    // "סרט נע" רציף כמו פס העדכונים: משכפלים את התוכן פעם אחת (בלי זה אין ממה "לגלוש"
-    // בלי קפיצה כשמגיעים לסוף), ומחשבים משך אנימציה לפי הרוחב בפועל כדי לשמור על קצב
-    // צפייה נוח קבוע — לא משנה כמה תמונות/קטגוריות יש בגלריה. חיצי דפדוף נשארים רק
-    // בתצוגה המוגדלת (לייטבוקס); כאן התנועה אוטומטית ורציפה, בלי צורך בלחיצה.
+    // "סרט נע" רציף כמו פס העדכונים: כדי שהלופ באמת ירגיש רציף (ולא כמו "נתקע ומתחיל
+    // מחדש" שמראה את כל התמונות פעמיים ברצף), חייבים שרוחב התוכן הכולל יהיה גדול
+    // משמעותית מרוחב המסך — כפילות בודדת (פעם אחת) לא מספיקה כשיש מעט תמונות/קטגוריות,
+    // כי אז שני העותקים נראים בבת אחת על המסך והעין תופסת את זה כחזרה ולא כתנועה רציפה.
+    // לכן משכפלים כמה עותקים שצריך (מינימום 2) לפי הרוחב בפועל, ומזיזים בפיקסלים מדויקים
+    // (משתנה CSS) לפי רוחב עותק אחד — לא ב-50% שמניח בדיוק שני עותקים בלבד.
     if (grid.children.length){
-      grid.innerHTML += grid.innerHTML;
-      grid.querySelectorAll('.gallery-cover').forEach(tile=>{
-        tile.addEventListener('click', ()=>{
-          const navList = byCategory[tile.dataset.cat].map(g=>({ url: g.url, caption: g.caption || '' }));
-          openLightbox(navList[0].url, navList[0].caption, navList, 0);
-        });
-      });
-      grid.querySelectorAll('[data-solo-idx]').forEach(tile=>{
-        tile.addEventListener('click', ()=>{
-          const i = parseInt(tile.dataset.soloIdx, 10);
-          openLightbox(uncatNav[i].url, uncatNav[i].caption, uncatNav, i);
-        });
-      });
+      const singleCopyHtml = grid.innerHTML;
+      const viewportEl = document.querySelector('.gallery-viewport');
+      grid.style.setProperty('--gallery-shift', '50%'); // ברירת מחדל עד שהחישוב המדויק מוכן
       requestAnimationFrame(()=>{
-        const oneCopyWidth = grid.scrollWidth / 2;
-        const pxPerSecond = 40;
-        grid.style.animationDuration = `${Math.max(14, oneCopyWidth / pxPerSecond)}s`;
+        const singleWidth = grid.scrollWidth || 1;
+        const viewportWidth = (viewportEl ? viewportEl.clientWidth : window.innerWidth) || 1;
+        const copiesNeeded = Math.max(2, Math.ceil((viewportWidth * 3) / singleWidth));
+        for (let i = 1; i < copiesNeeded; i++) grid.innerHTML += singleCopyHtml;
+
+        grid.querySelectorAll('.gallery-cover').forEach(tile=>{
+          tile.addEventListener('click', ()=>{
+            const navList = byCategory[tile.dataset.cat].map(g=>({ url: g.url, caption: g.caption || '' }));
+            openLightbox(navList[0].url, navList[0].caption, navList, 0);
+          });
+        });
+        grid.querySelectorAll('[data-solo-idx]').forEach(tile=>{
+          tile.addEventListener('click', ()=>{
+            const i = parseInt(tile.dataset.soloIdx, 10);
+            openLightbox(uncatNav[i].url, uncatNav[i].caption, uncatNav, i);
+          });
+        });
+
+        requestAnimationFrame(()=>{
+          const shiftPx = grid.scrollWidth / copiesNeeded;
+          const pxPerSecond = 40;
+          grid.style.setProperty('--gallery-shift', `${shiftPx}px`);
+          grid.style.animationDuration = `${Math.max(14, shiftPx / pxPerSecond)}s`;
+          grid.classList.add('is-scrolling'); // האנימציה מופעלת רק עכשיו, אחרי שהמשך/ההזזה כבר נכונים — כדי שלא תרוץ קודם עם ערכי ברירת מחדל ואז "תקפוץ" כשהם משתנים
+        });
       });
     }
   }catch(err){
