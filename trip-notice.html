@@ -150,6 +150,22 @@ function formatGregShort(dateStr){
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
 function lastNameOf(s){ return norm(s).split(' ').slice(1).join(' '); }
+// שם פרטי/משפחה "אמיתיים" של תלמיד/ה ברשימה: אם roster_snapshot כולל first_name/last_name
+// נפרדים (כך שנשמר בכרטיס התלמיד/ה) — משתמשים בהם ישירות, כי הם לא תלויים בניחוש לפי
+// מיקום מילה ולכן עובדים נכון גם לשמות פרטיים מכמה מילים (למשל "בת אל", "מרים חנה").
+// רק לרשומות ישנות בלי השדות הנפרדים נופלים חזרה על הניחוש הישן (מילה ראשונה = שם פרטי).
+function candFirstName(r){ return r.first_name ? norm(r.first_name) : firstNameOf(r.full_name); }
+function candLastName(r){ return r.last_name ? norm(r.last_name) : lastNameOf(r.full_name); }
+// בודק שהמחרוזת שההורה הקליד מתחילה בדיוק בשם הפרטי של המועמד/ת, בגבול מילה שלם —
+// כדי ש"בת" לא יתאים בטעות ל"בתיה" או ל"בת שבע" כשההורה הקליד רק "בת אל".
+function typedStartsWithFirstName(typedNorm, candFirst){
+  if (!candFirst) return false;
+  return typedNorm === candFirst || typedNorm.startsWith(candFirst + ' ');
+}
+// מה שנשאר אחרי הורדת השם הפרטי שהתאים — זה מה שמשווים מול שם המשפחה של המועמד/ת.
+function remainderAfterFirstName(typedNorm, candFirst){
+  return typedNorm === candFirst ? '' : typedNorm.slice(candFirst.length + 1);
+}
 function normPhoneDigits(s){
   let d = (s||'').toString().replace(/\D/g,'');
   // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
@@ -399,7 +415,8 @@ async function load(){
     // תואמת (למשל טלפון שהשתנה, כינוי במקום שם מלא וכו') — האישור עדיין עובר, רק בלי הזיהוי
     // האוטומטי; אפשר תמיד לבדוק ידנית מול הצוות אם יש אישורים לא-מזוהים שדורשים תשומת לב.
     const candidateHash = await sha256Hex(`${firstNameOf(approverName)}|${normPhoneDigits(approverPhone)}`);
-    const nameMatches = roster.filter(r => r.class_id === classId && firstNameOf(r.full_name) === firstNameOf(studentName));
+    const typedNorm = norm(studentName);
+    const nameMatches = roster.filter(r => r.class_id === classId && typedStartsWithFirstName(typedNorm, candFirstName(r)));
 
     if (nameMatches.length === 0){
       matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא תלמיד בשם זה בכיתה שנבחרה. יש לוודא שהכיתה ושם התלמיד נכונים, או לפנות למחנך/ת.</p>`;
@@ -416,15 +433,14 @@ async function load(){
       if (match){ identityVerified = true; matchedSlot = match.slot; }
     } else {
       // יותר מתלמיד אחד עם אותו שם פרטי באותה כיתה — קודם מנסים לצמצם לפי שם המשפחה
-      // שההורה הקליד (תומך גם בשם משפחה מכמה מילים, כי lastNameOf לוקח הכל אחרי המילה
-      // הראשונה). רק אם זה לא הצליח לצמצם לתלמיד יחיד, נופלים חזרה על ההצלבה מול פרטי
-      // ההורה (verify_hashes) כפי שהיה קודם.
-      const typedLastName = lastNameOf(studentName);
-      let candidates = nameMatches;
-      if (typedLastName){
-        const byLastName = nameMatches.filter(r => lastNameOf(r.full_name) === typedLastName);
-        if (byLastName.length === 1) candidates = byLastName;
-      }
+      // שההורה הקליד. משווים מול שם המשפחה האמיתי שנשמר בכרטיס (candLastName), אחרי
+      // שמורידים מהטקסט שהוקלד רק את השם הפרטי שכבר התאים למועמד/ת הספציפי/ת — כך זה
+      // עובד נכון גם כששם פרטי הוא מכמה מילים (למשל "בת אל"). רק אם זה לא הצליח לצמצם
+      // לתלמיד יחיד, נופלים חזרה על ההצלבה מול פרטי ההורה (verify_hashes) כפי שהיה קודם.
+      const candidates = nameMatches.filter(r => {
+        const remainder = remainderAfterFirstName(typedNorm, candFirstName(r));
+        return !remainder || remainder === candLastName(r);
+      });
 
       if (candidates.length === 1){
         matchedStudent = candidates[0];
