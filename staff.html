@@ -1838,6 +1838,8 @@ async function renderClassRosterView(container, classId){
   const cls = clsSnap.exists ? clsSnap.data() : {};
   const studentsSnap = await db.collection('students').where('class_id','==', classId).orderBy('full_name').get();
   const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  // שם המחנך/ת המשויך/ת לכיתה — לצורך הצגה לצד הכותרת בייצוא דוח תלמידי הכיתה
+  const classTeacherName = (await db.collection('users').where('class_id','==', classId).limit(1).get().catch(()=>({docs:[]}))).docs?.[0]?.data()?.full_name || '';
 
   // לתלמידים ישנים בלי שם פרטי/משפחה נפרדים — פיצול זמני של השם המלא, רק לצורך מיון/חיפוש/מילוי טופס עריכה
   const getFirstLast = (s) => {
@@ -2149,13 +2151,14 @@ async function renderClassRosterView(container, classId){
   });
   document.getElementById('classExportGoBtn').addEventListener('click', ()=>{
     if (!students.length){ toast('אין תלמידים בכיתה זו לייצוא'); return; }
-    const header = ['שם פרטי','שם משפחה','שם האב','שם האם','טלפון אמא','טלפון אבא','עיר מגורים','רגישויות / הערות רפואיות','הערות נוספות'];
-    const rows = [header, ...students.map(s=>{
+    const header = ['#','שם פרטי','שם משפחה','שם האב','שם האם','טלפון אמא','טלפון אבא','עיר מגורים','רגישויות / הערות רפואיות','הערות נוספות'];
+    const rows = [header, ...students.map((s,i)=>{
       const fl = getFirstLast(s);
-      return [fl.first, fl.last, s.father_name||'', s.mother_name||'', s.mother_phone||'', s.father_phone||'', s.city||'', s.notes||'', s.extra_notes||''];
+      return [i+1, fl.first, fl.last, s.father_name||'', s.mother_name||'', s.mother_phone||'', s.father_phone||'', s.city||'', s.notes||'', s.extra_notes||''];
     })];
     const format = document.getElementById('classExportFormat').value;
-    exportTable(rows, `דוח תלמידי כיתה - ${cls.name||''}`, format);
+    const subtitle = `${classTeacherName ? `מחנך/ת: ${classTeacherName} · ` : ''}${students.length} תלמידים`;
+    exportTable(rows, `דוח תלמידי כיתה - ${cls.name||''}`, format, subtitle);
   });
 
   wireExcelImportWidget('excelImport', ()=>classId, ()=>cls.name||'', refresh);
@@ -4540,7 +4543,7 @@ function downloadCsv(filename, rows){
 /* בונה אלמנט DOM מעוצב (לוגו + פס עליון בצבע, כותרות טבלה כהות, שורות לסירוגין) לדוח
    טבלה כללי — באותו סגנון בדיוק כמו מסמכי האישור/נוכחות של הטיולים, כדי שכל הדוחות
    (כולל ייצוא כיתה, תשלומים וכו') ייראו אחידים ומעוצבים ולא כמו טבלת HTML פשוטה. */
-function buildStyledReportElement(title, rows){
+function buildStyledReportElement(title, rows, subtitle){
   const [header, ...body] = rows;
   const width = Math.max(700, Math.min(1100, (header||[]).length * 115));
   const wrap = document.createElement('div');
@@ -4554,13 +4557,14 @@ function buildStyledReportElement(title, rows){
           <div style="font-size:12px; color:#4b566d; margin-top:2px;">הופק בתאריך ${new Date().toLocaleDateString('he-IL')}</div>
         </div>
       </div>
-      <h1 style="font-size:21px; margin:0 0 18px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(title)}</h1>
+      <h1 style="font-size:21px; margin:0 0 ${subtitle ? '10px' : '18px'}; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(title)}</h1>
+      ${subtitle ? `<div style="background:#16223d; border-radius:10px; padding:10px 16px; margin-bottom:16px; font-size:13.5px; color:#cfd9ec; font-weight:600;">${esc(subtitle)}</div>` : ''}
       <table style="width:100%; border-collapse:collapse;">
         <thead>
-          <tr>${(header||[]).map(h=>`<th style="padding:9px 10px; background:#16223d; color:#fff; text-align:right; font-size:12px; font-weight:700; border:1px solid #16223d;">${esc(h)}</th>`).join('')}</tr>
+          <tr>${(header||[]).map(h=>`<th style="padding:10px; background:#16223d; color:#fff; text-align:right; font-size:13.5px; font-weight:700; border:1px solid #16223d;">${esc(h)}</th>`).join('')}</tr>
         </thead>
         <tbody>
-          ${body.map((r,i)=>`<tr style="background:${i%2 ? '#f4f7fb' : '#ffffff'};">${r.map(c=>`<td style="padding:8px 10px; border:1px solid #dde4ee; font-size:12.5px; vertical-align:top;">${esc(c===null||c===undefined?'':c)}</td>`).join('')}</tr>`).join('')}
+          ${body.map((r,i)=>`<tr style="background:${i%2 ? '#f4f7fb' : '#ffffff'};">${r.map(c=>`<td style="padding:9px 10px; border:1px solid #dde4ee; font-size:14px; vertical-align:top;">${esc(c===null||c===undefined?'':c)}</td>`).join('')}</tr>`).join('')}
         </tbody>
       </table>
       <div style="margin-top:20px; padding-top:14px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
@@ -4570,9 +4574,9 @@ function buildStyledReportElement(title, rows){
   return wrap;
 }
 /* מייצר PDF מעוצב (צילום DOM אמיתי, לא חלון הדפסה של הדפדפן) עבור טבלת דוח */
-async function openPrintableTable(title, rows){
+async function openPrintableTable(title, rows, subtitle){
   try{
-    const node = buildStyledReportElement(title, rows);
+    const node = buildStyledReportElement(title, rows, subtitle);
     const blob = await renderNodeToPdfBlob(node);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4580,18 +4584,20 @@ async function openPrintableTable(title, rows){
     setTimeout(()=> URL.revokeObjectURL(url), 3000);
   }catch(err){ toast('שגיאה ביצירת PDF: '+err.message); }
 }
-/* מייצא טבלת שורות (rows: מערך מערכים, שורה ראשונה = כותרות) בפורמט הנבחר: אקסל / PDF (מעוצב) / CSV */
-async function exportTable(rows, filenameBase, format){
+/* מייצא טבלת שורות (rows: מערך מערכים, שורה ראשונה = כותרות) בפורמט הנבחר: אקסל / PDF (מעוצב) / CSV.
+   subtitle (למשל שם מחנך/ת + מספר תלמידים) מוצג ליד הכותרת ב-PDF, ובאקסל/CSV כשורת מידע לפני הכותרות. */
+async function exportTable(rows, filenameBase, format, subtitle){
   if (format === 'xlsx'){
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const sheetRows = subtitle ? [[subtitle], [], ...rows] : rows;
+    const ws = XLSX.utils.aoa_to_sheet(sheetRows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'דוח');
     XLSX.writeFile(wb, `${filenameBase}.xlsx`);
   } else if (format === 'pdf'){
     toast('מכין PDF…');
-    await openPrintableTable(filenameBase, rows);
+    await openPrintableTable(filenameBase, rows, subtitle);
   } else {
-    downloadCsv(`${filenameBase}.csv`, rows);
+    downloadCsv(`${filenameBase}.csv`, subtitle ? [[subtitle], [], ...rows] : rows);
   }
 }
 
