@@ -3477,7 +3477,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   // "חובשים" / "מע\"רים" — כדי שבאמת תיראה ככותרת ולא כשורת טקסט קטנה כמו שאר התוכן
   // תגית קבוצה פשוטה: פס צבע אנכי דק בצד + טקסט מודגש בצבע — בלי קופסת רקע עם טקסט לבן
   // בתוכה. כך אין תלות בריכוז אנכי מדויק של טקסט בתוך רקע (שהיה בעייתי בצילום ל-PDF).
-  const groupLabel = (text, count, color) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="display:inline-block; width:4px; height:15px; background:${color||'#1c7a7a'}; border-radius:2px;"></span><span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:${color||'#1c7a7a'};">${esc(text)}${count!=null?` (${count})`:''}</span></div>`;
+  const groupLabel = (text, count, color) => `<div style="display:flex; align-items:center; margin-bottom:12px; padding:8px 14px; background:#f3f5f9; border-right:5px solid ${color||'#1c7a7a'}; border-radius:6px;"><span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:15px; color:${color||'#1c7a7a'};">${esc(text)}${count!=null?` (${count})`:''}</span></div>`;
   const notesHtml = generalNotes ? `<p style="font-size:15px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:14px; margin:0;">אין הערות נוספות.</p>`;
 
   // אוטובוסים ואחראים + חלוקת נוסעים — מאוחד לכרטיס אחד לכל אוטובוס (לא שני מדורים
