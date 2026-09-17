@@ -3441,104 +3441,110 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
+  // כותרת מדור: הטקסט ("חובשים ומע\"רים" למשל) והקו המפריד הם שני אלמנטים נפרדים
+  // לגמרי עם מרווח אמיתי ביניהם (לא padding-bottom+border-bottom על אותו אלמנט) —
+  // כדי שהטקסט לא "יעלה" ויתערבב עם הקו בשום מצב רינדור.
   const section = (title, bodyHtml) => `
-    <div style="margin-bottom:26px;">
-      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:18px; color:#16223d; border-bottom:2px solid #1c7a7a; padding-bottom:8px; margin-bottom:12px;">${esc(title)}</div>
+    <div style="margin-bottom:28px;">
+      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#16223d; margin-bottom:8px;">${esc(title)}</div>
+      <div style="border-bottom:2.5px solid #1c7a7a; margin-bottom:14px;"></div>
       ${bodyHtml}
     </div>`;
+  // תגית-כותרת בולטת (רקע צבעוני מלא) לתת-קבוצות בתוך מדור — למשל "כיתות" / "צוות" /
+  // "חובשים" / "מע\"רים" — כדי שבאמת תיראה ככותרת ולא כשורת טקסט קטנה כמו שאר התוכן
+  const groupLabel = (text, count, color) => `<div style="display:inline-block; background:${color||'#1c7a7a'}; color:#fff; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; padding:6px 16px; border-radius:8px; margin-bottom:10px;">${esc(text)}${count!=null?` (${count})`:''}</div>`;
   const notesHtml = generalNotes ? `<p style="font-size:15px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:14px; margin:0;">אין הערות נוספות.</p>`;
-  const busesHtml = buses.length ? buses.map(b=>{
-    const route = b.route || [];
-    return `
-    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
-      <div style="font-weight:700; font-size:15px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:13px; color:#4b566d;">· ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span></div>
-      <div style="font-size:14px; margin-top:7px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
-      ${b.captain_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
-      ${b.driver_name || b.driver_phone ? `<div style="font-size:14px; margin-top:7px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג</div>` : ''}
-      ${b.driver_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
-      ${b.notes ? `<div style="font-size:14px; margin-top:9px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
-      ${route.length ? `<div style="margin-top:9px; padding-top:9px; border-top:1px dashed #dde4ee;">
-        <div style="font-size:13.5px; font-weight:700; color:#16203a; margin-bottom:5px;">מסלול:</div>
-        ${route.map((r,ri)=>`<div style="font-size:13.5px; color:#333;">${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</div>`).join('')}
-      </div>` : ''}
-    </div>`;
-  }).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
-  // חלוקת אוטובוסים: כרטיס גדול וברור לכל אוטובוס — אחראי האוטובוס וטלפונו תמיד
-  // ראשונים ומודגשים (בדיוק כמו בכרטיס עצמו למעלה, כדי שלא יצטרכו לגלול בין שני
-  // מקומות), ואז שאר הנוסעים מקובצים לפי סוג (כיתות/צוות/חובשים ומע"רים/הורים
-  // מלווים) עם כותרת לכל קבוצה — במקום רשימה שטוחה וארוכה של הכל ביחד.
+
+  // אוטובוסים ואחראים + חלוקת נוסעים — מאוחד לכרטיס אחד לכל אוטובוס (לא שני מדורים
+  // נפרדים שחוזרים על אותו שם אוטובוס/אחראי פעמיים) — כך שכל מה שצריך לדעת על
+  // אוטובוס מסוים נמצא במקום אחד, וגם המסמך קצר יותר בעמודים.
   const PASSENGER_GROUPS = [
-    { type:'class', label:'כיתות' },
-    { type:'staff', label:'צוות' },
-    { type:'medic', label:'חובשים ומע"רים' },
-    { type:'parent', label:'הורים מלווים' },
+    { type:'class', label:'כיתות', color:'#1c7a7a' },
+    { type:'staff', label:'צוות', color:'#3a6ea5' },
+    { type:'medic', label:'חובשים ומע"רים', color:'#8a5a3a' },
+    { type:'parent', label:'הורים מלווים', color:'#6a4c93' },
   ];
-  const passengerRowHtml = (a) => {
-    if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div style="display:flex; justify-content:space-between; padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
-    if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `<div style="padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(u?.full_name||'איש/אשת צוות')}</span></div>`; }
-    if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div style="padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
-    if (a.type==='parent'){ return `<div style="padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:13.5px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
+  const passengerRowHtml = (a, isLast) => {
+    const borderStyle = isLast ? '' : 'border-bottom:1px solid #eef1f6;';
+    if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div style="display:flex; justify-content:space-between; padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
+    if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `<div style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(u?.full_name||'איש/אשת צוות')}</span></div>`; }
+    if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
+    if (a.type==='parent'){ return `<div style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:14px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
     return '';
   };
-  const assignmentHtml = buses.length ? buses.map(b=>{
+  const busesHtml = buses.length ? buses.map(b=>{
+    const route = b.route || [];
     const assigned = b.assigned || [];
     const occ = assigned.reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
     const cap = b.capacity || (b.vehicle_type==='minibus' ? 20 : 60);
     const groupsHtml = PASSENGER_GROUPS.map(g=>{
       const items = assigned.filter(a=>a.type===g.type);
       if (!items.length) return '';
-      return `<div style="margin-top:12px;">
-        <div style="font-size:13px; font-weight:700; color:#4b566d; text-transform:none;">${g.label}</div>
-        ${items.map(passengerRowHtml).join('')}
+      return `<div style="margin-top:16px;">
+        ${groupLabel(g.label, items.length, g.color)}
+        ${items.map((a,idx)=> passengerRowHtml(a, idx===items.length-1)).join('')}
       </div>`;
     }).join('');
     return `
-    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1.5px solid #dde4ee; border-radius:12px; padding:18px 20px; margin-bottom:14px;">
+    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1.5px solid #dde4ee; border-radius:12px; padding:18px 20px; margin-bottom:16px;">
       <div style="display:table; width:100%;">
         <div style="display:table-row;">
           <div style="display:table-cell; vertical-align:middle;">
-            <span style="font-weight:800; font-size:19px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</span>
-            <span style="font-weight:400; font-size:13.5px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
+            <span style="font-weight:800; font-size:20px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</span>
+            <span style="font-weight:400; font-size:14px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
           </div>
           <div style="display:table-cell; vertical-align:middle; width:1%; white-space:nowrap;">
-            <span style="display:inline-block; font-size:14.5px; font-weight:800; color:#16223d; background:#e0e8f5; padding:9px 16px; border-radius:20px;">${occ} / ${cap} מקומות</span>
+            <span style="display:inline-block; font-size:15px; font-weight:800; color:#16223d; background:#e0e8f5; padding:9px 18px; border-radius:20px;">${occ} / ${cap} מקומות</span>
           </div>
         </div>
       </div>
-      <div style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:12px 14px; margin-top:12px;">
-        <div style="font-size:16px; font-weight:800; color:#16203a;">👤 אחראי אוטובוס: ${esc(b.captain_name||'לא נבחר')}</div>
-        ${b.captain_phone ? `<div style="font-size:17px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+      <div style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
+        <div style="font-size:12.5px; font-weight:700; color:#4b566d;">אחראי אוטובוס</div>
+        <div style="font-size:17px; font-weight:800; color:#16203a; margin-top:2px;">${esc(b.captain_name||'לא נבחר')}</div>
+        ${b.captain_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+        ${(b.driver_name || b.driver_phone) ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #eef1f6;">
+          <div style="font-size:12.5px; font-weight:700; color:#4b566d;">נהג</div>
+          <div style="font-size:17px; font-weight:800; color:#16203a; margin-top:2px;">${esc(b.driver_name||'—')}</div>
+          ${b.driver_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.driver_phone)}</div>` : ''}
+        </div>` : ''}
       </div>
-      ${groupsHtml || `<div style="font-size:14.5px; color:#4b566d; margin-top:12px;">אין נוסעים נוספים משויכים לאוטובוס זה.</div>`}
+      ${b.notes ? `<div style="font-size:14.5px; margin-top:12px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+      ${route.length ? `<div style="margin-top:14px; padding-top:12px; border-top:1px dashed #dde4ee;">
+        ${groupLabel('מסלול', null, '#4b566d')}
+        ${route.map((r,ri)=>`<div style="font-size:14.5px; color:#333; padding:3px 0;">${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</div>`).join('')}
+      </div>` : ''}
+      ${groupsHtml || `<div style="font-size:14.5px; color:#4b566d; margin-top:14px;">אין נוסעים נוספים משויכים לאוטובוס זה.</div>`}
     </div>`;
   }).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   const totalTravelers = buses.reduce((sum,b)=> sum + (b.assigned||[]).reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0), 0);
-  const assignmentSectionHtml = assignmentHtml + (buses.length ? `
-    <div style="background:#16223d; border-radius:12px; padding:16px 20px; margin-top:8px; display:table; width:100%;">
+  const busesSectionHtml = busesHtml + (buses.length ? `
+    <div style="background:#16223d; border-radius:12px; padding:16px 20px; margin-top:4px; display:table; width:100%;">
       <div style="display:table-row;">
         <div style="display:table-cell; vertical-align:middle; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#fff;">סך הכל נוסעים בכלל האוטובוסים</div>
         <div style="display:table-cell; vertical-align:middle; width:1%; white-space:nowrap; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#fff;">${totalTravelers}</div>
       </div>
     </div>` : '');
-  // חובשים ומע"רים: מחולק לכותרות נפרדות (חובשים / מע"רים) לפי שדה התפקיד החופשי
-  // שהוזן, כדי שיהיה ברור בעין אחת מי חובש ומי מע"ר — לא רשימה מעורבת אחת
+
+  // חובשים ומע"רים: מחולק לתגיות-כותרת בולטות (חובשים / מע"רים) לפי שדה התפקיד
+  // החופשי שהוזן, כדי שיהיה ברור בעין אחת מי חובש ומי מע"ר — לא רשימה מעורבת אחת
   const medicGroupDefs = [
-    { label:'חובשים', match: m => (m.role||'').includes('חובש') },
-    { label:'מע"רים', match: m => (m.role||'').includes('מע"ר') || (m.role||'').includes('מער') },
+    { label:'חובשים', color:'#b3372e', match: m => (m.role||'').includes('חובש') },
+    { label:'מע"רים', color:'#8a5a3a', match: m => (m.role||'').includes('מע"ר') || (m.role||'').includes('מער') },
   ];
-  const medicRowHtml = (m) => `
-    <div class="pdf-avoid-break" style="padding:9px 0; border-bottom:1px solid #eef1f6;">
-      <span style="font-size:15px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
+  const medicRowHtml = (m, isLast) => `
+    <div class="pdf-avoid-break" style="padding:9px 0; ${isLast?'':'border-bottom:1px solid #eef1f6;'}">
+      <span style="font-size:15.5px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
       ${m.phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
     </div>`;
   const medicGroups = medicGroupDefs.map(g=>({ ...g, items: medics.filter(g.match) }));
   const otherMedics = medics.filter(m=> !medicGroups.some(g=>g.items.includes(m)));
-  if (otherMedics.length) medicGroups.push({ label:'אחר', items: otherMedics });
+  if (otherMedics.length) medicGroups.push({ label:'אחר', color:'#4b566d', items: otherMedics });
   const medicsHtml = medics.length ? medicGroups.filter(g=>g.items.length).map(g=>`
-    <div style="margin-bottom:14px;">
-      <div style="font-size:14px; font-weight:700; color:#4b566d; margin-bottom:4px;">${esc(g.label)} (${g.items.length})</div>
-      ${g.items.map(medicRowHtml).join('')}
+    <div style="margin-bottom:18px;">
+      ${groupLabel(g.label, g.items.length, g.color)}
+      ${g.items.map((m,idx)=> medicRowHtml(m, idx===g.items.length-1)).join('')}
     </div>`).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
+
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
@@ -3552,8 +3558,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
       <div style="font-size:14px; color:#4b566d; margin-bottom:24px;">
         ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
       </div>
-      ${section('אוטובוסים ואחראים', busesHtml)}
-      ${section('חלוקת אוטובוסים', assignmentSectionHtml)}
+      ${section('אוטובוסים ואחראים', busesSectionHtml)}
       ${section('חובשים ומע"רים', medicsHtml)}
       ${section('הערות נוספות', notesHtml)}
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:12px; color:#4b566d; text-align:center;">
