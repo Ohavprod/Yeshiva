@@ -3231,10 +3231,14 @@ function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges)
    הקנבס לתמונה נפרדת ומדויקת לכל עמוד פותר את זה לגמרי. isFirstOverall=true
    מדלג על addPage לפני הפלח הראשון (מסמך חדש כבר מתחיל עם עמוד ריק אחד). */
 function addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, isFirstOverall){
+  // סף מינימלי לפלח: כמה פיקסלים בקנבס (בקנה מידה x2.2) — כל שארית קטנה מזה היא כמעט
+  // תמיד רק שוליים/ריווח שנשאר אחרי הקופסה האחרונה, לא תוכן ממשי. בלי הסף הזה שארית
+  // כזו עדיין מקבלת addPage() משלה, כלומר עמוד שלם שנראה כמעט ריק בסוף הקובץ.
+  const MIN_SLICE_HEIGHT_PX = 15;
   for (let i=0; i<breaks.length-1; i++){
     const sliceTopPx = breaks[i];
     const sliceHeightPx = breaks[i+1] - sliceTopPx;
-    if (sliceHeightPx <= 0) continue;
+    if (sliceHeightPx <= MIN_SLICE_HEIGHT_PX) continue;
     if (!(isFirstOverall && i===0)) pdf.addPage();
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width = canvas.width;
@@ -3463,7 +3467,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     </div>`;
   // תגית-כותרת בולטת (רקע צבעוני מלא) לתת-קבוצות בתוך מדור — למשל "כיתות" / "צוות" /
   // "חובשים" / "מע\"רים" — כדי שבאמת תיראה ככותרת ולא כשורת טקסט קטנה כמו שאר התוכן
-  const groupLabel = (text, count, color) => `<div style="display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; height:30px; line-height:1; background:${color||'#1c7a7a'}; color:#fff; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; padding:0 16px; border-radius:8px; margin-bottom:10px;">${esc(text)}${count!=null?` (${count})`:''}</div>`;
+  const groupLabel = (text, count, color) => `<div style="display:inline-block; white-space:nowrap; box-sizing:border-box; height:28px; line-height:28px; background:${color||'#1c7a7a'}; color:#fff; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; padding:0 16px; border-radius:8px; margin-bottom:10px;">${esc(text)}${count!=null?` (${count})`:''}</div>`;
   const notesHtml = generalNotes ? `<p style="font-size:15px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:14px; margin:0;">אין הערות נוספות.</p>`;
 
   // אוטובוסים ואחראים + חלוקת נוסעים — מאוחד לכרטיס אחד לכל אוטובוס (לא שני מדורים
@@ -3509,7 +3513,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
           <span style="font-weight:400; font-size:14px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
         </div>
         <div style="flex-shrink:0; white-space:nowrap;">
-          <span style="display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; height:34px; line-height:1; font-size:15px; font-weight:800; color:#16223d; background:#e0e8f5; padding:0 18px; border-radius:20px;">${occ} / ${cap} מקומות</span>
+          <span style="display:inline-block; white-space:nowrap; box-sizing:border-box; height:34px; line-height:34px; font-size:15px; font-weight:800; color:#16223d; background:#e0e8f5; padding:0 18px; border-radius:20px;">${occ} / ${cap} מקומות</span>
         </div>
       </div>
       <div class="pdf-avoid-break" style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
