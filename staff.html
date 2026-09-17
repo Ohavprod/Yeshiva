@@ -3210,6 +3210,30 @@ function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges)
   breaks.push(canvasHeight);
   return breaks;
 }
+/* חותך את הקנבס המלא לפי נקודות החיתוך שחושבו (breaks) לתמונה נפרדת לכל עמוד —
+   כל עמוד מקבל את הפלח המדויק שלו (לא את כל התמונה הענקית עם הזזה), כדי שלא
+   יהיה תלוי ב"חיתוך אוטומטי" של גבול העמוד ב-jsPDF. הטכניקה הקודמת (להזיז את
+   אותה תמונה שלמה ולסמוך על כך שגובה העמוד יחתוך את השאר) עבדה רק כשכל העמודים
+   באותו גובה קבוע בדיוק — ברגע שנקודת חיתוך אחת זזה (כדי לא לחתוך קופסה באמצע),
+   העמוד הקודם המשיך להראות גובה עמוד מלא כרגיל וכיסה את התחלת העמוד הבא, מה
+   שדחק חלק מהתוכן אל "בין" העמודים בלי שהוא יופיע באף אחד מהם. פיצול ממשי של
+   הקנבס לתמונה נפרדת ומדויקת לכל עמוד פותר את זה לגמרי. isFirstOverall=true
+   מדלג על addPage לפני הפלח הראשון (מסמך חדש כבר מתחיל עם עמוד ריק אחד). */
+function addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, isFirstOverall){
+  for (let i=0; i<breaks.length-1; i++){
+    const sliceTopPx = breaks[i];
+    const sliceHeightPx = breaks[i+1] - sliceTopPx;
+    if (sliceHeightPx <= 0) continue;
+    if (!(isFirstOverall && i===0)) pdf.addPage();
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceHeightPx;
+    sliceCanvas.getContext('2d').drawImage(canvas, 0, sliceTopPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+    const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+    const sliceHeightPt = sliceHeightPx / pxPerPt;
+    pdf.addImage(sliceData, 'JPEG', margin, margin, imgWidth, sliceHeightPt);
+  }
+}
 async function renderNodeToPdfBlob(node){
   document.body.appendChild(node);
   try{
@@ -3220,11 +3244,6 @@ async function renderNodeToPdfBlob(node){
     const cssWidth = rootEl.getBoundingClientRect().width;
     const avoidBreakRangesCss = getAvoidBreakRangesCss(rootEl);
     const canvas = await html2canvas(rootEl, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
-    // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
-    // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
-    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד. 0.92 (במקום 0.85) לחדות טובה יותר
-    // בטקסט תוך שמירה על קובץ קטן בודדות ה-MB — לא לחזור ל-PNG/סקייל גבוה שמנפחים ל-60-70MB.
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit:'pt', format:'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -3234,14 +3253,9 @@ async function renderNodeToPdfBlob(node){
     const scale = canvas.width / cssWidth;
     const pxPerPt = canvas.width / imgWidth;
     const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
-    const imgHeight = canvas.height / pxPerPt;
     const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
     const breaks = computePageBreaksPx(canvas.height, usablePageHeightPx, avoidBreakRanges);
-    for (let i=0; i<breaks.length-1; i++){
-      if (i>0) pdf.addPage();
-      const position = margin - breaks[i] / pxPerPt;
-      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-    }
+    addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, true);
     return pdf.output('blob');
   } finally {
     node.remove();
@@ -3373,23 +3387,14 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       const cssWidth = rootEl.getBoundingClientRect().width;
       const avoidBreakRangesCss = getAvoidBreakRangesCss(rootEl);
       const canvas = await html2canvas(rootEl, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
-      // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
-    // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
-    // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד. 0.92 לחדות טובה יותר, עדיין קובץ קטן.
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
       const imgWidth = pageWidth - margin*2;
       const scale = canvas.width / cssWidth;
       const pxPerPt = canvas.width / imgWidth;
       const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
-      const imgHeight = canvas.height / pxPerPt;
       const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
       const breaks = computePageBreaksPx(canvas.height, usablePageHeightPx, avoidBreakRanges);
-      breaks.slice(0,-1).forEach((brk, i)=>{
-        if (!firstPage) pdf.addPage();
-        firstPage = false;
-        const position = margin - brk / pxPerPt;
-        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-      });
+      addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, firstPage);
+      firstPage = false;
     } finally {
       node.remove();
     }
@@ -3477,7 +3482,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${rows.length?'8px':'0'};">
         <div style="font-weight:800; font-size:15px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
-        <div style="font-size:12.5px; font-weight:700; color:#16223d; background:#e7ecf5; padding:5px 12px; border-radius:20px; display:inline-flex; align-items:center; justify-content:center; line-height:1;">${occ} / ${cap} מקומות</div>
+        <div style="font-size:12.5px; font-weight:700; color:#16223d; background:#e7ecf5; padding:6px 12px; border-radius:20px; line-height:12.5px;">${occ} / ${cap} מקומות</div>
       </div>
       ${rows.length ? `<table style="width:100%; border-collapse:collapse;">
         <tbody>
