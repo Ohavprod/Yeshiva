@@ -3198,10 +3198,21 @@ function getAvoidBreakRangesCss(rootEl){
 function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges){
   const breaks = [0];
   let cursor = 0;
+  // כדי לא לחתוך קופסה מסומנת, הנקודה נדחית אחורה לתחילת הקופסה — אבל אם הקופסה
+  // ארוכה (למשל כרטיס עם המון שורות) והדחייה אחורה הייתה משאירה כמעט את כל העמוד
+  // ריק (פחות מ-MIN_FILL_RATIO ממנו מנוצל), עדיף "להאריך" את העמוד עד סוף הקופסה
+  // (גם אם זה חורג מעט מגובה עמוד רגיל) מאשר לייצר עמוד כמעט-ריק.
+  const MIN_FILL_RATIO = 0.5;
+  const MAX_OVERFLOW_RATIO = 1.4;
   while (canvasHeight - cursor > usablePageHeightPx){
     let candidate = cursor + usablePageHeightPx;
-    for (const r of avoidBreakRanges){
-      if (r.top < candidate && r.bottom > candidate && r.top > cursor) candidate = r.top;
+    const splitting = avoidBreakRanges.find(r => r.top < candidate && r.bottom > candidate && r.top > cursor);
+    if (splitting){
+      const filledIfEarlier = splitting.top - cursor;
+      const filledIfLater = splitting.bottom - cursor;
+      const wouldBeTooEmpty = filledIfEarlier < usablePageHeightPx * MIN_FILL_RATIO;
+      const extendingIsAcceptable = filledIfLater <= usablePageHeightPx * MAX_OVERFLOW_RATIO;
+      candidate = (wouldBeTooEmpty && extendingIsAcceptable) ? splitting.bottom : splitting.top;
     }
     if (candidate <= cursor) candidate = cursor + usablePageHeightPx;
     breaks.push(candidate);
@@ -3464,12 +3475,15 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     { type:'medic', label:'חובשים ומע"רים', color:'#8a5a3a' },
     { type:'parent', label:'הורים מלווים', color:'#6a4c93' },
   ];
+  // כל שורת נוסע היא יחידת "אל-תחתוך" קטנה משלה (במקום כל הכרטיס של האוטובוס
+  // כמקשה אחת) — כדי שבטיול עם הרבה כיתות/צוות/הורים אפשר יהיה לפצל את הרשימה
+  // בין עמודים בלי לחתוך שורה באמצע, בלי לגרום לעמוד שלם להישאר כמעט ריק.
   const passengerRowHtml = (a, isLast) => {
     const borderStyle = isLast ? '' : 'border-bottom:1px solid #eef1f6;';
-    if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div style="display:flex; justify-content:space-between; padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
-    if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `<div style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(u?.full_name||'איש/אשת צוות')}</span></div>`; }
-    if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
-    if (a.type==='parent'){ return `<div style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:14px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
+    if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div class="pdf-avoid-break" style="display:flex; justify-content:space-between; padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
+    if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(u?.full_name||'איש/אשת צוות')}</span></div>`; }
+    if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
+    if (a.type==='parent'){ return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:14px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
     return '';
   };
   const busesHtml = buses.length ? buses.map(b=>{
@@ -3480,14 +3494,16 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     const groupsHtml = PASSENGER_GROUPS.map(g=>{
       const items = assigned.filter(a=>a.type===g.type);
       if (!items.length) return '';
+      // התגית של הקבוצה ("כיתות" וכו') כבולה לשורה הראשונה שלה ליחידת אל-תחתוך אחת,
+      // כדי שהתגית לא תישאר לבד בתחתית עמוד כשהשורות שלה עוברות לעמוד הבא.
       return `<div style="margin-top:16px;">
-        ${groupLabel(g.label, items.length, g.color)}
-        ${items.map((a,idx)=> passengerRowHtml(a, idx===items.length-1)).join('')}
+        <div class="pdf-avoid-break">${groupLabel(g.label, items.length, g.color)}${passengerRowHtml(items[0], items.length===1)}</div>
+        ${items.slice(1).map((a,idx)=> passengerRowHtml(a, idx===items.length-2)).join('')}
       </div>`;
     }).join('');
     return `
-    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1.5px solid #dde4ee; border-radius:12px; padding:18px 20px; margin-bottom:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:14px;">
+    <div style="background:#f6f8fb; border:1.5px solid #dde4ee; border-radius:12px; padding:18px 20px; margin-bottom:16px;">
+      <div class="pdf-avoid-break" style="display:flex; justify-content:space-between; align-items:center; gap:14px;">
         <div style="flex:1; min-width:0;">
           <span style="font-weight:800; font-size:20px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</span>
           <span style="font-weight:400; font-size:14px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
@@ -3496,7 +3512,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
           <span style="display:inline-block; line-height:1; font-size:15px; font-weight:800; color:#16223d; background:#e0e8f5; padding:10px 18px 9px; border-radius:20px;">${occ} / ${cap} מקומות</span>
         </div>
       </div>
-      <div style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
+      <div class="pdf-avoid-break" style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
         <div style="font-size:12.5px; font-weight:700; color:#4b566d;">אחראי אוטובוס</div>
         <div style="font-size:17px; font-weight:800; color:#16203a; margin-top:2px;">${esc(b.captain_name||'לא נבחר')}</div>
         ${b.captain_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.captain_phone)}</div>` : ''}
@@ -3507,7 +3523,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
         </div>` : ''}
       </div>
       ${b.notes ? `<div style="font-size:14.5px; margin-top:12px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
-      ${route.length ? `<div style="margin-top:14px; padding-top:12px; border-top:1px dashed #dde4ee;">
+      ${route.length ? `<div class="pdf-avoid-break" style="margin-top:14px; padding-top:12px; border-top:1px dashed #dde4ee;">
         ${groupLabel('מסלול', null, '#4b566d')}
         ${route.map((r,ri)=>`<div style="font-size:14.5px; color:#333; padding:3px 0;">${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</div>`).join('')}
       </div>` : ''}
