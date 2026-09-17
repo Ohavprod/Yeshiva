@@ -3231,14 +3231,10 @@ function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges)
    הקנבס לתמונה נפרדת ומדויקת לכל עמוד פותר את זה לגמרי. isFirstOverall=true
    מדלג על addPage לפני הפלח הראשון (מסמך חדש כבר מתחיל עם עמוד ריק אחד). */
 function addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, isFirstOverall){
-  // סף מינימלי לפלח: כמה פיקסלים בקנבס (בקנה מידה x2.2) — כל שארית קטנה מזה היא כמעט
-  // תמיד רק שוליים/ריווח שנשאר אחרי הקופסה האחרונה, לא תוכן ממשי. בלי הסף הזה שארית
-  // כזו עדיין מקבלת addPage() משלה, כלומר עמוד שלם שנראה כמעט ריק בסוף הקובץ.
-  const MIN_SLICE_HEIGHT_PX = 15;
   for (let i=0; i<breaks.length-1; i++){
     const sliceTopPx = breaks[i];
     const sliceHeightPx = breaks[i+1] - sliceTopPx;
-    if (sliceHeightPx <= MIN_SLICE_HEIGHT_PX) continue;
+    if (sliceHeightPx <= 2) continue;
     if (!(isFirstOverall && i===0)) pdf.addPage();
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width = canvas.width;
@@ -3257,6 +3253,13 @@ async function renderNodeToPdfBlob(node){
     ));
     const rootEl = node.firstElementChild;
     const cssWidth = rootEl.getBoundingClientRect().width;
+    const rootTop = rootEl.getBoundingClientRect().top;
+    // גובה התוכן האמיתי נמדד לפי תחתית האלמנט האחרון בפועל (למשל שורת "הופק ממערכת...")
+    // ולא לפי גובה כל הקנבס — כי לקנבס יש גם את ה-padding התחתון של המסמך (עיצוב, לא
+    // תוכן). בלי ההבחנה הזו, ה-padding הזה נחשב "פלח" בפני עצמו וקיבל עמוד PDF נפרד
+    // שנראה ריק לגמרי.
+    const lastChild = rootEl.lastElementChild;
+    const contentBottomCss = lastChild ? (lastChild.getBoundingClientRect().bottom - rootTop) : null;
     const avoidBreakRangesCss = getAvoidBreakRangesCss(rootEl);
     const canvas = await html2canvas(rootEl, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
     const { jsPDF } = window.jspdf;
@@ -3269,7 +3272,8 @@ async function renderNodeToPdfBlob(node){
     const pxPerPt = canvas.width / imgWidth;
     const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
     const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
-    const breaks = computePageBreaksPx(canvas.height, usablePageHeightPx, avoidBreakRanges);
+    const contentHeightPx = contentBottomCss ? Math.min(canvas.height, Math.ceil(contentBottomCss*scale) + 6) : canvas.height;
+    const breaks = computePageBreaksPx(contentHeightPx, usablePageHeightPx, avoidBreakRanges);
     addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, true);
     return pdf.output('blob');
   } finally {
@@ -3400,6 +3404,9 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       ));
       const rootEl = node.firstElementChild;
       const cssWidth = rootEl.getBoundingClientRect().width;
+      const rootTop = rootEl.getBoundingClientRect().top;
+      const lastChild = rootEl.lastElementChild;
+      const contentBottomCss = lastChild ? (lastChild.getBoundingClientRect().bottom - rootTop) : null;
       const avoidBreakRangesCss = getAvoidBreakRangesCss(rootEl);
       const canvas = await html2canvas(rootEl, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
       const imgWidth = pageWidth - margin*2;
@@ -3407,7 +3414,8 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       const pxPerPt = canvas.width / imgWidth;
       const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
       const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
-      const breaks = computePageBreaksPx(canvas.height, usablePageHeightPx, avoidBreakRanges);
+      const contentHeightPx = contentBottomCss ? Math.min(canvas.height, Math.ceil(contentBottomCss*scale) + 6) : canvas.height;
+      const breaks = computePageBreaksPx(contentHeightPx, usablePageHeightPx, avoidBreakRanges);
       addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, firstPage);
       firstPage = false;
     } finally {
@@ -3467,7 +3475,9 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     </div>`;
   // תגית-כותרת בולטת (רקע צבעוני מלא) לתת-קבוצות בתוך מדור — למשל "כיתות" / "צוות" /
   // "חובשים" / "מע\"רים" — כדי שבאמת תיראה ככותרת ולא כשורת טקסט קטנה כמו שאר התוכן
-  const groupLabel = (text, count, color) => `<div style="display:inline-block; white-space:nowrap; box-sizing:border-box; height:28px; line-height:28px; background:${color||'#1c7a7a'}; color:#fff; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; padding:0 16px; border-radius:8px; margin-bottom:10px;">${esc(text)}${count!=null?` (${count})`:''}</div>`;
+  // תגית קבוצה פשוטה: פס צבע אנכי דק בצד + טקסט מודגש בצבע — בלי קופסת רקע עם טקסט לבן
+  // בתוכה. כך אין תלות בריכוז אנכי מדויק של טקסט בתוך רקע (שהיה בעייתי בצילום ל-PDF).
+  const groupLabel = (text, count, color) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="display:inline-block; width:4px; height:15px; background:${color||'#1c7a7a'}; border-radius:2px;"></span><span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:${color||'#1c7a7a'};">${esc(text)}${count!=null?` (${count})`:''}</span></div>`;
   const notesHtml = generalNotes ? `<p style="font-size:15px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:14px; margin:0;">אין הערות נוספות.</p>`;
 
   // אוטובוסים ואחראים + חלוקת נוסעים — מאוחד לכרטיס אחד לכל אוטובוס (לא שני מדורים
@@ -3513,7 +3523,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
           <span style="font-weight:400; font-size:14px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
         </div>
         <div style="flex-shrink:0; white-space:nowrap;">
-          <span style="display:inline-block; white-space:nowrap; box-sizing:border-box; height:34px; line-height:34px; font-size:15px; font-weight:800; color:#16223d; background:#e0e8f5; padding:0 18px; border-radius:20px;">${occ} / ${cap} מקומות</span>
+          <span style="font-family:'Rubik',Arial,sans-serif; font-size:16px; font-weight:800; color:${occ>cap?'#b3372e':'#16223d'};">${occ} <span style="font-weight:600; color:#4b566d; font-size:14px;">/ ${cap} מקומות</span></span>
         </div>
       </div>
       <div class="pdf-avoid-break" style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
