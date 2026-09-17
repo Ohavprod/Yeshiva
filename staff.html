@@ -3458,7 +3458,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const totalTravelers = buses.reduce((sum,b)=> sum + (b.assigned||[]).reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0), 0);
   const assignmentSectionHtml = assignmentHtml + (buses.length ? `
     <div style="background:#16223d; border-radius:10px; padding:12px 16px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
-      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:#fff;">סה"כ משתתפים באוטובוסים</span>
+      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:#fff;">סה"כ נוסעים בכלל אוטובוסים</span>
       <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:17px; color:#fff;">${totalTravelers}</span>
     </div>` : '');
   const medicsHtml = medics.length ? medics.map(m=>`
