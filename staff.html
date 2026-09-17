@@ -3442,88 +3442,121 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
   const section = (title, bodyHtml) => `
-    <div style="margin-bottom:22px;">
-      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#16223d; border-bottom:2px solid #1c7a7a; padding-bottom:6px; margin-bottom:10px;">${esc(title)}</div>
+    <div style="margin-bottom:26px;">
+      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:18px; color:#16223d; border-bottom:2px solid #1c7a7a; padding-bottom:8px; margin-bottom:12px;">${esc(title)}</div>
       ${bodyHtml}
     </div>`;
-  const notesHtml = generalNotes ? `<p style="font-size:14px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:13px; margin:0;">אין הערות נוספות.</p>`;
+  const notesHtml = generalNotes ? `<p style="font-size:15px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:14px; margin:0;">אין הערות נוספות.</p>`;
   const busesHtml = buses.length ? buses.map(b=>{
     const route = b.route || [];
     return `
-    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
-      <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:12px; color:#4b566d;">· ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span></div>
-      <div style="font-size:13px; margin-top:6px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
-      ${b.captain_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
-      ${b.driver_name || b.driver_phone ? `<div style="font-size:13px; margin-top:6px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג</div>` : ''}
-      ${b.driver_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
-      ${b.notes ? `<div style="font-size:13px; margin-top:8px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
-      ${route.length ? `<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #dde4ee;">
-        <div style="font-size:12.5px; font-weight:700; color:#16203a; margin-bottom:4px;">מסלול:</div>
-        ${route.map((r,ri)=>`<div style="font-size:12.5px; color:#333;">${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</div>`).join('')}
+    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
+      <div style="font-weight:700; font-size:15px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:13px; color:#4b566d;">· ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span></div>
+      <div style="font-size:14px; margin-top:7px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
+      ${b.captain_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+      ${b.driver_name || b.driver_phone ? `<div style="font-size:14px; margin-top:7px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג</div>` : ''}
+      ${b.driver_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
+      ${b.notes ? `<div style="font-size:14px; margin-top:9px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+      ${route.length ? `<div style="margin-top:9px; padding-top:9px; border-top:1px dashed #dde4ee;">
+        <div style="font-size:13.5px; font-weight:700; color:#16203a; margin-bottom:5px;">מסלול:</div>
+        ${route.map((r,ri)=>`<div style="font-size:13.5px; color:#333;">${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</div>`).join('')}
       </div>` : ''}
     </div>`;
-  }).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
-  // חלוקת אוטובוסים: מי נמצא באיזה אוטובוס (כיתות שלמות/צוות/חובשים/הורים מלווים),
-  // כמה יש בכל אוטובוס, וסה"כ משתתפים בכל האוטובוסים ביחד בסוף. מוצג כטבלה מסודרת
-  // בעמודות (סוג/שם/פרטים) — לא כפסקת בולטים רציפה — כדי שיהיה ברור בעין אחת מי
-  // נמצא באיזה אוטובוס, ולא רק כטקסט זורם.
+  }).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
+  // חלוקת אוטובוסים: כרטיס גדול וברור לכל אוטובוס — אחראי האוטובוס וטלפונו תמיד
+  // ראשונים ומודגשים (בדיוק כמו בכרטיס עצמו למעלה, כדי שלא יצטרכו לגלול בין שני
+  // מקומות), ואז שאר הנוסעים מקובצים לפי סוג (כיתות/צוות/חובשים ומע"רים/הורים
+  // מלווים) עם כותרת לכל קבוצה — במקום רשימה שטוחה וארוכה של הכל ביחד.
+  const PASSENGER_GROUPS = [
+    { type:'class', label:'כיתות' },
+    { type:'staff', label:'צוות' },
+    { type:'medic', label:'חובשים ומע"רים' },
+    { type:'parent', label:'הורים מלווים' },
+  ];
+  const passengerRowHtml = (a) => {
+    if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div style="display:flex; justify-content:space-between; padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
+    if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `<div style="padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(u?.full_name||'איש/אשת צוות')}</span></div>`; }
+    if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div style="padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
+    if (a.type==='parent'){ return `<div style="padding:6px 0; border-top:1px solid #eef1f6; font-size:15px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:13.5px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
+    return '';
+  };
   const assignmentHtml = buses.length ? buses.map(b=>{
     const assigned = b.assigned || [];
-    const rows = assigned.map(a=>{
-      if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return { icon:'🏫', name:`כיתה ${esc(cls?.name||'')}`, detail:`${n} תלמידים מאושרים` }; }
-      if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return { icon:'👤', name: esc(u?.full_name||'איש/אשת צוות'), detail:'צוות' }; }
-      if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return { icon:'⛑️', name: esc(m?.name||''), detail:'חובש/מע"ר' }; }
-      if (a.type==='parent'){ return { icon:'👪', name: esc(a.name||''), detail:`הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}` }; }
-      return null;
-    }).filter(Boolean);
     const occ = assigned.reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
     const cap = b.capacity || (b.vehicle_type==='minibus' ? 20 : 60);
+    const groupsHtml = PASSENGER_GROUPS.map(g=>{
+      const items = assigned.filter(a=>a.type===g.type);
+      if (!items.length) return '';
+      return `<div style="margin-top:12px;">
+        <div style="font-size:13px; font-weight:700; color:#4b566d; text-transform:none;">${g.label}</div>
+        ${items.map(passengerRowHtml).join('')}
+      </div>`;
+    }).join('');
     return `
-    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${rows.length?'8px':'0'};">
-        <div style="font-weight:800; font-size:15px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
-        <div style="font-size:12.5px; font-weight:700; color:#16223d; background:#e7ecf5; padding:6px 12px; border-radius:20px; line-height:12.5px;">${occ} / ${cap} מקומות</div>
+    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1.5px solid #dde4ee; border-radius:12px; padding:18px 20px; margin-bottom:14px;">
+      <div style="display:table; width:100%;">
+        <div style="display:table-row;">
+          <div style="display:table-cell; vertical-align:middle;">
+            <span style="font-weight:800; font-size:19px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</span>
+            <span style="font-weight:400; font-size:13.5px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
+          </div>
+          <div style="display:table-cell; vertical-align:middle; width:1%; white-space:nowrap;">
+            <span style="display:inline-block; font-size:14.5px; font-weight:800; color:#16223d; background:#e0e8f5; padding:9px 16px; border-radius:20px;">${occ} / ${cap} מקומות</span>
+          </div>
+        </div>
       </div>
-      ${rows.length ? `<table style="width:100%; border-collapse:collapse;">
-        <tbody>
-          ${rows.map(r=>`<tr style="border-top:1px solid #e3e8f0;">
-            <td style="padding:7px 6px; font-size:14px; width:26px; text-align:center;">${r.icon}</td>
-            <td style="padding:7px 6px; font-size:13px; font-weight:700; color:#16203a; white-space:nowrap;">${r.name}</td>
-            <td style="padding:7px 6px; font-size:13px; color:#4b566d;">${r.detail}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>` : `<div style="font-size:13px; color:#4b566d;">אין נוסעים משויכים לאוטובוס זה.</div>`}
+      <div style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:12px 14px; margin-top:12px;">
+        <div style="font-size:16px; font-weight:800; color:#16203a;">👤 אחראי אוטובוס: ${esc(b.captain_name||'לא נבחר')}</div>
+        ${b.captain_phone ? `<div style="font-size:17px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.captain_phone)}</div>` : ''}
+      </div>
+      ${groupsHtml || `<div style="font-size:14.5px; color:#4b566d; margin-top:12px;">אין נוסעים נוספים משויכים לאוטובוס זה.</div>`}
     </div>`;
-  }).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
+  }).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   const totalTravelers = buses.reduce((sum,b)=> sum + (b.assigned||[]).reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0), 0);
   const assignmentSectionHtml = assignmentHtml + (buses.length ? `
-    <div style="background:#16223d; border-radius:10px; padding:12px 16px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
-      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:#fff;">סך הכל נוסעים בכלל האוטובוסים</span>
-      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:17px; color:#fff;">${totalTravelers}</span>
+    <div style="background:#16223d; border-radius:12px; padding:16px 20px; margin-top:8px; display:table; width:100%;">
+      <div style="display:table-row;">
+        <div style="display:table-cell; vertical-align:middle; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#fff;">סך הכל נוסעים בכלל האוטובוסים</div>
+        <div style="display:table-cell; vertical-align:middle; width:1%; white-space:nowrap; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#fff;">${totalTravelers}</div>
+      </div>
     </div>` : '');
-  const medicsHtml = medics.length ? medics.map(m=>`
-    <div class="pdf-avoid-break" style="padding:8px 0; border-bottom:1px solid #eef1f6;">
-      <span style="font-size:14px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
-      ${m.phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
-    </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
+  // חובשים ומע"רים: מחולק לכותרות נפרדות (חובשים / מע"רים) לפי שדה התפקיד החופשי
+  // שהוזן, כדי שיהיה ברור בעין אחת מי חובש ומי מע"ר — לא רשימה מעורבת אחת
+  const medicGroupDefs = [
+    { label:'חובשים', match: m => (m.role||'').includes('חובש') },
+    { label:'מע"רים', match: m => (m.role||'').includes('מע"ר') || (m.role||'').includes('מער') },
+  ];
+  const medicRowHtml = (m) => `
+    <div class="pdf-avoid-break" style="padding:9px 0; border-bottom:1px solid #eef1f6;">
+      <span style="font-size:15px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
+      ${m.phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
+    </div>`;
+  const medicGroups = medicGroupDefs.map(g=>({ ...g, items: medics.filter(g.match) }));
+  const otherMedics = medics.filter(m=> !medicGroups.some(g=>g.items.includes(m)));
+  if (otherMedics.length) medicGroups.push({ label:'אחר', items: otherMedics });
+  const medicsHtml = medics.length ? medicGroups.filter(g=>g.items.length).map(g=>`
+    <div style="margin-bottom:14px;">
+      <div style="font-size:14px; font-weight:700; color:#4b566d; margin-bottom:4px;">${esc(g.label)} (${g.items.length})</div>
+      ${g.items.map(medicRowHtml).join('')}
+    </div>`).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
         <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
         <div>
           <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
-          <div style="font-size:13px; color:#4b566d; margin-top:2px;">פרטים נלווים לטיול</div>
+          <div style="font-size:14px; color:#4b566d; margin-top:2px;">פרטים נלווים לטיול</div>
         </div>
       </div>
-      <h1 style="font-size:22px; margin:0 0 8px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
-      <div style="font-size:13px; color:#4b566d; margin-bottom:24px;">
+      <h1 style="font-size:23px; margin:0 0 8px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
+      <div style="font-size:14px; color:#4b566d; margin-bottom:24px;">
         ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
       </div>
       ${section('אוטובוסים ואחראים', busesHtml)}
       ${section('חלוקת אוטובוסים', assignmentSectionHtml)}
       ${section('חובשים ומע"רים', medicsHtml)}
       ${section('הערות נוספות', notesHtml)}
-      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:12px; color:#4b566d; text-align:center;">
         הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
       </div>
     </div>`;
@@ -3938,6 +3971,15 @@ async function renderTripLogisticsCard(card, trip){
       if (a.type==='staff') assignedStaffUids.add(a.uid);
       if (a.type==='medic') assignedMedicIds.add(a.medic_id);
     }));
+    // חובשים ומע"רים מקובצים לפי שדה התפקיד החופשי — כדי שיהיה ברור בעין אחת מי
+    // חובש ומי מע"ר, במקום רשימה מעורבת אחת
+    const medicDisplayGroups = [
+      { label:'חובשים', items: medics.filter(m=> (m.role||'').includes('חובש')) },
+      { label:'מע"רים', items: medics.filter(m=> (m.role||'').includes('מע"ר') || (m.role||'').includes('מער')) },
+    ];
+    const groupedMedicIds = new Set(medicDisplayGroups.flatMap(g=>g.items).map(m=>m.id));
+    const otherMedicItems = medics.filter(m=> !groupedMedicIds.has(m.id));
+    if (otherMedicItems.length) medicDisplayGroups.push({ label:'אחר', items: otherMedicItems });
     card.innerHTML = `
       <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.wallet}</span> ניהול טיול</h3>
 
@@ -4019,9 +4061,12 @@ async function renderTripLogisticsCard(card, trip){
               <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
                 <b style="font-size:.88rem;">מסלול</b>
                 <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
-                  ${route.length ? route.map((r,ri)=>`<div style="display:flex; justify-content:space-between; align-items:center; font-size:.85rem; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px;">
+                  ${route.length ? route.map((r,ri)=>`<div class="stop-row" data-bus-idx="${bi}" data-idx="${ri}" style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:.85rem; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px;">
                     <span>${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</span>
-                    <button type="button" class="icon-btn call del-stop" data-bus-idx="${bi}" data-idx="${ri}" title="מחיקה">${ICON.trash}</button>
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                      <button type="button" class="icon-btn call edit-stop" data-bus-idx="${bi}" data-idx="${ri}" title="עריכה">${ICON.edit}</button>
+                      <button type="button" class="icon-btn call del-stop" data-bus-idx="${bi}" data-idx="${ri}" title="מחיקה">${ICON.trash}</button>
+                    </div>
                   </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.8rem; margin:2px 0;">אין עדיין תחנות במסלול.</p>'}
                 </div>
                 <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
@@ -4107,16 +4152,20 @@ async function renderTripLogisticsCard(card, trip){
       <div class="meeting-section">
         <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>חובשים ומע"רים</span></div>
         <div id="medicsList">
-          ${medics.length ? medics.map((m,i)=>`
-            <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-              <div>
-                <div style="font-size:.98rem;"><b>${esc(m.name)}</b>${m.role?` <span style="color:var(--ink-soft); font-size:.82rem;">· ${esc(m.role)}</span>`:''}</div>
-                ${m.phone ? `<div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
-              </div>
-              <div style="display:flex; gap:6px;">
-                ${m.phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(m.phone)}" target="_blank" title="וואטסאפ">${WA_ICON_SVG}</a>` : ''}
-                <button type="button" class="icon-btn call del-medic" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
-              </div>
+          ${medics.length ? medicDisplayGroups.filter(g=>g.items.length).map(g=>`
+            <div style="margin-bottom:12px;">
+              <div style="font-size:.85rem; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">${esc(g.label)} (${g.items.length})</div>
+              ${g.items.map(m=>`
+                <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                  <div>
+                    <div style="font-size:.98rem;"><b>${esc(m.name)}</b>${m.role?` <span style="color:var(--ink-soft); font-size:.82rem;">· ${esc(m.role)}</span>`:''}</div>
+                    ${m.phone ? `<div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
+                  </div>
+                  <div style="display:flex; gap:6px;">
+                    ${m.phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(m.phone)}" target="_blank" title="וואטסאפ">${WA_ICON_SVG}</a>` : ''}
+                    <button type="button" class="icon-btn call del-medic" data-id="${m.id}" title="מחיקה">${ICON.trash}</button>
+                  </div>
+                </div>`).join('')}
             </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין חובשים/מע"רים רשומים לטיול.</p>'}
         </div>
         <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
@@ -4211,6 +4260,26 @@ async function renderTripLogisticsCard(card, trip){
         await saveLogistics();
       });
     });
+    card.querySelectorAll('.edit-stop').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const bi = Number(btn.dataset.busIdx), idx = Number(btn.dataset.idx);
+        const stop = buses[bi].route[idx];
+        const row = card.querySelector(`.stop-row[data-bus-idx="${bi}"][data-idx="${idx}"]`);
+        row.outerHTML = `<div class="stop-row" data-bus-idx="${bi}" data-idx="${idx}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <input class="stop-time edit-stop-time" type="time" value="${esc(stop.time||'')}" style="max-width:110px;">
+          <input class="stop-location edit-stop-location" type="text" value="${esc(stop.location||'')}" style="flex:1; min-width:150px;">
+          <button type="button" class="icon-btn call save-stop-edit" data-bus-idx="${bi}" data-idx="${idx}" title="שמירה">${ICON.check}</button>
+        </div>`;
+        card.querySelector(`.save-stop-edit[data-bus-idx="${bi}"][data-idx="${idx}"]`).addEventListener('click', async ()=>{
+          const newRow = card.querySelector(`.stop-row[data-bus-idx="${bi}"][data-idx="${idx}"]`);
+          const time = newRow.querySelector('.edit-stop-time').value;
+          const location = newRow.querySelector('.edit-stop-location').value.trim();
+          if (!location){ toast('יש להזין תחנה/יעד'); return; }
+          buses[bi].route[idx] = { location, time: time||'' };
+          await saveLogistics();
+        });
+      });
+    });
     card.querySelectorAll('.assign-class-select').forEach(sel=>{
       sel.addEventListener('change', async ()=>{
         if (!sel.value) return;
@@ -4281,11 +4350,15 @@ async function renderTripLogisticsCard(card, trip){
       const role = document.getElementById('medic_role').value.trim();
       const phone = document.getElementById('medic_phone').value.trim();
       if (!name){ toast('יש להזין שם'); return; }
-      medics.push({ name, role, phone });
+      medics.push({ id: genToken().slice(0,8), name, role, phone });
       await saveLogistics();
     });
     card.querySelectorAll('.del-medic').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{ medics.splice(Number(btn.dataset.idx), 1); await saveLogistics(); });
+      btn.addEventListener('click', async ()=>{
+        const idx = medics.findIndex(m=>m.id===btn.dataset.id);
+        if (idx>-1) medics.splice(idx, 1);
+        await saveLogistics();
+      });
     });
     card.querySelectorAll('.send-bus-wa').forEach(btn=>{
       btn.addEventListener('click', ()=>{
