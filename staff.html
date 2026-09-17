@@ -3344,41 +3344,37 @@ function buildClassRosterPageElement(trip, g, gregDate){
         <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(g.className)}</span>
         <span style="font-size:14px; color:#cfd9ec; font-weight:600;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
       </div>
-      <table style="width:100%; border-collapse:collapse;">
-        <thead>
-          <tr>
-            <th style="padding:8px; border-bottom:2px solid #16223d; width:24px;"></th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d;">שם פרטי</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d;">שם משפחה</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:110px;">כתובת</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:110px;">רגישויות</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:130px;">אמא</th>
-            <th style="padding:8px; border-bottom:2px solid #16223d; text-align:right; font-size:12px; color:#4b566d; width:130px;">אבא</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${g.students.map((s,i)=>{
-            // כמו ב"דוח תלמידי הכיתה" (getFirstLast): קודם כל שם פרטי/משפחה השמורים בכרטיס
-            // התלמיד/ה, אם קיימים בכלל — ורק לתלמידים ישנים בלי פיצול שמור עושים ניחוש זמני
-            // מהשם המלא (מילה ראשונה = שם פרטי, השאר = שם משפחה). בלי זה, שם פרטי או משפחה
-            // עם שתי מילים (למשל "בן דוד") היה מתפצל לא נכון גם כשהיה פיצול תקין שמור בכרטיס.
-            const nameParts = (s.full_name||'').trim().split(/\s+/);
-            const hasSavedSplit = !!(s.first_name || s.last_name);
-            const firstName = hasSavedSplit ? (s.first_name||'') : (nameParts[0]||'');
-            const lastName = hasSavedSplit ? (s.last_name||'') : nameParts.slice(1).join(' ');
-            return `
-            <tr class="pdf-avoid-break">
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; color:#16223d; font-size:13px; font-weight:700; text-align:center; vertical-align:top;">${i+1}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(firstName)}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(lastName)}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:12.5px; color:#4b566d; vertical-align:top;">${esc(s.city||'—')}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:12.5px; color:${s.notes ? '#b3372e' : '#b7bfcc'}; font-weight:${s.notes?'700':'400'}; vertical-align:top;">${esc(s.notes || '—')}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; vertical-align:top;">${parentCell(s.mother_name, s.mother_phone)}</td>
-              <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; vertical-align:top;">${parentCell(s.father_name, s.father_phone)}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+      <div style="width:100%;">
+        <div style="display:flex; border-bottom:2px solid #16223d; padding-bottom:8px;">
+          <div style="width:24px; padding:0 8px;"></div>
+          <div style="flex:1; padding:0 8px; font-size:12px; color:#4b566d; text-align:right;">שם פרטי</div>
+          <div style="flex:1; padding:0 8px; font-size:12px; color:#4b566d; text-align:right;">שם משפחה</div>
+          <div style="width:110px; padding:0 8px; font-size:12px; color:#4b566d; text-align:right;">כתובת</div>
+          <div style="width:110px; padding:0 8px; font-size:12px; color:#4b566d; text-align:right;">רגישויות</div>
+          <div style="width:130px; padding:0 8px; font-size:12px; color:#4b566d; text-align:right;">אמא</div>
+          <div style="width:130px; padding:0 8px; font-size:12px; color:#4b566d; text-align:right;">אבא</div>
+        </div>
+        ${g.students.map((s,i)=>{
+          // כמו ב"דוח תלמידי הכיתה" (getFirstLast): קודם כל שם פרטי/משפחה השמורים בכרטיס
+          // התלמיד/ה, אם קיימים בכלל — ורק לתלמידים ישנים בלי פיצול שמור עושים ניחוש זמני
+          // מהשם המלא (מילה ראשונה = שם פרטי, השאר = שם משפחה). בלי זה, שם פרטי או משפחה
+          // עם שתי מילים (למשל "בן דוד") היה מתפצל לא נכון גם כשהיה פיצול תקין שמור בכרטיס.
+          const nameParts = (s.full_name||'').trim().split(/\s+/);
+          const hasSavedSplit = !!(s.first_name || s.last_name);
+          const firstName = hasSavedSplit ? (s.first_name||'') : (nameParts[0]||'');
+          const lastName = hasSavedSplit ? (s.last_name||'') : nameParts.slice(1).join(' ');
+          return `
+          <div class="pdf-avoid-break" style="display:flex; border-bottom:1px solid #dde4ee; padding:9px 0;">
+            <div style="width:24px; padding:0 8px; color:#16223d; font-size:13px; font-weight:700; text-align:center;">${i+1}</div>
+            <div style="flex:1; padding:0 8px; font-size:14px; font-weight:700; color:#16203a;">${esc(firstName)}</div>
+            <div style="flex:1; padding:0 8px; font-size:14px; font-weight:700; color:#16203a;">${esc(lastName)}</div>
+            <div style="width:110px; padding:0 8px; font-size:12.5px; color:#4b566d;">${esc(s.city||'—')}</div>
+            <div style="width:110px; padding:0 8px; font-size:12.5px; color:${s.notes ? '#b3372e' : '#b7bfcc'}; font-weight:${s.notes?'700':'400'};">${esc(s.notes || '—')}</div>
+            <div style="width:130px; padding:0 8px;">${parentCell(s.mother_name, s.mother_phone)}</div>
+            <div style="width:130px; padding:0 8px;">${parentCell(s.father_name, s.father_phone)}</div>
+          </div>`;
+        }).join('')}
+      </div>
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
         הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
       </div>
