@@ -3394,7 +3394,10 @@ async function exportTripRosterPdf(trip, approvedStudents){
 /* בונה אלמנט DOM של "מסמך פרטים נלווים" לטיול — הוצאות, אוטובוסים/אחראים, חובשים/מע"רים —
    בדיוק כמו שהם מוצגים במסך "ניהול טיול", אבל מעוצבים לדף PDF. זהו העמוד השני בקובץ
    המאוחד (עמוד ראשון הוא אישור הטיול המצורף עצמו, ר' exportTripFullPdf). */
-function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
+function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCacheRef, staffListRef){
+  approvedCountsByClass = approvedCountsByClass || {};
+  classesCacheRef = classesCacheRef || [];
+  staffListRef = staffListRef || [];
   const gregDate = trip.trip_date ? new Date(trip.trip_date).toLocaleDateString('he-IL') : '';
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
@@ -3404,15 +3407,47 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
       ${bodyHtml}
     </div>`;
   const notesHtml = generalNotes ? `<p style="font-size:14px; white-space:pre-wrap; margin:0;">${esc(generalNotes)}</p>` : `<p style="color:#4b566d; font-size:13px; margin:0;">אין הערות נוספות.</p>`;
-  const busesHtml = buses.length ? buses.map(b=>`
+  const busesHtml = buses.length ? buses.map(b=>{
+    const route = b.route || [];
+    return `
     <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
-      <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
+      <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:12px; color:#4b566d;">· ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span></div>
       <div style="font-size:13px; margin-top:6px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
       ${b.captain_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
       ${b.driver_name || b.driver_phone ? `<div style="font-size:13px; margin-top:6px;"><b>${esc(b.driver_name||'נהג')}</b> · נהג</div>` : ''}
       ${b.driver_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.driver_phone)}</div>` : ''}
       ${b.notes ? `<div style="font-size:13px; margin-top:8px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
-    </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
+      ${route.length ? `<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #dde4ee;">
+        <div style="font-size:12.5px; font-weight:700; color:#16203a; margin-bottom:4px;">מסלול:</div>
+        ${route.map((r,ri)=>`<div style="font-size:12.5px; color:#333;">${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</div>`).join('')}
+      </div>` : ''}
+    </div>`;
+  }).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
+  // חלוקת אוטובוסים: מי נמצא באיזה אוטובוס (כיתות שלמות/צוות/חובשים/הורים מלווים),
+  // כמה יש בכל אוטובוס, וסה"כ משתתפים בכל האוטובוסים ביחד בסוף
+  const assignmentHtml = buses.length ? buses.map(b=>{
+    const assigned = b.assigned || [];
+    const parts = assigned.map(a=>{
+      if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `כיתה ${esc(cls?.name||'')} — ${n} תלמידים מאושרים`; }
+      if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `${esc(u?.full_name||'איש/אשת צוות')} — צוות`; }
+      if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `${esc(m?.name||'')} — חובש/מע"ר`; }
+      if (a.type==='parent'){ return `${esc(a.name||'')} — הורה מלווה (אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''})`; }
+      return '';
+    }).filter(Boolean);
+    const occ = assigned.reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
+    const cap = b.capacity || (b.vehicle_type==='minibus' ? 20 : 60);
+    return `
+    <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
+      <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:12px; color:#4b566d;">· ${occ} / ${cap} מקומות</span></div>
+      ${parts.length ? `<ul style="margin:8px 0 0; padding-right:18px; font-size:13px;">${parts.map(p=>`<li style="margin-bottom:2px;">${p}</li>`).join('')}</ul>` : `<div style="font-size:13px; color:#4b566d; margin-top:6px;">אין נוסעים משויכים לאוטובוס זה.</div>`}
+    </div>`;
+  }).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
+  const totalTravelers = buses.reduce((sum,b)=> sum + (b.assigned||[]).reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0), 0);
+  const assignmentSectionHtml = assignmentHtml + (buses.length ? `
+    <div style="background:#16223d; border-radius:10px; padding:12px 16px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:#fff;">סה"כ משתתפים באוטובוסים</span>
+      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:17px; color:#fff;">${totalTravelers}</span>
+    </div>` : '');
   const medicsHtml = medics.length ? medics.map(m=>`
     <div style="padding:8px 0; border-bottom:1px solid #eef1f6;">
       <span style="font-size:14px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
@@ -3432,6 +3467,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes){
         ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
       </div>
       ${section('אוטובוסים ואחראים', busesHtml)}
+      ${section('חלוקת אוטובוסים', assignmentSectionHtml)}
       ${section('חובשים ומע"רים', medicsHtml)}
       ${section('הערות נוספות', notesHtml)}
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
@@ -3458,6 +3494,20 @@ async function exportTripFullPdf(trip){
     const buses = logData.buses || [];
     const medics = logData.medics || [];
 
+    // צריך לשם "חלוקת אוטובוסים": מספר המאושרים בכל כיתה (לחישוב תפוסה) ורשימת אנשי הצוות
+    let approvedCountsByClass = {};
+    try{
+      const ctx = await loadTripAttendanceContextCached(trip);
+      (ctx.approvedStudents||[]).forEach(s=>{ approvedCountsByClass[s.class_id] = (approvedCountsByClass[s.class_id]||0) + 1; });
+    }catch(err){ /* אם הטעינה נכשלה, החלוקה עדיין תוצג אבל בלי מספרי תלמידים מדויקים */ }
+    if (!classesCache.length){
+      classesCache = sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
+    }
+    if (!window._staffListCache){
+      const usersSnap = await db.collection('users').orderBy('full_name').get();
+      window._staffListCache = usersSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+    }
+
     const { PDFDocument } = PDFLib;
     const mergedPdf = await PDFDocument.create();
 
@@ -3481,7 +3531,7 @@ async function exportTripFullPdf(trip){
       }
     }
 
-    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes);
+    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCache, window._staffListCache);
     const logisticsBlob = await renderNodeToPdfBlob(node);
     const logisticsBytes = await logisticsBlob.arrayBuffer();
     const logisticsDoc = await PDFDocument.load(logisticsBytes);
@@ -3498,6 +3548,95 @@ async function exportTripFullPdf(trip){
     setTimeout(()=> URL.revokeObjectURL(url), 3000);
     if (!cert) toast('הקובץ הורד — שימו לב: טרם צורף אישור טיול רשמי, כך שהוא כולל רק את עמוד הפרטים הנלווים');
   }catch(err){ toast('שגיאה בהכנת ה-PDF המאוחד: '+err.message); }
+}
+
+function fmtExpenseAmountStatic(n){ const v = Number(n)||0; return v % 1 === 0 ? v.toLocaleString('he-IL') : v.toFixed(2); }
+/* בונה אלמנט DOM (יכול להתפרש על כמה עמודים) עם כל פירוט ההוצאות של הטיול — תיאור,
+   סכום, ומיד מתחתיו צילום הקבלה עצמה (אם צורפה כתמונה). קבלה שצורפה כקובץ PDF (למשל
+   קבלה סרוקה) לא ניתנת להטמעה כתמונה בתוך ה-HTML, ולכן רק מוזכרת כאן עם הפניה
+   לעמודים הנוספים בסוף הקובץ — ר' exportTripExpensesPdf שמצרף אותם בפועל. */
+function buildExpensesReportElement(trip, expenses, total){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
+  const rowHtml = (ex, i) => {
+    const isPdfReceipt = !!ex.receipt_url && /\.pdf(\?|$)/i.test(ex.receipt_filename || ex.receipt_url);
+    return `
+    <div style="margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid #dde4ee;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div style="font-size:15px; font-weight:700; color:#16203a;">${i+1}. ${esc(ex.description||'')}</div>
+        <div style="font-size:15px; font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(ex.amount))}</div>
+      </div>
+      ${ex.receipt_url
+        ? (isPdfReceipt
+            ? `<div style="margin-top:8px; font-size:12.5px; color:#4b566d;">קבלה מצורפת כקובץ PDF — בעמודים הבאים בסוף המסמך.</div>`
+            : `<img src="${ex.receipt_url}" crossorigin="anonymous" style="max-width:100%; max-height:520px; margin-top:10px; border:1px solid #dde4ee; border-radius:8px; object-fit:contain; display:block;">`)
+        : `<div style="margin-top:8px; font-size:12.5px; color:#b7bfcc;">לא צורפה קבלה להוצאה זו.</div>`}
+    </div>`;
+  };
+  wrap.innerHTML = `
+    <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:13px; color:#4b566d; margin-top:2px;">דוח הוצאות לטיול</div>
+        </div>
+      </div>
+      <h1 style="font-size:22px; margin:0 0 8px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
+      <div style="font-size:13px; color:#4b566d; margin-bottom:24px;">
+        ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
+      </div>
+      ${expenses.map(rowHtml).join('')}
+      <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#fff;">סה"כ הוצאות</span>
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">₪${esc(fmtExpenseAmountStatic(total))}</span>
+      </div>
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
+      </div>
+    </div>`;
+  return wrap;
+}
+/* מוריד PDF אחד עם כל פירוט ההוצאות של הטיול, כולל צילומי הקבלות מוטמעים בפועל בתוך
+   העמודים (לא רק קישור חיצוני) — קבלות שהועלו כתמונה מוצגות ישירות מתחת לכל הוצאה.
+   קבלות שהועלו כקובץ PDF (למשל קבלה סרוקה) לא ניתנות להטמעה כתמונה, ולכן מצורפות
+   כעמודים מלאים נוספים בסוף הקובץ — באותה טכניקת מיזוג pdf-lib כמו exportTripFullPdf. */
+async function exportTripExpensesPdf(trip, expenses){
+  if (!expenses.length){ toast('אין עדיין הוצאות רשומות לטיול זה'); return; }
+  toast('מכין PDF…');
+  try{
+    const total = expenses.reduce((s,e)=> s + (Number(e.amount)||0), 0);
+    const node = buildExpensesReportElement(trip, expenses, total);
+    const summaryBlob = await renderNodeToPdfBlob(node);
+
+    const { PDFDocument } = PDFLib;
+    const mergedPdf = await PDFDocument.create();
+    const summaryBytes = await summaryBlob.arrayBuffer();
+    const summaryDoc = await PDFDocument.load(summaryBytes);
+    const summaryPages = await mergedPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
+    summaryPages.forEach(pg=> mergedPdf.addPage(pg));
+
+    // קבלות שהועלו כקובץ PDF (לא תמונה) — מצורפות כעמודים מלאים נוספים בסוף הקובץ
+    const pdfReceipts = expenses.filter(ex=> ex.receipt_url && /\.pdf(\?|$)/i.test(ex.receipt_filename || ex.receipt_url));
+    for (const ex of pdfReceipts){
+      try{
+        const res = await fetch(ex.receipt_url);
+        const bytes = await res.arrayBuffer();
+        const receiptDoc = await PDFDocument.load(bytes).catch(()=>null);
+        if (receiptDoc){
+          const copied = await mergedPdf.copyPages(receiptDoc, receiptDoc.getPageIndices());
+          copied.forEach(pg=> mergedPdf.addPage(pg));
+        }
+      }catch(err){ /* קבלה בודדת שנכשלה בטעינה לא אמורה לעצור את כל הדוח */ }
+    }
+
+    const finalBytes = await mergedPdf.save();
+    const blob = new Blob([finalBytes], { type:'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `דוח הוצאות - ${trip.title}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  }catch(err){ toast('שגיאה ביצירת דוח ההוצאות: '+err.message); }
 }
 
 /* חלון "שליחה לכל הממתינים" — לא באמת אוטומטי (וואטסאפ מחייב אישור שליחה ידני בכל הודעה),
@@ -3700,6 +3839,12 @@ async function renderTripLogisticsCard(card, trip){
   const data = logSnap.exists ? logSnap.data() : {};
   const buses = data.buses || [];
   const medics = data.medics || [];
+  const expenses = data.expenses || [];
+  const fmtExpenseAmount = (n) => { const v = Number(n)||0; return v % 1 === 0 ? v.toLocaleString('he-IL') : v.toFixed(2); };
+  // לכל חובש/מע"ר חייב להיות מזהה יציב כדי לשייך אותו/ה לאוטובוס בלי תלות במיקום
+  // ברשימה (שיכול להשתנות אם נמחק מישהו) — לרשומות ישנות בלי מזהה, יוצרים אחד עכשיו
+  // (יישמר בשמירה הבאה, לא דורש פעולה נוספת מהמשתמש/ת).
+  medics.forEach(m=>{ if (!m.id) m.id = genToken().slice(0,8); });
 
   if (!window._staffListCache){
     const usersSnap = await db.collection('users').orderBy('full_name').get();
@@ -3707,18 +3852,101 @@ async function renderTripLogisticsCard(card, trip){
   }
   const staffList = window._staffListCache;
 
+  // מספר התלמידים המאושרים בכל כיתה בטיול הזה — כדי לדעת כמה מקומות "שיוך כיתה
+  // שלמה לאוטובוס" תופס בפועל, ואילו כיתות בכלל שייכות לטיול. מבוסס על אותו מקור
+  // חי (loadTripAttendanceContextCached) ששאר מסכי הטיול משתמשים בו. גם רשימת
+  // התלמידים המאושרים לפי כיתה — כדי לאפשר לבחור "אבא/אמא של איזה תלמיד" בשיוך הורה מלווה.
+  let approvedCountsByClass = {}, tripClassIds = [], approvedStudentsByClass = {};
+  try{
+    const ctx = await loadTripAttendanceContextCached(trip);
+    tripClassIds = ctx.tripClassIds || [];
+    (ctx.approvedStudents||[]).forEach(s=>{
+      approvedCountsByClass[s.class_id] = (approvedCountsByClass[s.class_id]||0) + 1;
+      (approvedStudentsByClass[s.class_id] = approvedStudentsByClass[s.class_id] || []).push(s);
+    });
+  }catch(err){ /* אם הטעינה נכשלה, שיוך כיתות פשוט לא יוצע — שאר ניהול הטיול עדיין עובד */ }
+  if (!classesCache.length){
+    classesCache = sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
+  }
+  const tripClasses = tripClassIds.map(cid=> classesCache.find(c=>c.id===cid)).filter(Boolean);
+
+  const BUS_CAPACITY = { bus:60, minibus:20 };
+  const busCapacity = (b) => b.capacity || BUS_CAPACITY[b.vehicle_type] || BUS_CAPACITY.bus;
+  const busOccupied = (b) => (b.assigned||[]).reduce((sum,a)=> sum + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
+  // אילו כיתות/אנשי צוות/חובשים כבר משויכים לאוטובוס כלשהו — כדי לא להציע אותם
+  // שוב באוטובוס אחר (כל כיתה/איש צוות/חובש משויכים לאוטובוס אחד בלבד)
+  const assignedClassIds = new Set(), assignedStaffUids = new Set(), assignedMedicIds = new Set();
+  buses.forEach(b=> (b.assigned||[]).forEach(a=>{
+    if (a.type==='class') assignedClassIds.add(a.class_id);
+    if (a.type==='staff') assignedStaffUids.add(a.uid);
+    if (a.type==='medic') assignedMedicIds.add(a.medic_id);
+  }));
+
   const render = () => {
     card.innerHTML = `
       <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.wallet}</span> ניהול טיול</h3>
 
       <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.wallet}</span><span>הוצאות</span></div>
+        <div id="expensesList">
+          ${expenses.length ? expenses.map((ex,i)=>`
+            <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+                <div>
+                  <b>${esc(ex.description||'הוצאה')}</b>
+                  <div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">₪${esc(fmtExpenseAmount(ex.amount))}</div>
+                </div>
+                <button type="button" class="icon-btn call del-expense" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+              </div>
+              <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                ${ex.receipt_url ? `
+                  <a class="btn btn-outline btn-sm" href="${ex.receipt_url}" target="_blank" rel="noopener">${ICON.download} צפייה בקבלה</a>
+                  <button type="button" class="btn btn-outline btn-sm upload-receipt" data-idx="${i}">${ICON.upload} החלפת קבלה</button>
+                ` : `
+                  <button type="button" class="btn btn-outline btn-sm upload-receipt" data-idx="${i}">${ICON.upload} צירוף קבלה</button>
+                  <span style="color:var(--ink-soft); font-size:.8rem;">טרם צורפה קבלה</span>
+                `}
+              </div>
+            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין הוצאות רשומות לטיול.</p>'}
+        </div>
+        ${expenses.length ? `<div style="text-align:left; font-weight:700; margin-top:6px;">סה"כ הוצאות: ₪${esc(fmtExpenseAmount(expenses.reduce((s,e)=> s+(Number(e.amount)||0),0)))}</div>` : ''}
+        <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
+          <div class="field"><label>תיאור ההוצאה</label><input id="expense_desc" placeholder="לדוגמה: כניסה לאתר, הסעה, ציוד..."></div>
+          <div class="field"><label>סכום (₪)</label><input id="expense_amount" type="number" step="0.01" placeholder="0"></div>
+          <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addExpenseBtn">${ICON.plus} הוספת הוצאה</button></div>
+        </div>
+        ${expenses.length ? `<button type="button" class="btn btn-outline btn-sm" id="exportExpensesBtn" style="margin-top:10px;">${ICON.download} ייצוא דוח הוצאות (PDF + צילומי קבלות)</button>` : ''}
+        <div id="expenseUploadMsg" style="margin-top:8px; font-size:.82rem;"></div>
+      </div>
+
+      <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
         <div class="meeting-section-head"><span class="ms-icon">${ICON.bus}</span><span>אוטובוסים ואחראים</span></div>
         <div id="busesList">
-          ${buses.length ? buses.map((b,i)=>`
+          ${buses.length ? buses.map((b,bi)=>{
+            const cap = busCapacity(b);
+            const occ = busOccupied(b);
+            const remaining = cap - occ;
+            const route = b.route || [];
+            const assigned = b.assigned || [];
+            const availableClasses = tripClasses.filter(c=> !assignedClassIds.has(c.id) && (approvedCountsByClass[c.id]||0) > 0 && (approvedCountsByClass[c.id]||0) <= remaining);
+            const availableStaff = staffList.filter(u=> !assignedStaffUids.has(u.id) && remaining >= 1);
+            const availableMedics = medics.filter(m=> !assignedMedicIds.has(m.id) && remaining >= 1);
+            const chipHtml = (a, ai) => {
+              let label = '';
+              if (a.type==='class'){ const cls = classesCache.find(c=>c.id===a.class_id); label = `🏫 ${esc(cls?.name||'כיתה')} — ${approvedCountsByClass[a.class_id]||0} מאושרים`; }
+              else if (a.type==='staff'){ const u = staffList.find(u=>u.id===a.uid); label = `👤 ${esc(u?.full_name||'איש/אשת צוות')} · צוות`; }
+              else if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); label = `⛑️ ${esc(m?.name||'חובש/מע"ר')}`; }
+              else if (a.type==='parent'){ label = `👪 ${esc(a.name||'הורה מלווה')} — הורה של ${esc(a.student_name||'')}${a.class_name?` (${esc(a.class_name)})`:''}`; }
+              return `<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:.85rem;">
+                <span>${label}</span>
+                <button type="button" class="icon-btn call del-assigned" data-bus-idx="${bi}" data-assign-idx="${ai}" title="הסרה">${ICON.trash}</button>
+              </div>`;
+            };
+            return `
             <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:10px;">
               <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <b style="display:flex; align-items:center; gap:6px;">${ICON.bus} ${esc(b.name||'אוטובוס')}</b>
-                <button type="button" class="icon-btn call del-bus" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+                <b style="display:flex; align-items:center; gap:6px;">${ICON.bus} ${esc(b.name||'אוטובוס')}<span style="color:var(--ink-soft); font-size:.78rem; font-weight:400;">· ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'} (עד ${cap} מקומות)</span></b>
+                <button type="button" class="icon-btn call del-bus" data-idx="${bi}" title="מחיקה">${ICON.trash}</button>
               </div>
               <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
                 <div>
@@ -3731,10 +3959,79 @@ async function renderTripLogisticsCard(card, trip){
                 </div>` : ''}
               </div>
               ${b.notes ? `<div style="font-size:.88rem; margin-top:10px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
-              ${b.captain_phone ? `<button type="button" class="btn btn-outline btn-sm send-bus-wa" data-idx="${i}" style="margin-top:10px;">${WA_ICON_SVG} שליחת הנחיות בוואטסאפ</button>` : ''}
-            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין אוטובוסים מוגדרים.</p>'}
+              ${b.captain_phone ? `<button type="button" class="btn btn-outline btn-sm send-bus-wa" data-idx="${bi}" style="margin-top:10px;">${WA_ICON_SVG} שליחת הנחיות בוואטסאפ</button>` : ''}
+
+              <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+                <b style="font-size:.88rem;">מסלול</b>
+                <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
+                  ${route.length ? route.map((r,ri)=>`<div style="display:flex; justify-content:space-between; align-items:center; font-size:.85rem; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px;">
+                    <span>${ri+1}. ${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.location)}</span>
+                    <button type="button" class="icon-btn call del-stop" data-bus-idx="${bi}" data-idx="${ri}" title="מחיקה">${ICON.trash}</button>
+                  </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.8rem; margin:2px 0;">אין עדיין תחנות במסלול.</p>'}
+                </div>
+                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                  <input class="stop-time" data-bus-idx="${bi}" type="time" style="max-width:110px;">
+                  <input class="stop-location" data-bus-idx="${bi}" placeholder="תחנה/יעד (למשל: יציאה מהישיבה, צפת, חזרה לישיבה)" style="flex:1; min-width:200px;">
+                  <button type="button" class="btn btn-outline btn-sm add-stop-btn" data-bus-idx="${bi}">${ICON.plus} הוספה</button>
+                </div>
+              </div>
+
+              <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <b style="font-size:.88rem;">שיוך נוסעים</b>
+                  <span style="font-size:.85rem; font-weight:700; color:${occ>cap?'var(--danger)':'var(--navy)'};">${occ} / ${cap} מקומות</span>
+                </div>
+                <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
+                  ${assigned.length ? assigned.map((a,ai)=> chipHtml(a, ai)).join('') : '<p style="color:var(--ink-soft); font-size:.8rem; margin:2px 0;">אין עדיין נוסעים משויכים.</p>'}
+                </div>
+                <div class="form-grid" style="margin-top:10px;">
+                  <div class="field"><label>שיוך כיתה שלמה (כל המאושרים)</label>
+                    <select class="assign-class-select" data-bus-idx="${bi}">
+                      <option value="">בחירת כיתה</option>
+                      ${availableClasses.map(c=>`<option value="${c.id}">${esc(c.name)} (${approvedCountsByClass[c.id]||0} מאושרים)</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="field"><label>שיוך איש/אשת צוות</label>
+                    <select class="assign-staff-select" data-bus-idx="${bi}">
+                      <option value="">בחירת איש/אשת צוות</option>
+                      ${availableStaff.map(u=>`<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="field"><label>שיוך חובש/מע"ר</label>
+                    <select class="assign-medic-select" data-bus-idx="${bi}">
+                      <option value="">בחירת חובש/מע"ר</option>
+                      ${availableMedics.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="field"><label>הוספת הורה מלווה</label>
+                    ${(assigned.filter(a=>a.type==='class').length) ? `
+                      <div style="display:flex; flex-direction:column; gap:6px;">
+                        <select class="parent-class-select" data-bus-idx="${bi}">
+                          <option value="">של איזו כיתה?</option>
+                          ${assigned.filter(a=>a.type==='class').map(a=>{ const cls = classesCache.find(c=>c.id===a.class_id); return `<option value="${a.class_id}">${esc(cls?.name||'')}</option>`; }).join('')}
+                        </select>
+                        <select class="parent-student-select" data-bus-idx="${bi}" disabled>
+                          <option value="">קודם לבחור כיתה</option>
+                        </select>
+                        <div style="display:flex; gap:6px;">
+                          <input class="assign-parent-name" data-bus-idx="${bi}" placeholder="שם ההורה המלווה" ${remaining<1?'disabled':''}>
+                          <button type="button" class="btn btn-outline btn-sm add-parent-btn" data-bus-idx="${bi}" ${remaining<1?'disabled':''}>${ICON.plus}</button>
+                        </div>
+                      </div>
+                    ` : `<div style="font-size:.8rem; color:var(--ink-soft);">יש לשייך קודם כיתה לאוטובוס זה, כדי לבחור של איזה תלמיד/ה ההורה המלווה.</div>`}
+                  </div>
+                </div>
+              </div>
+            </div>`;
+          }).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין אוטובוסים מוגדרים.</p>'}
         </div>
         <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
+          <div class="field"><label>סוג רכב</label>
+            <select id="bus_vehicle_type">
+              <option value="bus">אוטובוס (עד 60 מקומות)</option>
+              <option value="minibus">מיניבוס (עד 20 מקומות)</option>
+            </select>
+          </div>
           <div class="field"><label>שם/מספר אוטובוס</label><input id="bus_name" placeholder="לדוגמה: אוטובוס 1"></div>
           <div class="field"><label>אחראי מהצוות</label>
             <select id="bus_captain">
@@ -3785,11 +4082,39 @@ async function renderTripLogisticsCard(card, trip){
       data.general_notes = document.getElementById('logistics_notes').value.trim();
       await saveLogistics();
     });
+    card.querySelector('#addExpenseBtn').addEventListener('click', async ()=>{
+      const description = document.getElementById('expense_desc').value.trim();
+      const amount = parseFloat(document.getElementById('expense_amount').value);
+      if (!description){ toast('יש להזין תיאור להוצאה'); return; }
+      expenses.push({ id: genToken().slice(0,8), description, amount: isNaN(amount) ? 0 : amount, receipt_url:'', receipt_filename:'' });
+      await saveLogistics();
+    });
+    card.querySelectorAll('.del-expense').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ expenses.splice(Number(btn.dataset.idx), 1); await saveLogistics(); });
+    });
+    card.querySelectorAll('.upload-receipt').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = Number(btn.dataset.idx);
+        const msgEl = card.querySelector('#expenseUploadMsg');
+        pickAndUploadToCloudinary({
+          accept: 'application/pdf,image/*', folder: 'yeshiva-trip-expenses', preset: CLOUDINARY_PRESET_TRIP,
+          msgEl,
+          onSuccess: async (info)=>{
+            expenses[idx].receipt_url = info.secure_url;
+            expenses[idx].receipt_filename = info.original_filename + (info.format ? '.'+info.format : '');
+            toast('הקבלה צורפה בהצלחה');
+            await saveLogistics();
+          },
+        });
+      });
+    });
+    card.querySelector('#exportExpensesBtn')?.addEventListener('click', ()=> exportTripExpensesPdf(trip, expenses));
     card.querySelector('#bus_captain').addEventListener('change', (e)=>{
       document.getElementById('bus_captain_custom_wrap').style.display = e.target.value === '__custom__' ? '' : 'none';
     });
     card.querySelector('#addBusBtn').addEventListener('click', async ()=>{
       const name = document.getElementById('bus_name').value.trim();
+      const vehicleType = document.getElementById('bus_vehicle_type').value || 'bus';
       const captainSel = document.getElementById('bus_captain');
       const captainUid = captainSel.value;
       const isCustomCaptain = captainUid === '__custom__';
@@ -3802,15 +4127,99 @@ async function renderTripLogisticsCard(card, trip){
       const notes = document.getElementById('bus_notes').value.trim();
       if (!name){ toast('יש להזין שם/מספר לאוטובוס'); return; }
       buses.push({
-        id: genToken().slice(0,8), name,
+        id: genToken().slice(0,8), name, vehicle_type: vehicleType, capacity: BUS_CAPACITY[vehicleType] || BUS_CAPACITY.bus,
         captain_uid: (captainUid && !isCustomCaptain) ? captainUid : null,
         captain_name: captainName, captain_phone: captainPhone,
         driver_name: driverName, driver_phone: driverPhone, notes,
+        assigned: [], route: [],
       });
       await saveLogistics();
     });
     card.querySelectorAll('.del-bus').forEach(btn=>{
       btn.addEventListener('click', async ()=>{ buses.splice(Number(btn.dataset.idx), 1); await saveLogistics(); });
+    });
+    card.querySelectorAll('.add-stop-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const bi = Number(btn.dataset.busIdx);
+        const time = card.querySelector(`.stop-time[data-bus-idx="${bi}"]`).value;
+        const location = card.querySelector(`.stop-location[data-bus-idx="${bi}"]`).value.trim();
+        if (!location){ toast('יש להזין תחנה/יעד'); return; }
+        buses[bi].route = buses[bi].route || [];
+        buses[bi].route.push({ location, time: time||'' });
+        await saveLogistics();
+      });
+    });
+    card.querySelectorAll('.del-stop').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const bi = Number(btn.dataset.busIdx), idx = Number(btn.dataset.idx);
+        buses[bi].route.splice(idx, 1);
+        await saveLogistics();
+      });
+    });
+    card.querySelectorAll('.assign-class-select').forEach(sel=>{
+      sel.addEventListener('change', async ()=>{
+        if (!sel.value) return;
+        const bi = Number(sel.dataset.busIdx);
+        buses[bi].assigned = buses[bi].assigned || [];
+        buses[bi].assigned.push({ type:'class', class_id: sel.value });
+        await saveLogistics();
+      });
+    });
+    card.querySelectorAll('.assign-staff-select').forEach(sel=>{
+      sel.addEventListener('change', async ()=>{
+        if (!sel.value) return;
+        const bi = Number(sel.dataset.busIdx);
+        buses[bi].assigned = buses[bi].assigned || [];
+        buses[bi].assigned.push({ type:'staff', uid: sel.value });
+        await saveLogistics();
+      });
+    });
+    card.querySelectorAll('.assign-medic-select').forEach(sel=>{
+      sel.addEventListener('change', async ()=>{
+        if (!sel.value) return;
+        const bi = Number(sel.dataset.busIdx);
+        buses[bi].assigned = buses[bi].assigned || [];
+        buses[bi].assigned.push({ type:'medic', medic_id: sel.value });
+        await saveLogistics();
+      });
+    });
+    card.querySelectorAll('.parent-class-select').forEach(sel=>{
+      sel.addEventListener('change', ()=>{
+        const bi = sel.dataset.busIdx;
+        const studentSel = card.querySelector(`.parent-student-select[data-bus-idx="${bi}"]`);
+        const students = approvedStudentsByClass[sel.value] || [];
+        if (!sel.value || !students.length){
+          studentSel.innerHTML = '<option value="">קודם לבחור כיתה</option>';
+          studentSel.disabled = true;
+          return;
+        }
+        studentSel.innerHTML = '<option value="">בחירת תלמיד/ה</option>' + students.map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
+        studentSel.disabled = false;
+      });
+    });
+    card.querySelectorAll('.add-parent-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const bi = Number(btn.dataset.busIdx);
+        const name = card.querySelector(`.assign-parent-name[data-bus-idx="${bi}"]`).value.trim();
+        const classSel = card.querySelector(`.parent-class-select[data-bus-idx="${bi}"]`);
+        const studentSel = card.querySelector(`.parent-student-select[data-bus-idx="${bi}"]`);
+        const classId = classSel?.value || '';
+        const studentId = studentSel?.value || '';
+        if (!name){ toast('יש להזין שם ההורה המלווה'); return; }
+        if (!classId || !studentId){ toast('יש לבחור כיתה ותלמיד/ה — כדי שההורה יישב עם כיתת הבן/הבת שלו/ה'); return; }
+        const cls = classesCache.find(c=>c.id===classId);
+        const student = (approvedStudentsByClass[classId]||[]).find(s=>s.id===studentId);
+        buses[bi].assigned = buses[bi].assigned || [];
+        buses[bi].assigned.push({ type:'parent', name, class_id: classId, class_name: cls?.name||'', student_id: studentId, student_name: student?.full_name||'' });
+        await saveLogistics();
+      });
+    });
+    card.querySelectorAll('.del-assigned').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const bi = Number(btn.dataset.busIdx), ai = Number(btn.dataset.assignIdx);
+        buses[bi].assigned.splice(ai, 1);
+        await saveLogistics();
+      });
     });
     card.querySelector('#addMedicBtn').addEventListener('click', async ()=>{
       const name = document.getElementById('medic_name').value.trim();
@@ -3840,9 +4249,7 @@ async function renderTripLogisticsCard(card, trip){
 
   async function saveLogistics(){
     try{
-      // בלי "expenses" כאן בכוונה — merge:true שומר על נתוני עבר בלי לגעת בהם,
-      // גם שההוצאות הוסרו מהממשק.
-      await logRef.set({ buses, medics, general_notes: data.general_notes||'' }, { merge:true });
+      await logRef.set({ buses, medics, expenses, general_notes: data.general_notes||'' }, { merge:true });
       // ה-uid-ים של אחראי האוטובוסים נשמרים גם על מסמך הטיול עצמו, כדי שכללי
       // האבטחה יוכלו לבדוק בזול מי מורשה לסמן נוכחות (בלי get מקונן ל-logistics).
       await db.collection('trips').doc(trip.id).update({ bus_captain_uids: buses.map(b=>b.captain_uid).filter(Boolean) });
