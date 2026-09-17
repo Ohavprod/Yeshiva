@@ -3180,13 +3180,46 @@ function buildApprovalDocElement(trip, studentName, studentClassName, approval){
   return wrap;
 }
 /* מצלם אלמנט DOM (עברית כולל) ל-PDF אמיתי, ללא צורך בהטמעת גופן — הדפדפן עצמו מצייר את הטקסט */
+/* עוזר משותף לשתי פונקציות הפיצול-לעמודים למטה: מוצא, לפני הצילום (כשה-DOM עדיין חי),
+   את גבולות כל קופסת תוכן שסומנה .pdf-avoid-break (כרטיס אוטובוס, שורת הוצאה, שורת
+   טבלה וכו') יחסית לראש האלמנט — כדי שנקודת החיתוך בין עמודי ה-PDF תוכל להידחות
+   לתחילת קופסה כזו במקום לחתוך אותה בדיוק באמצע בין שני עמודים. */
+function getAvoidBreakRangesCss(rootEl){
+  const rootTop = rootEl.getBoundingClientRect().top;
+  return Array.from(rootEl.querySelectorAll('.pdf-avoid-break')).map(el=>{
+    const r = el.getBoundingClientRect();
+    return { top: r.top - rootTop, bottom: r.bottom - rootTop };
+  });
+}
+/* מחשב את נקודות החיתוך בפועל (בפיקסלים של הקנבס) לפיצול לעמודים בגובה usablePageHeightPx
+   כל אחד — נקודת חיתוך שהייתה חותכת קופסה מסומנת נדחית לתחילת אותה קופסה, כך שהקופסה
+   כולה עוברת לעמוד הבא בשלמותה במקום להיחתך. הגנה מלולאה אינסופית אם קופסה בודדת
+   גדולה מעמוד שלם (אז פשוט חותכים כרגיל, כמו שהיה קודם). */
+function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges){
+  const breaks = [0];
+  let cursor = 0;
+  while (canvasHeight - cursor > usablePageHeightPx){
+    let candidate = cursor + usablePageHeightPx;
+    for (const r of avoidBreakRanges){
+      if (r.top < candidate && r.bottom > candidate && r.top > cursor) candidate = r.top;
+    }
+    if (candidate <= cursor) candidate = cursor + usablePageHeightPx;
+    breaks.push(candidate);
+    cursor = candidate;
+  }
+  breaks.push(canvasHeight);
+  return breaks;
+}
 async function renderNodeToPdfBlob(node){
   document.body.appendChild(node);
   try{
     await Promise.all(Array.from(node.querySelectorAll('img')).map(img =>
       img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
     ));
-    const canvas = await html2canvas(node.firstElementChild, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
+    const rootEl = node.firstElementChild;
+    const cssWidth = rootEl.getBoundingClientRect().width;
+    const avoidBreakRangesCss = getAvoidBreakRangesCss(rootEl);
+    const canvas = await html2canvas(rootEl, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
     // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
     // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
     // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד. 0.92 (במקום 0.85) לחדות טובה יותר
@@ -3198,16 +3231,16 @@ async function renderNodeToPdfBlob(node){
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
     const imgWidth = pageWidth - margin*2;
-    const imgHeight = canvas.height * (imgWidth / canvas.width);
-    let heightLeft = imgHeight;
-    let position = margin;
-    pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-    heightLeft -= (pageHeight - margin*2);
-    while (heightLeft > 0){
-      position = heightLeft - imgHeight + margin;
-      pdf.addPage();
+    const scale = canvas.width / cssWidth;
+    const pxPerPt = canvas.width / imgWidth;
+    const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
+    const imgHeight = canvas.height / pxPerPt;
+    const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
+    const breaks = computePageBreaksPx(canvas.height, usablePageHeightPx, avoidBreakRanges);
+    for (let i=0; i<breaks.length-1; i++){
+      if (i>0) pdf.addPage();
+      const position = margin - breaks[i] / pxPerPt;
       pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-      heightLeft -= (pageHeight - margin*2);
     }
     return pdf.output('blob');
   } finally {
@@ -3301,7 +3334,7 @@ function buildClassRosterPageElement(trip, g, gregDate){
             const firstName = hasSavedSplit ? (s.first_name||'') : (nameParts[0]||'');
             const lastName = hasSavedSplit ? (s.last_name||'') : nameParts.slice(1).join(' ');
             return `
-            <tr>
+            <tr class="pdf-avoid-break">
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; color:#16223d; font-size:13px; font-weight:700; text-align:center; vertical-align:top;">${i+1}</td>
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(firstName)}</td>
               <td style="padding:9px 8px; border-bottom:1px solid #dde4ee; font-size:14px; font-weight:700; color:#16203a; vertical-align:top;">${esc(lastName)}</td>
@@ -3336,25 +3369,27 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       await Promise.all(Array.from(node.querySelectorAll('img')).map(img =>
         img.complete ? Promise.resolve() : new Promise(res=>{ img.onload = res; img.onerror = res; })
       ));
-      const canvas = await html2canvas(node.firstElementChild, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
+      const rootEl = node.firstElementChild;
+      const cssWidth = rootEl.getBoundingClientRect().width;
+      const avoidBreakRangesCss = getAvoidBreakRangesCss(rootEl);
+      const canvas = await html2canvas(rootEl, { scale:2.2, backgroundColor:'#ffffff', useCORS:true });
       // JPEG באיכות גבוהה במקום PNG: הקנבס הוא רקע לבן אטום לגמרי (רוב התוכן טקסט/קווים
     // דקים), כך ש-PNG חסר הדחיסה שלו רק מנפח את הקובץ בלי תוספת איכות נראית לעין —
     // זו הסיבה שקבצי ה-PDF שהורדו יצאו כבדים במיוחד. 0.92 לחדות טובה יותר, עדיין קובץ קטן.
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
       const imgWidth = pageWidth - margin*2;
-      const imgHeight = canvas.height * (imgWidth / canvas.width);
-      let heightLeft = imgHeight;
-      let position = margin;
-      if (!firstPage) pdf.addPage();
-      firstPage = false;
-      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-      heightLeft -= (pageHeight - margin*2);
-      while (heightLeft > 0){
-        position = heightLeft - imgHeight + margin;
-        pdf.addPage();
+      const scale = canvas.width / cssWidth;
+      const pxPerPt = canvas.width / imgWidth;
+      const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
+      const imgHeight = canvas.height / pxPerPt;
+      const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
+      const breaks = computePageBreaksPx(canvas.height, usablePageHeightPx, avoidBreakRanges);
+      breaks.slice(0,-1).forEach((brk, i)=>{
+        if (!firstPage) pdf.addPage();
+        firstPage = false;
+        const position = margin - brk / pxPerPt;
         pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-        heightLeft -= (pageHeight - margin*2);
-      }
+      });
     } finally {
       node.remove();
     }
@@ -3410,7 +3445,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const busesHtml = buses.length ? buses.map(b=>{
     const route = b.route || [];
     return `
-    <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
+    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
       <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:12px; color:#4b566d;">· ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span></div>
       <div style="font-size:13px; margin-top:6px;"><b>${esc(b.captain_name||'אחראי לא נבחר')}</b> · אחראי אוטובוס</div>
       ${b.captain_phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(b.captain_phone)}</div>` : ''}
@@ -3439,10 +3474,10 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     const occ = assigned.reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
     const cap = b.capacity || (b.vehicle_type==='minibus' ? 20 : 60);
     return `
-    <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
+    <div class="pdf-avoid-break" style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${rows.length?'8px':'0'};">
         <div style="font-weight:800; font-size:15px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
-        <div style="font-size:12.5px; font-weight:700; color:#16223d; background:#e7ecf5; padding:3px 10px; border-radius:20px;">${occ} / ${cap} מקומות</div>
+        <div style="font-size:12.5px; font-weight:700; color:#16223d; background:#e7ecf5; padding:5px 12px; border-radius:20px; display:inline-flex; align-items:center; justify-content:center; line-height:1;">${occ} / ${cap} מקומות</div>
       </div>
       ${rows.length ? `<table style="width:100%; border-collapse:collapse;">
         <tbody>
@@ -3458,11 +3493,11 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const totalTravelers = buses.reduce((sum,b)=> sum + (b.assigned||[]).reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0), 0);
   const assignmentSectionHtml = assignmentHtml + (buses.length ? `
     <div style="background:#16223d; border-radius:10px; padding:12px 16px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
-      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:#fff;">סה"כ משתתפים באוטובוסים</span>
+      <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:14px; color:#fff;">סך הכל נוסעים בכלל האוטובוסים</span>
       <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:17px; color:#fff;">${totalTravelers}</span>
     </div>` : '');
   const medicsHtml = medics.length ? medics.map(m=>`
-    <div style="padding:8px 0; border-bottom:1px solid #eef1f6;">
+    <div class="pdf-avoid-break" style="padding:8px 0; border-bottom:1px solid #eef1f6;">
       <span style="font-size:14px;"><b>${esc(m.name)}</b>${m.role?` — ${esc(m.role)}`:''}</span>
       ${m.phone ? `<div style="font-size:15px; font-weight:700; color:#16223d; margin-top:2px;">📞 ${esc(m.phone)}</div>` : ''}
     </div>`).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
@@ -3574,7 +3609,7 @@ function buildExpensesReportElement(trip, expenses, total){
   const rowHtml = (ex, i) => {
     const isPdfReceipt = !!ex.receipt_url && /\.pdf(\?|$)/i.test(ex.receipt_filename || ex.receipt_url);
     return `
-    <div style="margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid #dde4ee;">
+    <div class="pdf-avoid-break" style="margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid #dde4ee;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
         <div style="font-size:15px; font-weight:700; color:#16203a;">${i+1}. ${esc(ex.description||'')}</div>
         <div style="font-size:15px; font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(ex.amount))}</div>
@@ -3886,16 +3921,18 @@ async function renderTripLogisticsCard(card, trip){
   const BUS_CAPACITY = { bus:60, minibus:20 };
   const busCapacity = (b) => b.capacity || BUS_CAPACITY[b.vehicle_type] || BUS_CAPACITY.bus;
   const busOccupied = (b) => (b.assigned||[]).reduce((sum,a)=> sum + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
-  // אילו כיתות/אנשי צוות/חובשים כבר משויכים לאוטובוס כלשהו — כדי לא להציע אותם
-  // שוב באוטובוס אחר (כל כיתה/איש צוות/חובש משויכים לאוטובוס אחד בלבד)
-  const assignedClassIds = new Set(), assignedStaffUids = new Set(), assignedMedicIds = new Set();
-  buses.forEach(b=> (b.assigned||[]).forEach(a=>{
-    if (a.type==='class') assignedClassIds.add(a.class_id);
-    if (a.type==='staff') assignedStaffUids.add(a.uid);
-    if (a.type==='medic') assignedMedicIds.add(a.medic_id);
-  }));
 
   const render = () => {
+    // אילו כיתות/אנשי צוות/חובשים כבר משויכים לאוטובוס כלשהו — כדי לא להציע אותם
+    // שוב באוטובוס אחר (כל כיתה/איש צוות/חובש משויכים לאוטובוס אחד בלבד). מחושב
+    // מחדש בכל רינדור (לא רק פעם אחת בטעינה), אחרת שיוך חדש שנוסף לא נכנס לסטים
+    // האלה וניתן היה לשייך את אותו איש/אשת צוות/חובש/כיתה פעמיים.
+    const assignedClassIds = new Set(), assignedStaffUids = new Set(), assignedMedicIds = new Set();
+    buses.forEach(b=> (b.assigned||[]).forEach(a=>{
+      if (a.type==='class') assignedClassIds.add(a.class_id);
+      if (a.type==='staff') assignedStaffUids.add(a.uid);
+      if (a.type==='medic') assignedMedicIds.add(a.medic_id);
+    }));
     card.innerHTML = `
       <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;"><span class="icon-tag">${ICON.wallet}</span> ניהול טיול</h3>
 
@@ -4990,7 +5027,7 @@ function buildStyledReportElement(title, rows, subtitle){
           <tr>${(header||[]).map(h=>`<th style="padding:10px; background:#16223d; color:#fff; text-align:right; font-size:13.5px; font-weight:700; border:1px solid #16223d;">${esc(h)}</th>`).join('')}</tr>
         </thead>
         <tbody>
-          ${body.map((r,i)=>`<tr style="background:${i%2 ? '#f4f7fb' : '#ffffff'};">${r.map(c=>`<td style="padding:9px 10px; border:1px solid #dde4ee; font-size:14px; vertical-align:top;">${esc(c===null||c===undefined?'':c)}</td>`).join('')}</tr>`).join('')}
+          ${body.map((r,i)=>`<tr class="pdf-avoid-break" style="background:${i%2 ? '#f4f7fb' : '#ffffff'};">${r.map(c=>`<td style="padding:9px 10px; border:1px solid #dde4ee; font-size:14px; vertical-align:top;">${esc(c===null||c===undefined?'':c)}</td>`).join('')}</tr>`).join('')}
         </tbody>
       </table>
       <div style="margin-top:20px; padding-top:14px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
