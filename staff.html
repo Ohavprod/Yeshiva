@@ -3424,22 +3424,35 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     </div>`;
   }).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   // חלוקת אוטובוסים: מי נמצא באיזה אוטובוס (כיתות שלמות/צוות/חובשים/הורים מלווים),
-  // כמה יש בכל אוטובוס, וסה"כ משתתפים בכל האוטובוסים ביחד בסוף
+  // כמה יש בכל אוטובוס, וסה"כ משתתפים בכל האוטובוסים ביחד בסוף. מוצג כטבלה מסודרת
+  // בעמודות (סוג/שם/פרטים) — לא כפסקת בולטים רציפה — כדי שיהיה ברור בעין אחת מי
+  // נמצא באיזה אוטובוס, ולא רק כטקסט זורם.
   const assignmentHtml = buses.length ? buses.map(b=>{
     const assigned = b.assigned || [];
-    const parts = assigned.map(a=>{
-      if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `כיתה ${esc(cls?.name||'')} — ${n} תלמידים מאושרים`; }
-      if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `${esc(u?.full_name||'איש/אשת צוות')} — צוות`; }
-      if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `${esc(m?.name||'')} — חובש/מע"ר`; }
-      if (a.type==='parent'){ return `${esc(a.name||'')} — הורה מלווה (אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''})`; }
-      return '';
+    const rows = assigned.map(a=>{
+      if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return { icon:'🏫', name:`כיתה ${esc(cls?.name||'')}`, detail:`${n} תלמידים מאושרים` }; }
+      if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return { icon:'👤', name: esc(u?.full_name||'איש/אשת צוות'), detail:'צוות' }; }
+      if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return { icon:'⛑️', name: esc(m?.name||''), detail:'חובש/מע"ר' }; }
+      if (a.type==='parent'){ return { icon:'👪', name: esc(a.name||''), detail:`הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}` }; }
+      return null;
     }).filter(Boolean);
     const occ = assigned.reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0);
     const cap = b.capacity || (b.vehicle_type==='minibus' ? 20 : 60);
     return `
-    <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:12px 14px; margin-bottom:8px;">
-      <div style="font-weight:700; font-size:14px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')} <span style="font-weight:400; font-size:12px; color:#4b566d;">· ${occ} / ${cap} מקומות</span></div>
-      ${parts.length ? `<ul style="margin:8px 0 0; padding-right:18px; font-size:13px;">${parts.map(p=>`<li style="margin-bottom:2px;">${p}</li>`).join('')}</ul>` : `<div style="font-size:13px; color:#4b566d; margin-top:6px;">אין נוסעים משויכים לאוטובוס זה.</div>`}
+    <div style="background:#f6f8fb; border:1px solid #dde4ee; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${rows.length?'8px':'0'};">
+        <div style="font-weight:800; font-size:15px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</div>
+        <div style="font-size:12.5px; font-weight:700; color:#16223d; background:#e7ecf5; padding:3px 10px; border-radius:20px;">${occ} / ${cap} מקומות</div>
+      </div>
+      ${rows.length ? `<table style="width:100%; border-collapse:collapse;">
+        <tbody>
+          ${rows.map(r=>`<tr style="border-top:1px solid #e3e8f0;">
+            <td style="padding:7px 6px; font-size:14px; width:26px; text-align:center;">${r.icon}</td>
+            <td style="padding:7px 6px; font-size:13px; font-weight:700; color:#16203a; white-space:nowrap;">${r.name}</td>
+            <td style="padding:7px 6px; font-size:13px; color:#4b566d;">${r.detail}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div style="font-size:13px; color:#4b566d;">אין נוסעים משויכים לאוטובוס זה.</div>`}
     </div>`;
   }).join('') : `<p style="color:#4b566d; font-size:13px; margin:0;">אין אוטובוסים מוגדרים.</p>`;
   const totalTravelers = buses.reduce((sum,b)=> sum + (b.assigned||[]).reduce((s,a)=> s + (a.type==='class' ? (approvedCountsByClass[a.class_id]||0) : 1), 0), 0);
