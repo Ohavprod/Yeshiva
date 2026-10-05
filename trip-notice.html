@@ -2,20 +2,18 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<!-- This site is hosted on Netlify. Anyone can build and deploy a site
-     like this one for free: https://netlify.new/?utm_campaign=ai-legible&utm_source=comment&utm_medium=referral&utm_id=467dee05-b9a1-4a16-b253-c88a05f64c1e
-     Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
-<meta name="hosting-provider" content="Netlify">
-<meta name="netlify-deploy" content="https://netlify.new/?utm_campaign=ai-legible&amp;utm_source=meta&amp;utm_medium=referral&amp;utm_id=467dee05-b9a1-4a16-b253-c88a05f64c1e">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>חוזר טיול — ישיבה תיכונית עפולה</title>
+<title>הזמנת חולצה — ישיבה תיכונית עפולה</title>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ישיבה תיכונית עפולה">
-<meta property="og:title" content="חוזר טיול — ישיבה תיכונית עפולה">
-<meta property="og:description" content="כל פרטי הטיול ואישור השתתפות ההורים, ישירות מהנייד.">
+<meta property="og:title" content="הזמנת חולצה — ישיבה תיכונית עפולה">
+<meta property="og:description" content="הזמנת חולצת מעלין בקודש, ישירות מהנייד.">
 <meta property="og:image" content="https://ytafula.netlify.app/assets/img/logo.png">
 <meta name="twitter:card" content="summary">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16223d">
 <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
 <style>
   body{ background:var(--paper); }
@@ -26,142 +24,43 @@
     background:radial-gradient(1100px 500px at 85% -20%, #1f3563 0%, var(--navy) 55%, var(--navy) 100%);
     color:#fff; text-align:center; padding:40px 24px 34px;
   }
-  .notice-header .ring{ position:absolute; inset:0; pointer-events:none; opacity:.5; }
   .notice-header .logo-badge{
-    position:relative; z-index:1; height:112px; width:112px; border-radius:50%; margin:0 auto 14px;
+    height:112px; width:112px; border-radius:50%; margin:0 auto 14px;
     background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 28px -8px rgba(0,0,0,.45);
     overflow:hidden; border:3px solid rgba(255,255,255,.5);
   }
   .notice-header .logo-badge img{ height:100%; width:100%; object-fit:cover; }
-  .notice-header .school{ position:relative; z-index:1; font-family:'Rubik',sans-serif; font-weight:800; font-size:1.3rem; }
-  .notice-header .tag{ position:relative; z-index:1; font-size:1rem; font-weight:800; color:#fff; margin-top:5px; letter-spacing:.02em; }
+  .notice-header .school{ font-family:'Rubik',sans-serif; font-weight:800; font-size:1.3rem; }
+  .notice-header .tag{ font-size:1rem; font-weight:800; color:#fff; margin-top:5px; letter-spacing:.02em; }
   .notice-body{ padding:0 24px; margin-top:-26px; position:relative; z-index:2; }
-
-  /* חוזר אחד רציף — "גיליון" אחד עם קווי הפרדה פנימיים בין הסעיפים, במקום ערימה של
-     כרטיסים לבנים זהים מרחפים זה מתחת לזה (שהרגישה מודולרית/גנרית, "כמו אפליקציה"
-     ולא כמו מסמך רשמי אחד). האישור בהמשך נשאר כרטיס נפרד בכוונה — זה בלוק אינטראקטיבי
-     (טופס), לא עוד קטע קריאה, וההפרדה עצמה מסמנת "כאן עוברים מקריאה לפעולה". */
-  .notice-sheet{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; margin-bottom:20px; }
-  .notice-section{ padding:28px; }
-  .notice-rule{ height:1px; background:var(--line); margin:0 28px; }
   .trip-card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:28px; box-shadow:var(--shadow); margin-bottom:20px; }
-
-  .trip-title{ margin:0 0 14px; font-size:1.5rem; overflow-wrap:break-word; word-break:break-word; }
-
-  .intro-callout{
-    background:linear-gradient(135deg, #eef6ff, #f6f8fb); border-right:4px solid var(--teal);
-    border-radius:12px; padding:16px 18px; margin-bottom:20px; font-size:1rem; color:var(--navy); font-weight:500; line-height:1.7;
+  .section-eyebrow{
+    display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--steel);
+    background:var(--paper-2); padding:5px 14px; border-radius:999px; margin-bottom:14px;
   }
-
-  .date-line{ margin-bottom:24px; text-align:center; }
-  .date-chip{
-    display:inline-flex; align-items:center; gap:12px; text-align:right;
-    background:linear-gradient(135deg, #eef6ff, var(--paper-2)); border:1px solid var(--line);
-    border-radius:999px; padding:10px 22px 10px 18px;
-  }
-  .date-chip .dc-icon{
-    flex:none; width:34px; height:34px; border-radius:50%; background:var(--navy); color:#fff;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .date-chip .dc-icon svg{ width:17px; height:17px; }
-  .date-line .lbl{ color:var(--ink-soft); font-size:.72rem; display:block; }
-  .date-line .heb{ font-weight:800; color:var(--navy); font-size:1.02rem; }
-  .date-line .sep{ color:var(--ink-soft); margin:0 6px; }
-  .date-line .greg{ color:var(--ink-soft); font-size:.85rem; }
-
-  /* שורת עובדות מפתח: אייקוני קו עקביים (currentColor) במקום אימוג'י צבעוני — זה מה
-     שגרם לתחושת "אפליקציה גנרית". כל האייקונים באותו טיפול חזותי (עיגול נייבי, קו
-     טיל) כדי שיהיה ברור שזו מערכת אחת מכוונת, לא סתם גיוון אקראי. */
-  .meta-badges{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; }
-  .meta-badge{ width:100px; text-align:center; }
-  .meta-badge .m-icon{
-    width:52px; height:52px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center;
-    background:var(--navy); color:#fff;
-  }
-  .meta-badge .m-icon svg{ width:22px; height:22px; }
-  .meta-badge .m-label{ font-size:.7rem; color:var(--ink-soft); }
-  .meta-badge .m-value{ font-size:.85rem; font-weight:700; color:var(--navy); line-height:1.3; }
-
-  .notice-heading{
-    display:flex; align-items:center; gap:9px; margin:0 0 18px;
-    font-family:'Rubik',sans-serif; font-size:1.08rem; font-weight:800; color:var(--navy);
-  }
-  .notice-heading .nh-icon{
-    flex:none; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center;
-    background:var(--paper-2); color:var(--teal);
-  }
-  .notice-heading .nh-icon svg{ width:18px; height:18px; }
-
-  /* תוכנייה כציר זמן: התוכן אכן רציף-כרונולוגי, ולכן ציר עם נקודות שעה מוצדק כאן
-     (שלא כמו סימון "01/02/03" גנרי על תוכן שאינו רצף אמיתי). השעה עצמה מקבלת "כפתור"
-     צבוע כדי שתבלוט בסריקה מהירה של התוכנייה, ולא רק טקסט מודגש. */
-  .timeline-item{ display:flex; gap:14px; }
-  .timeline-rail{ flex:none; width:12px; display:flex; flex-direction:column; align-items:center; }
-  .timeline-dot{ flex:none; width:12px; height:12px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px var(--paper-2); margin-top:9px; }
-  .timeline-rail-line{ flex:1; width:2px; background:var(--line); margin-top:3px; min-height:8px; }
-  .timeline-body{ padding-bottom:20px; flex:1; }
-  .timeline-item:last-child .timeline-body{ padding-bottom:0; }
-  .timeline-time{
-    display:inline-block; font-weight:800; color:#fff; background:var(--navy); line-height:1;
-    font-size:.82rem; padding:5px 11px; border-radius:7px;
-  }
-  .timeline-activity{ color:var(--ink); margin-top:7px; line-height:1.5; }
-
-  /* ציוד + הערות מאוחדים לבלוק אחד ("לקראת היציאה") במקום שני כרטיסים כמעט-זהים —
-     ההערות מודגשות רק בטקסט עצמו (רקע רך + פס צד), לא בכל הסעיף. */
-  .prep-row{ margin-bottom:16px; }
-  .prep-row:last-child{ margin-bottom:0; }
-  .prep-label{ display:block; font-size:.78rem; font-weight:700; color:var(--steel); margin-bottom:5px; }
-  .prep-row p{ margin:0; color:var(--ink); white-space:pre-line; line-height:1.65; }
-  .prep-notes{ background:var(--wait-bg); border-inline-start:3px solid var(--wait); border-radius:10px; padding:14px 16px; }
-  .prep-notes .prep-label{ color:var(--wait); }
-
-  .closing-block{ text-align:left; color:var(--navy); font-style:italic; font-size:.95rem; line-height:1.7; white-space:pre-line; padding-top:4px; }
-  .signature-block{ text-align:center; }
-  .signature-block .regards{ font-weight:700; color:var(--navy); margin-bottom:10px; }
-  .signatures-row{ display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
-  .signature-col{ text-align:center; font-size:.92rem; color:var(--navy); line-height:1.7; }
-  .signature-col .sig-title{ color:var(--ink-soft); font-size:.78rem; margin-top:2px; }
-
-  .section-divider{ height:4px; border-radius:99px; background:linear-gradient(90deg, var(--steel), var(--teal)); margin:30px 0; opacity:.5; }
-
+  .trip-title{ margin:0 0 14px; font-size:1.5rem; }
   .center-msg{ text-align:center; color:var(--ink-soft); padding:60px 20px; }
   .approved-card{ text-align:center; padding:40px 24px; }
   .approved-card .big-check{ font-size:3rem; margin-bottom:10px; }
-  .approval-heading-wrap{ text-align:center; margin-bottom:6px; }
-  .consent-check{
-    display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:14px 16px;
-    border:1.5px solid var(--line); border-radius:12px; background:#fbfcfe; font-size:.95rem;
+  .shirt-option{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px;
+    border:1.5px solid var(--line); border-radius:12px; cursor:pointer; margin-bottom:10px;
   }
-  .consent-check input{ width:20px; height:20px; margin-top:2px; accent-color:var(--teal); flex:none; }
-  .startBtnWrap{ text-align:center; padding:10px 0 4px; }
-  @media (max-width:480px){
-    .notice-body{ padding:0 14px; }
-    .notice-section{ padding:20px; }
-    .notice-rule{ margin:0 20px; }
-    .trip-card{ padding:20px; }
-    .trip-title{ font-size:1.22rem; overflow-wrap:break-word; word-break:break-word; }
-    .meta-badge{ width:80px; }
-    .meta-badge .m-icon{ width:44px; height:44px; }
-    .meta-badge .m-icon svg{ width:18px; height:18px; }
-  }
+  .shirt-option.selected{ border-color:var(--teal); background:#eef8f8; }
+  .shirt-option .so-name{ font-weight:700; color:var(--navy); }
+  .shirt-option .so-price{ font-weight:700; color:var(--steel); }
+  @media (max-width:480px){ .notice-body{ padding:0 14px; } .trip-card{ padding:20px; } }
 </style>
 </head>
 <body>
 <div class="basd-line">בס״ד</div>
 <div class="notice-wrap">
   <div class="notice-header">
-    <div class="ring">
-      <svg width="100%" height="100%" viewBox="0 0 400 220" preserveAspectRatio="none" style="position:absolute; inset:0;">
-        <circle cx="360" cy="10" r="140" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
-        <circle cx="360" cy="10" r="100" fill="none" stroke="rgba(79,163,220,.15)" stroke-width="1.5" stroke-dasharray="4 9"/>
-      </svg>
-    </div>
     <div class="logo-badge"><img src="assets/img/logo.png" alt=""></div>
     <div class="school">ישיבה תיכונית עפולה</div>
-    <div class="tag">חוזר טיול</div>
+    <div class="tag">הזמנת חולצה — מעלין בקודש</div>
   </div>
-  <div class="notice-body" id="content"><p class="center-msg">טוען פרטי טיול…</p></div>
+  <div class="notice-body" id="content"><p class="center-msg">טוען…</p></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -176,67 +75,29 @@ function toast(msg){
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2600);
 }
+function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 /* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
-   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script.
-   classId (אופציונלי): class_id של התלמיד/ה, כדי שהשרת יוכל לסנן את ההתראה למחנך/ת
-   הכיתה הנכונה בלבד (ולא לכל מחנכי הכיתות בטיול/אירוע כלל-ישיבתי). */
+   ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
 const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
 const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
-function notifyPush(type, title, body, classId){
+function notifyPush(type, title, body){
   if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
-  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body, class_id: classId || null }) }).catch(()=>{});
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body }) }).catch(()=>{});
 }
-function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-// אייקוני קו עקביים (currentColor, stroke-width אחיד) במקום אימוג'י — זה מה שגרם
-// לתחושת "יצרתי עם AI, זול" בעיקר. כולם באותו סגנון חזותי בכוונה.
-const ICON_PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>';
-const ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
-const ICON_BANKNOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v0M18 15v0"/></svg>';
-const ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>';
-const ICON_BACKPACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8V6a4 4 0 0 1 8 0v2"/><rect x="5" y="8" width="14" height="13" rx="3"/><path d="M9 8v4h6V8M9 15h6"/></svg>';
-const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>';
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
-function formatGregShort(dateStr){
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '';
-  return `${d.getDate()}.${d.getMonth()+1}.${d.getFullYear().toString().slice(-2)}`;
-}
+function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
-function lastNameOf(s){ return norm(s).split(' ').slice(1).join(' '); }
-// שם פרטי/משפחה "אמיתיים" של תלמיד/ה ברשימה: אם roster_snapshot כולל first_name/last_name
-// נפרדים (כך שנשמר בכרטיס התלמיד/ה) — משתמשים בהם ישירות, כי הם לא תלויים בניחוש לפי
-// מיקום מילה ולכן עובדים נכון גם לשמות פרטיים מכמה מילים (למשל "בת אל", "מרים חנה").
-// רק לרשומות ישנות בלי השדות הנפרדים נופלים חזרה על הניחוש הישן (מילה ראשונה = שם פרטי).
-function candFirstName(r){ return r.first_name ? norm(r.first_name) : firstNameOf(r.full_name); }
-function candLastName(r){ return r.last_name ? norm(r.last_name) : lastNameOf(r.full_name); }
-// בודק שהמחרוזת שההורה הקליד מתחילה בדיוק בשם הפרטי של המועמד/ת, בגבול מילה שלם —
-// כדי ש"בת" לא יתאים בטעות ל"בתיה" או ל"בת שבע" כשההורה הקליד רק "בת אל".
-function typedStartsWithFirstName(typedNorm, candFirst){
-  if (!candFirst) return false;
-  return typedNorm === candFirst || typedNorm.startsWith(candFirst + ' ');
-}
-// התאמה סובלנית לשם תלמיד: מספיק שם פרטי (גם כפול, למשל "אוראל דוד") בלי שם המשפחה, או כל
-// צירוף של מילים מתוך השם המלא בכל סדר (גם אם בכרטיס השם מופיע "משפחה פרטי").
+// התאמת שם סובלנית (כמו באישורי טיולים): מספיק שכל המילים שהוקלדו קיימות בשם התלמיד/ה, בכל סדר —
+// למשל "שילה נבו" מתאים גם ל"שילה נבו כהן" וגם ל"כהן שילה נבו".
 function nameTokens(s){
   return String(s || '').toLowerCase().replace(/[\u05da]/g,'\u05db').replace(/[\u05dd]/g,'\u05de').replace(/[\u05df]/g,'\u05e0').replace(/[\u05e3]/g,'\u05e4').replace(/[\u05e5]/g,'\u05e6').replace(/[^\u05d0-\u05eaa-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
 }
-function typedMatchesStudent(typedNorm, r){
-  const typed = nameTokens(typedNorm);
-  if (!typed.length) return false;
-  const all = nameTokens([r.full_name, r.first_name, r.last_name].join(' '));
-  return typed.every(x => all.indexOf(x) !== -1);
+function nameFits(typed, full){
+  const t = nameTokens(typed), f = nameTokens(full);
+  return t.length > 0 && t.every(x => f.indexOf(x) !== -1);
 }
-function typedEqualsFullName(typedNorm, r){
-  const a = nameTokens(typedNorm).sort().join(' ');
-  const b = nameTokens(r.full_name || '').sort().join(' ');
-  return !!a && a === b;
-}
-// מה שנשאר אחרי הורדת השם הפרטי שהתאים — זה מה שמשווים מול שם המשפחה של המועמד/ת.
-function remainderAfterFirstName(typedNorm, candFirst){
-  return typedNorm === candFirst ? '' : typedNorm.slice(candFirst.length + 1);
-}
+function sameNameSet(a, b){ return nameTokens(a).sort().join(' ') === nameTokens(b).sort().join(' '); }
 function normPhoneDigits(s){
   let d = (s||'').toString().replace(/\D/g,'');
   // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
@@ -245,371 +106,212 @@ function normPhoneDigits(s){
   if (d.startsWith('972') && d.length === 12){ d = '0' + d.slice(3); }
   return d;
 }
-function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 const params = new URLSearchParams(location.search);
-const tripId = params.get('t');
+let studentId = params.get('s');
 
-/* --- לוח חתימה פשוט (עכבר + מגע) --- */
-function setupSignaturePad(canvas){
-  const ctx = canvas.getContext('2d');
-  function resize(){
-    const ratio = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * ratio;
-    canvas.height = 160 * ratio;
-    ctx.scale(ratio, ratio);
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#16203a';
-  }
-  resize();
-  let drawing = false, last = null;
-  function pos(e){
-    const rect = canvas.getBoundingClientRect();
-    const p = e.touches ? e.touches[0] : e;
-    return { x: p.clientX - rect.left, y: p.clientY - rect.top };
-  }
-  function start(e){ e.preventDefault(); drawing = true; last = pos(e); }
-  function move(e){
-    if (!drawing) return;
+/* --- שער איתור לקישור הכללי (ללא s בכתובת): מאתר את התלמיד/ה לפי כיתה + שם מלא
+   מול הרשומה הציבורית-הבטוחה (student_public — שם+כיתה+גיבוב בלבד), ואז ממשיך
+   באותו זרם בדיוק כמו קישור פרטני. --- */
+function renderGeneralLookup(content){
+  content.innerHTML = `
+    <div class="trip-card">
+      <div class="section-eyebrow">איתור תלמיד/ה</div>
+      <h2 class="trip-title" style="font-size:1.25rem;">הזמנת חולצה — מעלין בקודש</h2>
+      <p class="verify-hint">קישור זה משותף לכלל הורי הישיבה. נא להזין את כיתת וילדכם/ילדתכם ואת שמו/ה המלא כדי לאתר את הכרטיס ולהמשיך בהזמנה.</p>
+      <div id="lookupErrorBox"></div>
+      <form id="lookupForm" class="verify-box">
+        <div class="field"><label>כיתה</label><input id="lk_class" required placeholder="לדוגמה: י2"></div>
+        <div class="field"><label>שם התלמיד/ה המלא</label><input id="lk_name" required></div>
+        <button class="btn btn-primary" style="width:100%;" type="submit">חיפוש</button>
+      </form>
+    </div>`;
+  document.getElementById('lookupForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const p = pos(e);
-    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
-    last = p;
-  }
-  function end(){ drawing = false; }
-  canvas.addEventListener('mousedown', start);
-  canvas.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', end);
-  canvas.addEventListener('touchstart', start, { passive:false });
-  canvas.addEventListener('touchmove', move, { passive:false });
-  canvas.addEventListener('touchend', end);
-  return {
-    clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); },
-    isEmpty(){
-      const blank = document.createElement('canvas');
-      blank.width = canvas.width; blank.height = canvas.height;
-      return canvas.toDataURL() === blank.toDataURL();
-    },
-    dataUrl(){ return canvas.toDataURL('image/png'); },
-  };
+    const btn = e.target.querySelector('button');
+    btn.disabled = true; btn.textContent = 'מחפש…';
+    document.getElementById('lookupErrorBox').innerHTML = '';
+    try{
+      const classQuery = cleanText(document.getElementById('lk_class').value);
+      const nameQuery = cleanText(document.getElementById('lk_name').value);
+      const snap = await db.collection('student_public').where('class_name','==', classQuery).get();
+      const docs = snap.docs;
+      const exact = docs.find(d=> sameNameSet(d.data().full_name, nameQuery));
+      const partial = docs.find(d=> nameFits(nameQuery, d.data().full_name));
+      const match = exact || partial;
+      if (!match){
+        document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">לא נמצא/ה תלמיד/ה בשם ובכיתה שהוזנו. נא לוודא את הפרטים (איות הכיתה כפי שמוכר בישיבה) ולנסות שוב, או לפנות למחנך/ת הכיתה.</div>`;
+        btn.disabled = false; btn.textContent = 'חיפוש';
+        return;
+      }
+      studentId = match.id;
+      history.replaceState(null, '', `${location.pathname}?s=${studentId}`);
+      loadForStudent(studentId, content);
+    }catch(err){
+      document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">אירעה שגיאה בחיפוש. נא לנסות שוב מאוחר יותר, או לפנות למחנך/ת הכיתה.</div>`;
+      btn.disabled = false; btn.textContent = 'חיפוש';
+    }
+  });
+}
+
+/* אותו שער אימות רך שקיים באישורי טיולים — שם תלמיד/ה (מספיק שם פרטי), שם ההורה (מספיק שם
+   פרטי), כיתה וטלפון ההורה, מול גיבוב שנשמר מראש על הרשומה הציבורית-הבטוחה של התלמיד/ה
+   (student_public), ללא חשיפת נתונים גולמיים. ת.ז חובה בטופס אך אינה חלק מההצלבה. */
+function renderVerificationGate(content, pub, studentId, onVerified){
+  content.innerHTML = `
+    <div class="trip-card">
+      <div class="section-eyebrow">אימות זהות</div>
+      <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
+      <p class="verify-hint">כדי לוודא שההזמנה מתבצעת עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
+      <div id="verifyErrorBox"></div>
+      <form id="verifyForm" class="verify-box">
+        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
+        <div class="field"><label>שם ההורה/ת</label><input id="v_parent" required></div>
+        <div class="field"><label>כיתה</label><input id="v_class" required></div>
+        <div class="field"><label>טלפון ההורה/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
+        <div class="field"><label>ת.ז ההורה/ת</label><input id="v_id" inputmode="numeric" maxlength="9" required></div>
+        <button class="btn btn-primary" style="width:100%;" type="submit">אימות והמשך</button>
+      </form>
+    </div>`;
+  document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const enteredId = document.getElementById('v_id').value.replace(/\D/g,'');
+    const nameOk = nameFits(document.getElementById('v_name').value, pub.full_name);
+    const candidate = await sha256Hex(`${firstNameOf(document.getElementById('v_parent').value)}|${normPhoneDigits(document.getElementById('v_phone').value)}|${norm(document.getElementById('v_class').value)}`);
+    const match = (pub.verify_hashes||[]).find(h => h.hash === candidate);
+    if (nameOk && match){
+      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
+      if (match.slot){
+        const field = match.slot === 'mother' ? 'mother_id' : 'father_id';
+        db.collection('students').doc(studentId).update({ [field]: enteredId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
+      }
+      onVerified();
+    } else {
+      document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
+    }
+  });
 }
 
 async function load(){
   const content = document.getElementById('content');
-  if (!tripId){
-    content.innerHTML = '<p class="center-msg">קישור לא תקין.</p>';
+  if (!studentId){
+    renderGeneralLookup(content);
     return;
   }
-  const tripRef = db.collection('trips').doc(tripId);
-  const tripSnap = await tripRef.get();
-  if (!tripSnap.exists){
-    content.innerHTML = '<p class="center-msg">הטיול לא נמצא.</p>';
-    return;
-  }
-  const trip = tripSnap.data();
-  const roster = trip.roster_snapshot || [];
-  const classOptions = trip.class_options || [];
-  const itinerary = trip.itinerary || [];
-
-  const gregDate = formatGregShort(trip.trip_date);
-  const isEvent = trip.kind === 'event';
-  const detailsWord = isEvent ? 'האירוע' : 'הטיול';
-
-  let mainHtml = `
-    <div class="notice-sheet">
-      <div class="notice-section">
-        <h2 class="trip-title" style="margin-bottom:${trip.subtitle ? '2px' : ''};">${esc(trip.title)}</h2>
-        ${trip.subtitle ? `<div style="color:var(--ink-soft); font-size:1.15rem; font-weight:600; margin-bottom:14px;">${esc(trip.subtitle)}</div>` : ''}
-        ${trip.intro_text ? `<div class="intro-callout">${esc(trip.intro_text)}</div>` : ''}
-        ${(trip.hebrew_date || gregDate) ? `<div class="date-line"><div class="date-chip">
-          <div class="dc-icon">${ICON_CALENDAR}</div>
-          <div>
-            <span class="lbl">תאריך ${detailsWord}</span>
-            ${trip.hebrew_date ? `<span class="heb">${esc(trip.hebrew_date)}</span>` : ''}
-            ${trip.hebrew_date && gregDate ? `<span class="greg">(${gregDate})</span>` : (gregDate ? `<span class="heb">${gregDate}</span>` : '')}
-          </div>
-        </div></div>` : ''}
-        <div class="meta-badges">
-          ${trip.location ? `<div class="meta-badge"><div class="m-icon">${ICON_PIN}</div><div class="m-label">${isEvent ? 'מיקום האירוע' : 'יעד'}</div><div class="m-value">${esc(trip.location)}</div></div>` : ''}
-          ${trip.departure_time ? `<div class="meta-badge"><div class="m-icon">${ICON_CLOCK}</div><div class="m-label">${isEvent ? 'תחילת האירוע' : 'שעת יציאה מהישיבה'}</div><div class="m-value">${esc(trip.departure_time)}</div></div>` : ''}
-          ${trip.return_time ? `<div class="meta-badge"><div class="m-icon">${ICON_CLOCK}</div><div class="m-label">${isEvent ? 'סיום האירוע' : 'שעת חזרה לישיבה'}</div><div class="m-value">${esc(trip.return_time)}</div></div>` : ''}
-          ${trip.cost ? `<div class="meta-badge"><div class="m-icon">${ICON_BANKNOTE}</div><div class="m-label">עלות</div><div class="m-value">${esc(fmtCost(trip.cost))}</div></div>` : ''}
-        </div>
-      </div>`;
-
-  if (itinerary.length){
-    mainHtml += `
-      <div class="notice-rule"></div>
-      <div class="notice-section">
-        <h3 class="notice-heading"><span class="nh-icon">${ICON_LIST}</span> מה בתוכנית</h3>
-        ${itinerary.map((it,i)=>`
-          <div class="timeline-item">
-            <div class="timeline-rail"><div class="timeline-dot"></div>${i < itinerary.length-1 ? '<div class="timeline-rail-line"></div>' : ''}</div>
-            <div class="timeline-body">
-              <div class="timeline-time">${esc(it.time)}</div>
-              <div class="timeline-activity">${esc(it.activity)}</div>
-            </div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  if (trip.equipment || trip.notes){
-    mainHtml += `
-      <div class="notice-rule"></div>
-      <div class="notice-section">
-        <h3 class="notice-heading"><span class="nh-icon">${ICON_BACKPACK}</span> לקראת ${isEvent ? 'האירוע' : 'היציאה'}</h3>
-        ${trip.equipment ? `<div class="prep-row"><span class="prep-label">ציוד נדרש</span><p>${esc(trip.equipment)}</p></div>` : ''}
-        ${trip.notes ? `<div class="prep-row prep-notes"><span class="prep-label">שימו לב</span><p>${esc(trip.notes)}</p></div>` : ''}
-      </div>`;
-  }
-
-  if (trip.custom_regards || trip.head_name || trip.coordinator_name){
-    mainHtml += `
-      <div class="notice-rule"></div>
-      <div class="notice-section signature-block">
-        <div class="regards">${esc(trip.custom_regards || 'בברכה,')}</div>
-        <div class="signatures-row">
-          <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
-          <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
-        </div>
-      </div>`;
-  }
-
-  mainHtml += `</div><div class="section-divider"></div>`;
-
-  // אירוע חברתי בלי רישום תלמידים: הודעה בלבד — אין roster_snapshot/approvals בכלל,
-  // ואין טופס למלא. מציגים רק את פרטי האירוע שלמעלה, בלי חלק האישור.
-  if (trip.requires_registration === false){
-    content.innerHTML = mainHtml + `<p class="center-msg">זוהי הודעה בלבד ואינה דורשת רישום או אישור מצדכם.</p>`;
-    return;
-  }
-
-  if (roster.length === 0 || classOptions.length === 0){
-    content.innerHTML = mainHtml + `<p class="center-msg">לא ניתן לטעון אישור עצמאי ${isEvent ? 'לאירוע' : 'לטיול'} זה. יש לפנות למחנך/ת לקבלת קישור אישי.</p>`;
-    return;
-  }
-
-  content.innerHTML = mainHtml + `
-    <div class="trip-card" id="approvalCard">
-      <div class="approval-heading-wrap">
-        <h2 class="trip-title" style="font-size:1.2rem; margin-bottom:4px;">${isEvent ? 'אישור השתתפות באירוע' : 'אישור השתתפות בטיול'}</h2>
-        <div style="color:var(--ink-soft); font-size:.85rem; font-weight:600;">${isEvent ? 'רישום הגעה' : 'אישור יציאה'}</div>
-      </div>
-      <div class="startBtnWrap" id="startWrap">
-        <button class="btn btn-primary" id="startBtn">✍️ ${isEvent ? 'רישום הגעה לאירוע' : 'מילוי אישור יציאה'}</button>
-      </div>
-      <div id="formArea" style="display:none;">
-        <div class="field">
-          <label>כיתת הבן</label>
-          <select id="classSelect">
-            <option value="">— בחר/י —</option>
-            ${classOptions.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field">
-          <label>שם התלמיד</label>
-          <input id="studentNameInput" placeholder="שם פרטי ומשפחה">
-        </div>
-        <div class="field">
-          <label>שם ההורה המאשר</label>
-          <input id="approverName" placeholder="שם מלא">
-        </div>
-        <div class="field">
-          <label>טלפון ההורה המאשר</label>
-          <input id="approverPhone" type="tel" inputmode="tel" placeholder="05X-XXXXXXX">
-        </div>
-        <div class="field">
-          <label>ת.ז ההורה המאשר</label>
-          <input id="approverId" placeholder="מספר תעודת זהות" inputmode="numeric" maxlength="9">
-        </div>
-        <div class="field">
-          <label class="consent-check">
-            <input type="checkbox" id="consentCheck">
-            <span>${isEvent ? 'אני מאשר/ת את הגעת בני לאירוע' : 'אני מאשר לבני לצאת ולהשתתף בטיול'}</span>
-          </label>
-        </div>
-        ${isEvent ? `
-        <div class="field">
-          <label>כמה הורים מגיעים</label>
-          <div class="number-stepper">
-            <button type="button" class="ns-btn ns-minus" aria-label="הפחתה">－</button>
-            <input type="number" id="participantsParents" min="0" step="1" value="1" inputmode="numeric">
-            <button type="button" class="ns-btn ns-plus" aria-label="הוספה">＋</button>
-          </div>
-        </div>` : ''}
-        <div class="field">
-          <label>חתימה</label>
-          <div class="sig-pad-wrap"><canvas id="sigCanvas"></canvas></div>
-          <button type="button" class="sig-clear" id="sigClear">ניקוי החתימה</button>
-        </div>
-        <div id="matchMsg"></div>
-        <button class="btn btn-primary" style="width:100%;" id="submitApproval">✓ שליחת אישור</button>
-      </div>
-      <div id="resultArea"></div>
-    </div>`;
-
-  let pad = null;
-  document.getElementById('startBtn').addEventListener('click', ()=>{
-    document.getElementById('startWrap').style.display = 'none';
-    document.getElementById('formArea').style.display = '';
-    // חשוב: לאתחל את לוח החתימה רק אחרי שהקנבס נראה בפועל — קנבס בתוך אלמנט מוסתר
-    // (display:none) מקבל רוחב 0 ונשאר שבור גם אחרי שמציגים אותו.
-    pad = setupSignaturePad(document.getElementById('sigCanvas'));
-    document.getElementById('sigClear').addEventListener('click', ()=> pad.clear());
-  });
-
-  document.getElementById('submitApproval').addEventListener('click', async ()=>{
-    const matchMsg = document.getElementById('matchMsg');
-    matchMsg.innerHTML = '';
-    const classId = document.getElementById('classSelect').value;
-    const studentName = cleanText(document.getElementById('studentNameInput').value);
-    const approverName = cleanText(document.getElementById('approverName').value);
-    const approverPhone = document.getElementById('approverPhone').value;
-    const approverId = cleanText(document.getElementById('approverId').value).replace(/\D/g,'');
-
-    if (!classId){ toast('יש לבחור כיתה'); return; }
-    if (!studentName){ toast('יש להזין את שם התלמיד'); return; }
-    if (!approverName){ toast('יש להזין את שמך'); return; }
-    if (!approverPhone){ toast('יש להזין מספר טלפון'); return; }
-    if (!approverId){ toast('יש להזין מספר תעודת זהות'); return; }
-    if (!document.getElementById('consentCheck').checked){ toast('יש לאשר את השתתפות הבן בטיול'); return; }
-    if (pad.isEmpty()){ toast('יש לחתום לפני השליחה'); return; }
-
-    // זיהוי התלמיד: מספיק כיתה + שם תלמיד (שם פרטי). זה מה שקובע אם ההורה יכול לאשר —
-    // לא חוסמים אף אחד בגלל אי-התאמה בשם/טלפון של ההורה עצמו.
-    //
-    // הצלבת שם ההורה + טלפון מול גיבוב חד-כיווני (verify_hashes שנשמר מראש על roster_snapshot)
-    // עדיין רצה, אבל ברקע בלבד: היא לא חוסמת שליחה, ורק קובעת האם האישור מסומן כ"מזוהה"
-    // (identity_verified) ולאיזה הורה (mother/father) לשייך את הת.ז שהוזנה. אם היא לא
-    // תואמת (למשל טלפון שהשתנה, כינוי במקום שם מלא וכו') — האישור עדיין עובר, רק בלי הזיהוי
-    // האוטומטי; אפשר תמיד לבדוק ידנית מול הצוות אם יש אישורים לא-מזוהים שדורשים תשומת לב.
-    const candidateHash = await sha256Hex(`${firstNameOf(approverName)}|${normPhoneDigits(approverPhone)}`);
-    const typedNorm = norm(studentName);
-    const nameMatches = roster.filter(r => r.class_id === classId && (typedStartsWithFirstName(typedNorm, candFirstName(r)) || typedMatchesStudent(typedNorm, r)));
-
-    if (nameMatches.length === 0){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא תלמיד בשם זה בכיתה שנבחרה. יש לוודא שהכיתה ושם התלמיד נכונים, או לפנות למחנך/ת.</p>`;
-      return;
-    }
-
-    let matchedStudent = null;
-    let matchedSlot = null;
-    let identityVerified = false;
-
-    // הצלבת הורה: שם ההורה+טלפון (verify_hashes) או ת.ז ההורה (id_hashes) — כל אחד מהם מספיק.
-    // ת.ז זמינה להצלבה רק לתלמידים שכבר שמורה להם ת.ז בכרטיס (ושנוצר להם טיול/רענון אימות אחרי השדרוג).
-    const idDigits = approverId.replace(/^0+/, '');
-    const idHash = async r => sha256Hex(`id|${r.id}|${idDigits}`);
-    const parentMatch = async r => {
-      const m = (r.verify_hashes||[]).find(h => h.hash === candidateHash);
-      if (m) return m.slot;
-      const ih = await idHash(r);
-      const im = (r.id_hashes||[]).find(h => h.hash === ih);
-      return im ? im.slot : null;
-    };
-
-    if (nameMatches.length === 1){
-      matchedStudent = nameMatches[0];
-      const slot = await parentMatch(matchedStudent);
-      if (slot){ identityVerified = true; matchedSlot = slot; }
-    } else {
-      // יותר מתלמיד אחד שמתאים לשם שהוקלד — מצליבים מול ההורה (שם+טלפון / ת.ז).
-      // אם זה לא מכריע, מצמצמים לפי שם מלא/שם משפחה; ורק אם עדיין לא ברור — שגיאה.
-      const verified = [];
-      for (const r of nameMatches){ const slot = await parentMatch(r); if (slot) verified.push({ r, slot }); }
-      const candidates = nameMatches.filter(r => {
-        if (typedEqualsFullName(typedNorm, r)) return true;
-        const remainder = remainderAfterFirstName(typedNorm, candFirstName(r));
-        return !remainder || remainder === candLastName(r);
-      });
-      if (verified.length === 1){
-        matchedStudent = verified[0].r; identityVerified = true; matchedSlot = verified[0].slot;
-      } else if (candidates.length === 1){
-        matchedStudent = candidates[0];
-        const slot = await parentMatch(matchedStudent);
-        if (slot){ identityVerified = true; matchedSlot = slot; }
-      } else {
-        matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין גם שם משפחה מלא ומדויק (כפי שרשום בישיבה).</p>`;
-        return;
-      }
-    }
-
-    const studentId = matchedStudent.id;
-    const approvalRef = tripRef.collection('approvals').doc(studentId);
-    const approvalSnap = await approvalRef.get();
-    if (!approvalSnap.exists){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא רישום אישור עבור תלמיד זה. יש לפנות למחנך/ת.</p>`;
-      return;
-    }
-    if (approvalSnap.data().status === 'approved'){
-      document.getElementById('formArea').style.display = 'none';
-      document.getElementById('resultArea').innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="color:var(--ink-soft); margin:0;">כבר אושר קודם, תודה!</p></div>`;
-      return;
-    }
-
-    const btn = document.getElementById('submitApproval');
-    btn.disabled = true; btn.textContent = 'שולח…';
-    try{
-      const extraPayload = {};
-      if (isEvent){
-        // התלמיד/ה שעבורו/ה מאשרים נספר/ת אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
-        // רק את מספר ההורים המגיעים.
-        const nParents = parseInt(document.getElementById('participantsParents').value, 10);
-        extraPayload.participants_students = 1;
-        extraPayload.participants_parents = Number.isFinite(nParents) && nParents >= 0 ? nParents : 0;
-      }
-      await approvalRef.update({
-        status: 'approved',
-        approved_by_name: approverName,
-        approved_by_id: approverId,
-        consent: true,
-        signature: pad.dataUrl(),
-        approved_at: firebase.firestore.FieldValue.serverTimestamp(),
-        identity_verified: identityVerified,
-        ...extraPayload,
-      });
-      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
-      // (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
-      if (matchedSlot){
-        const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
-        db.collection('students').doc(studentId).update({ [field]: approverId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
-      }
-      const matchedClassName = classOptions.find(c=>c.id===matchedStudent.class_id)?.name || '';
-      notifyPush(
-        'trip_approved',
-        isEvent ? 'אישור הגעה חדש' : 'אישור טיול חדש',
-        `${matchedStudent.full_name}${matchedClassName ? ' (' + matchedClassName + ')' : ''} אושר/ה ${isEvent ? 'להגעה ל' : 'לטיול'} "${trip.title}"`,
-        matchedStudent.class_id
-      );
-      document.getElementById('formArea').style.display = 'none';
-      document.getElementById('resultArea').innerHTML = `<div class="approved-card"><div class="big-check">✅</div><p style="margin:0;">האישור נקלט, תודה!</p></div>`;
-    }catch(err){
-      toast('אירעה שגיאה, נסו שוב');
-      btn.disabled = false; btn.textContent = '✓ שליחת אישור';
-    }
-  });
+  await loadForStudent(studentId, content);
 }
-/* לחצני +/- ליד שדות כמות המשתתפים — ב-input type=number לבד אין דרך נוחה לגעת
-   בחיצי ברירת המחדל בנייד, אז מוסיפים שני כפתורים גדולים במקום. */
-document.addEventListener('click', (e)=>{
-  const btn = e.target.closest('.ns-btn');
-  if (!btn) return;
-  const input = btn.closest('.number-stepper')?.querySelector('input[type="number"]');
-  if (!input) return;
-  const min = input.min !== '' ? parseFloat(input.min) : -Infinity;
-  const step = parseFloat(input.step) || 1;
-  let val = parseFloat(input.value);
-  if (!Number.isFinite(val)) val = Number.isFinite(min) ? min : 0;
-  val = btn.classList.contains('ns-plus') ? val + step : val - step;
-  if (Number.isFinite(min) && val < min) val = min;
-  input.value = val;
-});
+
+async function loadForStudent(studentId, content){
+  const studentRef = db.collection('students').doc(studentId);
+  const pubRef = db.collection('student_public').doc(studentId);
+  const catalogRef = db.collection('settings').doc('shirt_catalog');
+
+  let pubSnap, catalogSnap, studentSnap;
+  try{
+    [pubSnap, catalogSnap, studentSnap] = await Promise.all([pubRef.get(), catalogRef.get(), studentRef.get().catch(()=>null)]);
+  }catch(err){
+    content.innerHTML = '<p class="center-msg">אירעה שגיאה בטעינת הדף. נא לנסות שוב מאוחר יותר, או לפנות למחנך/ת הכיתה.</p>';
+    return;
+  }
+  if (!pubSnap.exists){
+    content.innerHTML = '<p class="center-msg">לא נמצאו פרטי תלמיד/ה התואמים לקישור זה. יש לפנות למחנך/ת הכיתה.</p>';
+    return;
+  }
+  const pub = pubSnap.data();
+  const catalog = (catalogSnap.exists && Array.isArray(catalogSnap.data().items)) ? catalogSnap.data().items : [];
+  const existingOrder = (studentSnap && studentSnap.exists) ? studentSnap.data().shirt_order : null;
+
+  if (existingOrder && existingOrder.type_name){
+    content.innerHTML = `
+      <div class="trip-card approved-card">
+        <div class="big-check">✅</div>
+        <h2 style="margin:0 0 6px;">ההזמנה נקלטה, תודה!</h2>
+        <p style="color:var(--ink-soft); margin:0;">
+          עבור ${esc(pub.full_name)} נרשמה חולצה מסוג "${esc(existingOrder.type_name)}" במידה ${esc(existingOrder.size)}.<br>
+          ${existingOrder.ordered_by_name ? 'נרשם ע״י ' + esc(existingOrder.ordered_by_name) : ''}
+        </p>
+        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:14px;">לשינוי ההזמנה יש לפנות למחנך/ת הכיתה או למזכירות.</p>
+      </div>`;
+    return;
+  }
+
+  if (!catalog.length){
+    content.innerHTML = '<p class="center-msg">מבצע החולצות טרם נפתח. נא לנסות שוב מאוחר יותר.</p>';
+    return;
+  }
+
+  renderVerificationGate(content, pub, studentId, ()=> renderShirtForm());
+
+  function renderShirtForm(){
+    let selectedType = null;
+    content.innerHTML = `
+      <div class="trip-card">
+        <div class="section-eyebrow">בחירת חולצה</div>
+        <h2 class="trip-title" style="font-size:1.25rem;">הזמנת חולצה — ${esc(pub.full_name)}</h2>
+        <div id="shirtTypesList">
+          ${catalog.map((t,i)=>`
+            <div class="shirt-option" data-idx="${i}">
+              <span class="so-name">${esc(t.name)}</span>
+              <span class="so-price">${esc(fmtCost(t.price))}</span>
+            </div>`).join('')}
+        </div>
+        <div class="field" id="sizeFieldWrap" style="display:none; margin-top:10px;">
+          <label>מידה</label>
+          <select id="shirtSize"></select>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>שם ההורה/ת הרושם/ת את ההזמנה</label>
+          <input id="orderParentName" placeholder="שם מלא">
+        </div>
+        <button class="btn btn-primary" style="width:100%; margin-top:10px;" id="submitShirtOrder" disabled>שליחת ההזמנה</button>
+      </div>`;
+
+    const sizeWrap = document.getElementById('sizeFieldWrap');
+    const sizeSel = document.getElementById('shirtSize');
+    const submitBtn = document.getElementById('submitShirtOrder');
+    document.querySelectorAll('.shirt-option').forEach(opt=>{
+      opt.addEventListener('click', ()=>{
+        document.querySelectorAll('.shirt-option').forEach(o=>o.classList.remove('selected'));
+        opt.classList.add('selected');
+        selectedType = catalog[Number(opt.dataset.idx)];
+        const sizes = (selectedType.sizes && selectedType.sizes.length) ? selectedType.sizes : ['S','M','L','XL'];
+        sizeSel.innerHTML = sizes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+        sizeWrap.style.display = '';
+        submitBtn.disabled = false;
+      });
+    });
+
+    submitBtn.addEventListener('click', async ()=>{
+      const parentName = cleanText(document.getElementById('orderParentName').value);
+      if (!parentName){ toast('יש להזין שם הורה'); return; }
+      if (!selectedType){ toast('יש לבחור סוג חולצה'); return; }
+      submitBtn.disabled = true; submitBtn.textContent = 'שולח…';
+      try{
+        await studentRef.update({
+          shirt_order: {
+            type_name: selectedType.name,
+            price: selectedType.price || '',
+            size: sizeSel.value,
+            ordered_by_name: parentName,
+            ordered_at: firebase.firestore.FieldValue.serverTimestamp(),
+            paid: false,
+            payment_method: '',
+            payment_method_other: '',
+          },
+        });
+        notifyPush('shirt_order_submitted', 'הזמנת חולצה חדשה', `התקבלה הזמנת חולצה עבור ${pub.full_name} (${selectedType.name}, מידה ${sizeSel.value})`);
+        load();
+      }catch(err){
+        toast('אירעה שגיאה, נא לנסות שוב');
+        submitBtn.disabled = false; submitBtn.textContent = 'שליחת ההזמנה';
+      }
+    });
+  }
+}
 load();
 </script>
 </body>
