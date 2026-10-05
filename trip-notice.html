@@ -218,16 +218,15 @@ function typedStartsWithFirstName(typedNorm, candFirst){
   return typedNorm === candFirst || typedNorm.startsWith(candFirst + ' ');
 }
 // התאמה סובלנית לשם תלמיד: מספיק שם פרטי (גם כפול, למשל "אוראל דוד") בלי שם המשפחה, או כל
-// צירוף של מילים מתוך השם המלא בכל סדר — כל עוד המילה הראשונה של השם הפרטי נכללת.
+// צירוף של מילים מתוך השם המלא בכל סדר (גם אם בכרטיס השם מופיע "משפחה פרטי").
 function nameTokens(s){
   return norm(s).replace(/["'׳״”“’‘`]/g,'').replace(/[-־–—.,()\/]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
 }
 function typedMatchesStudent(typedNorm, r){
   const typed = nameTokens(typedNorm);
-  const first = nameTokens(candFirstName(r));
-  if (!typed.length || !first.length) return false;
+  if (!typed.length) return false;
   const all = nameTokens([r.full_name, r.first_name, r.last_name].join(' '));
-  return typed.indexOf(first[0]) !== -1 && typed.every(x => all.indexOf(x) !== -1);
+  return typed.every(x => all.indexOf(x) !== -1);
 }
 function typedEqualsFullName(typedNorm, r){
   const a = nameTokens(typedNorm).sort().join(' ');
@@ -503,29 +502,40 @@ async function load(){
     let matchedSlot = null;
     let identityVerified = false;
 
+    // הצלבת הורה: שם ההורה+טלפון (verify_hashes) או ת.ז ההורה (id_hashes) — כל אחד מהם מספיק.
+    // ת.ז זמינה להצלבה רק לתלמידים שכבר שמורה להם ת.ז בכרטיס (ושנוצר להם טיול/רענון אימות אחרי השדרוג).
+    const idDigits = approverId.replace(/^0+/, '');
+    const idHash = async r => sha256Hex(`id|${r.id}|${idDigits}`);
+    const parentMatch = async r => {
+      const m = (r.verify_hashes||[]).find(h => h.hash === candidateHash);
+      if (m) return m.slot;
+      const ih = await idHash(r);
+      const im = (r.id_hashes||[]).find(h => h.hash === ih);
+      return im ? im.slot : null;
+    };
+
     if (nameMatches.length === 1){
       matchedStudent = nameMatches[0];
-      const match = (matchedStudent.verify_hashes||[]).find(h => h.hash === candidateHash);
-      if (match){ identityVerified = true; matchedSlot = match.slot; }
+      const slot = await parentMatch(matchedStudent);
+      if (slot){ identityVerified = true; matchedSlot = slot; }
     } else {
-      // יותר מתלמיד אחד שמתאים לשם שהוקלד — מצליבים מול שם ההורה והטלפון שהוזנו.
-      // אם זה לא מכריע, מצמצמים לפי שם מלא/שם משפחה שהוקלד; ורק אם עדיין לא ברור — שגיאה.
-      const verifiedMatches = nameMatches.filter(r => (r.verify_hashes||[]).some(h => h.hash === candidateHash));
+      // יותר מתלמיד אחד שמתאים לשם שהוקלד — מצליבים מול ההורה (שם+טלפון / ת.ז).
+      // אם זה לא מכריע, מצמצמים לפי שם מלא/שם משפחה; ורק אם עדיין לא ברור — שגיאה.
+      const verified = [];
+      for (const r of nameMatches){ const slot = await parentMatch(r); if (slot) verified.push({ r, slot }); }
       const candidates = nameMatches.filter(r => {
         if (typedEqualsFullName(typedNorm, r)) return true;
         const remainder = remainderAfterFirstName(typedNorm, candFirstName(r));
         return !remainder || remainder === candLastName(r);
       });
-      if (verifiedMatches.length === 1){
-        matchedStudent = verifiedMatches[0];
-        identityVerified = true;
-        matchedSlot = matchedStudent.verify_hashes.find(h => h.hash === candidateHash).slot;
+      if (verified.length === 1){
+        matchedStudent = verified[0].r; identityVerified = true; matchedSlot = verified[0].slot;
       } else if (candidates.length === 1){
         matchedStudent = candidates[0];
-        const match = (matchedStudent.verify_hashes||[]).find(h => h.hash === candidateHash);
-        if (match){ identityVerified = true; matchedSlot = match.slot; }
+        const slot = await parentMatch(matchedStudent);
+        if (slot){ identityVerified = true; matchedSlot = slot; }
       } else {
-        matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין גם שם משפחה מלא ומדויק (כפי שנמסר למחנך/ת) כדי לזהות את הילד/ה הנכון/ה, או לפנות למחנך/ת.</p>`;
+        matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין גם שם משפחה מלא ומדויק (כפי שרשום בישיבה).</p>`;
         return;
       }
     }
