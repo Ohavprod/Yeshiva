@@ -39,6 +39,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
 <script src="firebaseClient.js"></script>
 <script>
 
@@ -72,6 +73,36 @@ function setupSignaturePad(canvas){
   };
 }
 
+
+/* ---------------- התראות פוש להורה ---------------- */
+const VAPID_KEY = 'BOs1oRJVJqnXWnYYdaBP3NzewP9bd04Ddo-woJE0UdLbfb26ErRegRHbIinhQXxEyCxXaoWbFPyut82CXVFgcm0';
+async function registerParentPush(user){
+  try{
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || Notification.permission !== 'granted') return false;
+    const registration = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+    if (token) await db.collection('parent_tokens').doc(user.uid).set({ fcm_token: token, updated_at: firebase.firestore.FieldValue.serverTimestamp() });
+    if (!window._fgBound){
+      window._fgBound = true;
+      messaging.onMessage(payload=>{
+        const d = payload.data || {};
+        try{ new Notification(d.title || 'עדכון חדש', { body: d.body || '', icon: 'assets/img/icon-192.png' }); }catch(e){}
+        toast((d.title||'') + (d.body ? ' — ' + d.body : ''));
+        if (currentTab === 'releases') renderShell(user, loadSession());
+      });
+    }
+    return true;
+  }catch(e){ console.warn('parent push setup failed', e); return false; }
+}
+async function enablePush(user, sess){
+  if (!('Notification' in window)){ toast('הדפדפן לא תומך בהתראות'); return; }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted'){ await registerParentPush(user); toast('התראות הופעלו'); }
+  renderShell(user, sess);
+}
+
 const app = document.getElementById('app');
 const REASONS = [
   { v:'doctor', label:'תור לרופא / טיפול רפואי' },
@@ -94,12 +125,10 @@ const LOGIN_ERRORS = {
 function renderLogin(msg=''){
   app.innerHTML = `
     <div class="pcard">
-      <h3 style="margin:0 0 4px;">כניסת הורה</h3>
-      <p style="font-size:.88rem;color:var(--ink-soft);margin:0 0 14px;">בלי סיסמה ובלי מייל — מזינים את הפרטים שמופיעים בכרטיס התלמיד/ה בישיבה.</p>
-      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="off" placeholder="9 ספרות"></div>
-      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" placeholder="05X-XXXXXXX"></div>
-      <div class="field"><label>שם התלמיד/ה</label><input id="l_name" autocomplete="off" placeholder="שם פרטי ומשפחה (בכל סדר)">
-        <div style="font-size:.78rem;color:var(--ink-soft);margin-top:4px;">שם פרטי כפול? אפשר לכתוב את שניהם. אם יש כמה ילדים בישיבה — מספיק שם של אחד מהם.</div></div>
+      <h3 style="margin:0 0 14px;">כניסת הורה</h3>
+      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="off" ></div>
+      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" ></div>
+      <div class="field"><label>שם התלמיד/ה</label><input id="l_name" autocomplete="off"></div>
       <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">כניסה</button>
       <div class="perr" id="l_err">${esc(msg)}</div>
     </div>`;
@@ -129,6 +158,7 @@ function renderShell(user, sess){
       <div><b>שלום${sess.name?' '+esc(sess.name):''}</b><div style="font-size:.8rem;color:var(--ink-soft);">${kids.map(k=>esc(k.student_name)+(k.class_name?' ('+esc(k.class_name)+')':'')).join(' · ')}</div></div>
       <button class="btn btn-outline btn-sm" id="lo">יציאה</button>
     </div>
+    ${('Notification' in window) && Notification.permission==='default' ? '<button class="btn btn-outline btn-sm" id="enablePush" style="width:100%;margin-bottom:12px;">🔔 הפעלת התראות</button>' : ''}
     <div class="ptabs">
       <button data-tab="new" class="${currentTab==='new'?'on':''}">בקשת יציאה</button>
       <button data-tab="releases" class="${currentTab==='releases'?'on':''}">הבקשות שלי</button>
@@ -136,6 +166,7 @@ function renderShell(user, sess){
     </div>
     <div id="tabBody"></div>`;
   document.getElementById('lo').onclick = async ()=>{ clearSession(); await auth.signOut(); };
+  document.getElementById('enablePush')?.addEventListener('click', ()=> enablePush(user, sess));
   app.querySelectorAll('.ptabs button').forEach(b=>b.onclick=()=>{ currentTab=b.dataset.tab; renderShell(user, sess); });
   const body = document.getElementById('tabBody');
   if (currentTab==='new') renderNewRequest(body, user, sess);
@@ -231,15 +262,33 @@ async function renderTripsHistory(body, sess){
     body.innerHTML = items.length ? items.map(({trip,kid,appr})=>{
       const approved = appr && appr.status==='approved';
       const dateLine = [trip.hebrew_date, gregShort(trip.trip_date) && `(${gregShort(trip.trip_date)})`].filter(Boolean).join(' ');
-      return `<div class="pcard">
+      const isEv = trip.kind === 'event';
+      const itin = (trip.itinerary||[]).filter(r=>r.time || r.activity);
+      const metaRow = (label, val)=> val ? `<div style="padding:5px 0;font-size:.9rem;"><b>${label}:</b> ${esc(val)}</div>` : '';
+      const details = `
+        ${trip.subtitle ? `<div style="font-weight:600;margin-bottom:6px;">${esc(trip.subtitle)}</div>` : ''}
+        ${trip.intro_text ? `<div style="font-size:.9rem;white-space:pre-line;margin-bottom:8px;">${esc(trip.intro_text)}</div>` : ''}
+        ${metaRow(isEv?'מיקום האירוע':'יעד', trip.location)}
+        ${metaRow(isEv?'תחילת האירוע':'שעת יציאה', trip.departure_time)}
+        ${metaRow(isEv?'סיום האירוע':'שעת חזרה', trip.return_time)}
+        ${metaRow('עלות', trip.cost ? (String(trip.cost).includes('₪') ? trip.cost : trip.cost + ' ₪') : '')}
+        ${itin.length ? `<div style="margin-top:8px;"><b>תוכנייה:</b>${itin.map(r=>`<div style="font-size:.88rem;padding:3px 0;">${r.time?`<b>${esc(r.time)}</b> — `:''}${esc(r.activity||'')}</div>`).join('')}</div>` : ''}
+        ${trip.equipment ? `<div style="margin-top:8px;font-size:.9rem;"><b>ציוד:</b> ${esc(trip.equipment)}</div>` : ''}
+        ${trip.notes ? `<div style="margin-top:8px;font-size:.9rem;"><b>שימו לב:</b> ${esc(trip.notes)}</div>` : ''}`;
+      return `<div class="pcard trip-item" data-trip="${esc(trip.id)}" style="cursor:pointer;">
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b>${esc(trip.title||'')}</b>
           <span class="pstat ${approved?'approved':'pending'}">${approved?'אושר':'טרם אושר'}</span></div>
         <div style="font-size:.85rem;color:var(--ink-soft);margin-top:4px;">${esc(kid.student_name)}${dateLine?' · '+esc(dateLine):''}${trip.location?' · '+esc(trip.location):''}</div>
+        <div class="trip-details" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">${details}</div>
         ${approved ? `<div style="font-size:.85rem;margin-top:6px;">נחתם ע״י ${esc(appr.approved_by_name||'')}${appr.approved_by_relation?' ('+esc(appr.approved_by_relation)+')':''} · ${esc(tsDate(appr.approved_at))}</div>
           ${appr.signature ? `<img class="sigthumb" src="${appr.signature}" alt="חתימה">` : ''}`
           : `<a class="btn btn-outline btn-sm" style="margin-top:8px;" href="approve.html?t=${esc(trip.id)}&s=${esc(kid.student_id)}">לאישור הטיול</a>`}
       </div>`;
     }).join('') : '<div class="pcard" style="color:var(--ink-soft);">לא נמצאו טיולים או אישורים לילדים שלכם.</div>';
+    body.querySelectorAll('.trip-item').forEach(card=> card.addEventListener('click', e=>{
+      if (e.target.closest('a')) return;
+      const d = card.querySelector('.trip-details'); d.style.display = d.style.display==='none' ? '' : 'none';
+    }));
   }catch(e){
     body.innerHTML = `<div class="pcard perr">שגיאה בטעינת האישורים: ${esc(e.code||e.message)}</div>`;
   }
@@ -254,6 +303,7 @@ auth.onAuthStateChanged(async user=>{
     await auth.signOut(); clearSession(); renderLogin(); return;
   }
   renderShell(user, sess);
+  registerParentPush(user);
 });
 </script>
 </body>
