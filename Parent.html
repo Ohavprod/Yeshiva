@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>כניסת הורה — ישיבה תיכונית עפולה</title>
+<meta name="theme-color" content="#16223d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  body{ background:var(--paper); }
+  .pwrap{ max-width:640px; margin:0 auto; padding:0 0 60px; }
+  .phead{ background:radial-gradient(1100px 500px at 85% -20%, #1f3563 0%, var(--navy) 55%, var(--navy) 100%); color:#fff; text-align:center; padding:32px 24px 26px; }
+  .phead img{ height:84px; width:84px; border-radius:50%; object-fit:cover; background:#fff; border:3px solid rgba(255,255,255,.5); }
+  .phead .school{ font-family:'Rubik',sans-serif; font-weight:800; font-size:1.25rem; margin-top:10px; }
+  .phead .tag{ font-weight:700; margin-top:4px; opacity:.92; }
+  .pbody{ padding:20px 18px; }
+  .pcard{ background:#fff; border:1.5px solid var(--line); border-radius:16px; padding:18px; margin-bottom:14px; }
+  .ptabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .ptabs button{ flex:1; padding:11px; border-radius:12px; border:1.5px solid var(--line); background:#fff; font:inherit; font-weight:700; cursor:pointer; }
+  .ptabs button.on{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  .pstat{ display:inline-block; padding:3px 12px; border-radius:999px; font-size:.8rem; font-weight:700; }
+  .pstat.pending{ background:#fff4d6; color:#8a6100; } .pstat.approved{ background:#e3f6ea; color:#1c7a45; } .pstat.rejected{ background:#fde7e7; color:#b3261e; }
+  .sig-pad-wrap{ border:1.5px dashed var(--line); border-radius:12px; background:#fff; }
+  .sig-pad-wrap canvas{ width:100%; height:160px; display:block; touch-action:none; }
+  .perr{ color:var(--danger,#b3261e); font-size:.9rem; margin-top:8px; }
+  .sigthumb{ height:56px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-top:8px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media(max-width:480px){ .row2{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="pwrap">
+  <div class="phead"><img src="assets/img/logo.png" alt=""><div class="school">ישיבה תיכונית עפולה</div><div class="tag">כניסת הורה — אישורים ובקשות יציאה</div></div>
+  <div class="pbody" id="app"><p style="text-align:center;color:var(--ink-soft);">טוען…</p></div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="firebaseClient.js"></script>
+<script>
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
+function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
+const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
+const SESSION_KEY = 'ytp_parent_session';
+function notifyPush(type, title, body, classId, className){
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body, class_id: classId||null, class_name: className||null }) }).catch(()=>{});
+}
+function loadSession(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch(e){ return null; } }
+function saveSession(s){ try{ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }catch(e){} }
+function clearSession(){ try{ localStorage.removeItem(SESSION_KEY); }catch(e){} }
+
+function setupSignaturePad(canvas){
+  const ctx = canvas.getContext('2d');
+  const ratio = window.devicePixelRatio || 1, rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width*ratio; canvas.height = 160*ratio; ctx.scale(ratio, ratio);
+  ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.strokeStyle='#16203a';
+  let drawing=false, last=null;
+  const pos = e=>{ const r=canvas.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-r.left,y:p.clientY-r.top}; };
+  const start = e=>{ e.preventDefault(); drawing=true; last=pos(e); };
+  const move = e=>{ if(!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; };
+  canvas.addEventListener('mousedown',start); canvas.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drawing=false);
+  canvas.addEventListener('touchstart',start,{passive:false}); canvas.addEventListener('touchmove',move,{passive:false}); canvas.addEventListener('touchend',()=>drawing=false);
+  return {
+    clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); },
+    isEmpty(){ const b=document.createElement('canvas'); b.width=canvas.width; b.height=canvas.height; return canvas.toDataURL()===b.toDataURL(); },
+    dataUrl(){ return canvas.toDataURL('image/png'); },
+  };
+}
+
+const app = document.getElementById('app');
+const REASONS = [
+  { v:'doctor', label:'תור לרופא / טיפול רפואי' },
+  { v:'shopping', label:'סידורים (רמי לוי / קניות)' },
+  { v:'family', label:'אירוע משפחתי' },
+  { v:'other', label:'אחר' },
+];
+const reasonLabel = v => (REASONS.find(r=>r.v===v)||{label:v||''}).label;
+const STATUS = { pending:'ממתין לאישור המורה', approved:'אושר ע״י המורה', rejected:'נדחה' };
+const todayIso = ()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; };
+const gregShort = s=>{ if(!s) return ''; const d=new Date(s); return isNaN(d)?'':`${d.getDate()}.${d.getMonth()+1}.${String(d.getFullYear()).slice(-2)}`; };
+const tsDate = t=> t && t.toDate ? t.toDate().toLocaleDateString('he-IL') : '';
+
+/* ---------------- כניסה: ת.ז + טלפון + שם התלמיד/ה ---------------- */
+const LOGIN_ERRORS = {
+  no_match: 'הפרטים לא תואמים לרישום בישיבה. בדקו את הטלפון (כפי שנמסר לבית הספר) ואת שם התלמיד/ה, או פנו למחנך/ת.',
+  invalid_input: 'יש למלא ת.ז, טלפון ושם תלמיד/ה.',
+  too_many_attempts: 'בוצעו יותר מדי ניסיונות. נסו שוב בעוד כרבע שעה.',
+};
+function renderLogin(msg=''){
+  app.innerHTML = `
+    <div class="pcard">
+      <h3 style="margin:0 0 4px;">כניסת הורה</h3>
+      <p style="font-size:.88rem;color:var(--ink-soft);margin:0 0 14px;">בלי סיסמה ובלי מייל — מזינים את הפרטים שמופיעים בכרטיס התלמיד/ה בישיבה.</p>
+      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="off" placeholder="9 ספרות"></div>
+      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" placeholder="05X-XXXXXXX"></div>
+      <div class="field"><label>שם התלמיד/ה</label><input id="l_name" autocomplete="off" placeholder="שם פרטי ומשפחה (בכל סדר)">
+        <div style="font-size:.78rem;color:var(--ink-soft);margin-top:4px;">שם פרטי כפול? אפשר לכתוב את שניהם. אם יש כמה ילדים בישיבה — מספיק שם של אחד מהם.</div></div>
+      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">כניסה</button>
+      <div class="perr" id="l_err">${esc(msg)}</div>
+    </div>`;
+  const go = async ()=>{
+    const id=document.getElementById('l_id').value.trim(), phone=document.getElementById('l_phone').value.trim(), name=document.getElementById('l_name').value.trim();
+    const err = m=>document.getElementById('l_err').textContent=m;
+    if (id.replace(/\D/g,'').length<5 || phone.replace(/\D/g,'').length<9 || !name) return err(LOGIN_ERRORS.invalid_input);
+    const btn=document.getElementById('l_go'); btn.disabled=true; btn.textContent='בודק…'; err('');
+    try{
+      const res = await fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret:PUSH_WEBHOOK_SECRET, type:'parent_login', id_number:id, phone, student_name:name }) });
+      const data = await res.json();
+      if (!data.ok){ btn.disabled=false; btn.textContent='כניסה'; return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.'); }
+      saveSession({ uid:data.uid, name:data.parent_name||'', id_number:id.replace(/\D/g,''), phone, children:data.children });
+      await auth.signInWithCustomToken(data.token);
+    }catch(e){ btn.disabled=false; btn.textContent='כניסה'; err('אירעה שגיאה בחיבור, נסו שוב.'); }
+  };
+  document.getElementById('l_go').onclick = go;
+  app.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); }));
+}
+
+/* ---------------- מסך ראשי ---------------- */
+let currentTab = 'new';
+function renderShell(user, sess){
+  const kids = sess.children || [];
+  app.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px;">
+      <div><b>שלום${sess.name?' '+esc(sess.name):''}</b><div style="font-size:.8rem;color:var(--ink-soft);">${kids.map(k=>esc(k.student_name)+(k.class_name?' ('+esc(k.class_name)+')':'')).join(' · ')}</div></div>
+      <button class="btn btn-outline btn-sm" id="lo">יציאה</button>
+    </div>
+    <div class="ptabs">
+      <button data-tab="new" class="${currentTab==='new'?'on':''}">בקשת יציאה</button>
+      <button data-tab="releases" class="${currentTab==='releases'?'on':''}">הבקשות שלי</button>
+      <button data-tab="trips" class="${currentTab==='trips'?'on':''}">טיולים שאישרתי</button>
+    </div>
+    <div id="tabBody"></div>`;
+  document.getElementById('lo').onclick = async ()=>{ clearSession(); await auth.signOut(); };
+  app.querySelectorAll('.ptabs button').forEach(b=>b.onclick=()=>{ currentTab=b.dataset.tab; renderShell(user, sess); });
+  const body = document.getElementById('tabBody');
+  if (currentTab==='new') renderNewRequest(body, user, sess);
+  else if (currentTab==='releases') renderReleases(body, user);
+  else renderTripsHistory(body, sess);
+}
+
+function renderNewRequest(body, user, sess){
+  const kids = sess.children || [];
+  body.innerHTML = `
+    <div class="pcard">
+      <h3 style="margin:0 0 12px;">בקשת יציאה מוקדמת</h3>
+      <div class="field"><label>עבור איזה תלמיד/ה</label>
+        <select id="r_student">${kids.map(k=>`<option value="${esc(k.student_id)}">${esc(k.student_name)}${k.class_name?' — '+esc(k.class_name):''}</option>`).join('')}</select></div>
+      <div class="field"><label>סיבת היציאה</label>
+        <select id="r_reason">${REASONS.map(r=>`<option value="${r.v}">${esc(r.label)}</option>`).join('')}</select></div>
+      <div class="field"><label>פירוט (חובה — למה נדרש אישור)</label><textarea id="r_details" rows="3" placeholder="לדוגמה: תור לרופא עיניים בעפולה בשעה 11:30"></textarea></div>
+      <div class="row2">
+        <div class="field"><label>תאריך</label><input id="r_date" type="date" value="${todayIso()}" min="${todayIso()}"></div>
+        <div class="field"><label>שעת יציאה</label><input id="r_time" type="time"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>שעת חזרה משוערת</label><input id="r_return" type="time"></div>
+        <div class="field"><label>מי אוסף/ת</label><input id="r_pickup" value="${esc(sess.name||'')}"></div>
+      </div>
+      <label class="chip-check" style="display:inline-flex;margin:6px 0;"><input type="checkbox" id="r_noreturn"> התלמיד/ה לא חוזר/ת היום</label>
+      <div class="field"><label>חתימת ההורה</label><div class="sig-pad-wrap"><canvas id="sig"></canvas></div>
+        <button type="button" class="btn btn-outline btn-sm" id="sigClear" style="margin-top:6px;">ניקוי חתימה</button></div>
+      <label class="chip-check" style="display:flex;margin:8px 0;"><input type="checkbox" id="r_consent"> אני מאשר/ת את יציאת בני/בתי מהישיבה בזמן המצוין ולוקח/ת אחריות על היציאה</label>
+      <button class="btn btn-primary" id="r_send" style="width:100%;">שליחה למורה</button>
+      <div class="perr" id="r_err"></div>
+    </div>`;
+  const pad = setupSignaturePad(document.getElementById('sig'));
+  document.getElementById('sigClear').onclick = ()=>pad.clear();
+  document.getElementById('r_send').onclick = async ()=>{
+    const g = id=>document.getElementById(id), err = m=>g('r_err').textContent=m;
+    const kid = kids.find(k=>k.student_id===g('r_student').value);
+    const details = g('r_details').value.trim(), date = g('r_date').value, time = g('r_time').value;
+    if (!details) return err('יש לפרט את סיבת היציאה');
+    if (!date || !time) return err('יש להזין תאריך ושעת יציאה');
+    if (pad.isEmpty()) return err('יש לחתום לפני השליחה');
+    if (!g('r_consent').checked) return err('יש לסמן את תיבת האישור');
+    const btn=g('r_send'); btn.disabled=true; btn.textContent='שולח…';
+    try{
+      await db.collection('early_releases').add({
+        parent_uid:user.uid, parent_name:sess.name||'', parent_id:sess.id_number, parent_phone:sess.phone,
+        student_id:kid.student_id, student_name:kid.student_name, class_id:kid.class_id||null, class_name:kid.class_name||'',
+        reason_type:g('r_reason').value, reason_details:details,
+        release_date:date, release_time:time, return_time:g('r_noreturn').checked?'':g('r_return').value, no_return:g('r_noreturn').checked,
+        pickup_name:g('r_pickup').value.trim(), signature:pad.dataUrl(),
+        status:'pending', created_at:firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      notifyPush('early_release_request','בקשת יציאה מוקדמת', `${kid.student_name}${kid.class_name?' ('+kid.class_name+')':''} — ${reasonLabel(g('r_reason').value)}, ${date} ${time}`, kid.class_id, kid.class_name);
+      toast('הבקשה נשלחה למורה'); currentTab='releases'; renderShell(user, sess);
+    }catch(e){ btn.disabled=false; btn.textContent='שליחה למורה'; err('שגיאה בשליחה: '+(e.code||e.message)); }
+  };
+}
+
+async function renderReleases(body, user){
+  body.innerHTML = '<p style="color:var(--ink-soft);text-align:center;">טוען…</p>';
+  let reqs = [];
+  try{
+    const rs = await db.collection('early_releases').where('parent_uid','==',user.uid).get();
+    reqs = rs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.created_at?.seconds||0)-(a.created_at?.seconds||0));
+  }catch(e){ body.innerHTML = `<div class="pcard perr">שגיאה בטעינה: ${esc(e.code||e.message)}</div>`; return; }
+  body.innerHTML = reqs.length ? reqs.map(r=>`
+    <div class="pcard"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b>${esc(r.student_name)}</b><span class="pstat ${esc(r.status)}">${esc(STATUS[r.status]||r.status)}</span></div>
+      <div style="font-size:.9rem;margin-top:6px;">${esc(reasonLabel(r.reason_type))} · ${esc(gregShort(r.release_date))} ${esc(r.release_time||'')}</div>
+      <div style="font-size:.85rem;color:var(--ink-soft);margin-top:4px;">${esc(r.reason_details||'')}</div>
+      ${r.teacher_note ? `<div style="font-size:.85rem;margin-top:6px;">הערת המורה: ${esc(r.teacher_note)}</div>` : ''}
+      ${r.status==='approved' && r.teacher_name ? `<div style="font-size:.82rem;color:var(--ink-soft);margin-top:4px;">אושר ע״י ${esc(r.teacher_name)} · ${esc(tsDate(r.decided_at))}</div>` : ''}
+      ${r.signature ? `<img class="sigthumb" src="${r.signature}" alt="החתימה שלי">` : ''}</div>`).join('')
+    : '<div class="pcard" style="color:var(--ink-soft);">עוד לא נשלחו בקשות יציאה.</div>';
+}
+
+/* תיעוד: הטיולים/האירועים של הכיתה של הילד/ה, והאישורים שנחתמו עליהם */
+async function renderTripsHistory(body, sess){
+  body.innerHTML = '<p style="color:var(--ink-soft);text-align:center;">טוען…</p>';
+  const kids = sess.children || [];
+  try{
+    const classIds = Array.from(new Set(kids.map(k=>k.class_id).filter(Boolean)));
+    const tripMap = {};
+    for (const cid of classIds){
+      const snap = await db.collection('trips').where('class_ids','array-contains', cid).get();
+      snap.forEach(d=>{ tripMap[d.id] = { id:d.id, ...d.data() }; });
+    }
+    const trips = Object.values(tripMap).filter(t=>t.is_published !== false)
+      .sort((a,b)=>(b.trip_date||'').localeCompare(a.trip_date||''));
+    const pairs = [];
+    trips.forEach(t=> kids.forEach(k=>{ if ((t.roster_snapshot||[]).some(r=>r.id===k.student_id)) pairs.push({ trip:t, kid:k }); }));
+    const docs = await Promise.all(pairs.map(p=> db.collection('trips').doc(p.trip.id).collection('approvals').doc(p.kid.student_id).get().catch(()=>null)));
+    const items = pairs.map((p,i)=>({ ...p, appr: docs[i] && docs[i].exists ? docs[i].data() : null }));
+    body.innerHTML = items.length ? items.map(({trip,kid,appr})=>{
+      const approved = appr && appr.status==='approved';
+      const dateLine = [trip.hebrew_date, gregShort(trip.trip_date) && `(${gregShort(trip.trip_date)})`].filter(Boolean).join(' ');
+      return `<div class="pcard">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b>${esc(trip.title||'')}</b>
+          <span class="pstat ${approved?'approved':'pending'}">${approved?'אושר':'טרם אושר'}</span></div>
+        <div style="font-size:.85rem;color:var(--ink-soft);margin-top:4px;">${esc(kid.student_name)}${dateLine?' · '+esc(dateLine):''}${trip.location?' · '+esc(trip.location):''}</div>
+        ${approved ? `<div style="font-size:.85rem;margin-top:6px;">נחתם ע״י ${esc(appr.approved_by_name||'')}${appr.approved_by_relation?' ('+esc(appr.approved_by_relation)+')':''} · ${esc(tsDate(appr.approved_at))}</div>
+          ${appr.signature ? `<img class="sigthumb" src="${appr.signature}" alt="חתימה">` : ''}`
+          : `<a class="btn btn-outline btn-sm" style="margin-top:8px;" href="approve.html?t=${esc(trip.id)}&s=${esc(kid.student_id)}">לאישור הטיול</a>`}
+      </div>`;
+    }).join('') : '<div class="pcard" style="color:var(--ink-soft);">לא נמצאו טיולים או אישורים לילדים שלכם.</div>';
+  }catch(e){
+    body.innerHTML = `<div class="pcard perr">שגיאה בטעינת האישורים: ${esc(e.code||e.message)}</div>`;
+  }
+}
+
+auth.onAuthStateChanged(async user=>{
+  if (!user){ renderLogin(); return; }
+  let claims = {};
+  try{ claims = (await user.getIdTokenResult()).claims || {}; }catch(e){}
+  const sess = loadSession();
+  if (!claims.parent || !sess || sess.uid !== user.uid){
+    await auth.signOut(); clearSession(); renderLogin(); return;
+  }
+  renderShell(user, sess);
+});
+</script>
+</body>
+</html>
