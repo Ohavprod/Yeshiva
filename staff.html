@@ -281,6 +281,12 @@ const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
    רק למשתמש הספציפי הזה (למשל "שויכה משימה חדשה" — רק למורה שאליו שויכה),
    ולא לפי טבלת ההרשאות לפי תפקיד. הסקריפט החיצוני צריך לבדוק: אם קיים
    target_uid בבקשה, לשלוח רק אליו (ולהתעלם מ-push_prefs לאירוע הזה). */
+function isSystemAdminUser(){ return myProfile?.role === 'מנהל מערכת' || !!(myProfile?.permissions||{}).manage_users; }
+/* התראה להורה (בקשת יציאה אושרה/נדחתה) — הסקריפט שולף את ה-token של ההורה לפי ה-uid שלו */
+function notifyParent(parentUid, title, body){
+  if (!parentUid) return;
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type:'early_release_decision', title, body, target_parent_uid: parentUid }) }).catch(()=>{});
+}
 function notifyPush(type, title, body, targetUid){
   if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
   const payload = { secret: PUSH_WEBHOOK_SECRET, type, title, body };
@@ -772,6 +778,7 @@ const ICON = {
   lock: fIcon('<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>', 15),
   archive: fIcon('<rect x="2" y="4" width="20" height="5" rx="1"></rect><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path><line x1="10" y1="13" x2="14" y2="13"></line>', 15),
   bell: fIcon('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>'),
+  door: fIcon('<path d="M13 4h3a2 2 0 0 1 2 2v14"></path><path d="M2 20h3"></path><path d="M13 20h9"></path><path d="M10 12v.01"></path><path d="M13 4.56v16.16a1 1 0 0 1-1.24.97L5 20V5.56a2 2 0 0 1 1.52-1.94l4-1A2 2 0 0 1 13 4.56z"></path>', 16),
   clock: fIcon('<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>', 16),
   upload: fIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>', 15),
   folder: fIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>', 15),
@@ -1252,7 +1259,7 @@ function buildSideNav(){
     { id:'home', label:'בית', icon:ICON.home, show:true },
     { id:'myclass', label:'הכיתה שלי', icon:ICON.cap, show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:ICON.compass, show:true },
-    { id:'earlyrelease', label:'בקשות יציאה', icon:ICON.clock, show: (!!myProfile.class_id && !!p.manage_class_roster) || !!p.view_all_classes },
+    { id:'earlyrelease', label:'בקשות יציאה', icon:ICON.door, show: (!!myProfile.class_id && !!p.manage_class_roster) || !!p.view_all_classes || isSystemAdminUser() },
     { id:'search', label:'חיפוש תלמידים', icon:ICON.search, show: !!p.view_all_classes },
     { id:'payments', label:'ניהול תשלומים', icon:ICON.wallet, show: !!p.manage_payments || !!p.manage_users },
     { id:'mytasks', label:'המשימות שלי', icon:ICON.check, show:true },
@@ -7045,35 +7052,64 @@ async function renderClasses(body){
    ============================================================ */
 const EARLY_REASONS = { doctor:'תור לרופא / טיפול רפואי', shopping:'סידורים (רמי לוי / קניות)', family:'אירוע משפחתי', other:'אחר' };
 const EARLY_STATUS = { pending:'ממתין', approved:'אושר', rejected:'נדחה' };
-function printEarlyReleaseSlip(r){
-  const w = window.open('', '_blank');
-  if (!w){ toast('הדפדפן חסם את החלון — יש לאפשר חלונות קופצים'); return; }
+function buildEarlyReleaseDocElement(r){
   const reason = EARLY_REASONS[r.reason_type] || r.reason_type || '';
-  w.document.write(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><title>אישור יציאה — ${esc(r.student_name)}</title>
-  <style>body{font-family:Assistant,Arial,sans-serif;max-width:640px;margin:30px auto;padding:0 24px;color:#16203a}
-  h1{font-family:Rubik,Arial,sans-serif;color:#16223d;border-bottom:3px solid #1c7a7a;padding-bottom:10px}
-  .row{padding:8px 0;border-bottom:1px solid #eef1f6}.row b{display:inline-block;min-width:130px}
-  img.sig{max-width:260px;border:1px solid #dde4ee;border-radius:8px;background:#fff}
-  .ok{margin-top:18px;padding:12px 16px;border-radius:10px;background:#e3f6ea;color:#1c7a45;font-weight:700}
-  @media print{button{display:none}}</style></head><body>
-  <button onclick="window.print()">הדפסה / שמירה כ-PDF</button>
-  <h1>אישור יציאה מהישיבה — ישיבה תיכונית עפולה</h1>
-  <div class="row"><b>תלמיד/ה:</b> ${esc(r.student_name)}${r.class_name?' — '+esc(r.class_name):''}</div>
-  <div class="row"><b>סיבה:</b> ${esc(reason)}</div>
-  <div class="row"><b>פירוט:</b> ${esc(r.reason_details||'')}</div>
-  <div class="row"><b>תאריך ושעת יציאה:</b> ${esc(r.release_date||'')} ${esc(r.release_time||'')}${r.release_date && formatFullHebrewDate(r.release_date) ? ' · '+esc(formatFullHebrewDate(r.release_date)) : ''}</div>
-  <div class="row"><b>חזרה:</b> ${r.no_return ? 'לא חוזר/ת היום' : (r.return_time ? esc(r.return_time) : 'לא צוין')}</div>
-  <div class="row"><b>מי אוסף/ת:</b> ${esc(r.pickup_name||'')}</div>
-  <div class="row"><b>הורה מאשר:</b> ${esc(r.parent_name||'')} · ת.ז ${esc(r.parent_id||'')} · ${esc(r.parent_phone||'')}</div>
-  <div class="row"><b>חתימת ההורה:</b><br>${r.signature ? `<img class="sig" src="${r.signature}">` : ''}</div>
-  <div class="ok">${r.status==='approved' ? `אושר ע"י ${esc(r.teacher_name||'המורה')}` : (r.status==='rejected' ? 'הבקשה נדחתה' : 'ממתין לאישור המורה')}${r.teacher_note ? ' — '+esc(r.teacher_note) : ''}</div>
-  </body></html>`);
-  w.document.close();
+  const hebDate = r.release_date ? (formatFullHebrewDate(r.release_date) || '') : '';
+  const gregDate = r.release_date ? formatGregShort(r.release_date) : '';
+  const row = (k, v) => `<div class="pdf-avoid-break" style="padding:9px 0; border-bottom:1px solid #eef1f6; font-size:15.5px;"><b style="display:inline-block; min-width:130px; color:#16223d;">${k}</b> ${v}</div>`;
+  const statusColor = r.status==='approved' ? '#1c7a45' : (r.status==='rejected' ? '#b3261e' : '#8a6100');
+  const statusBg = r.status==='approved' ? '#e3f6ea' : (r.status==='rejected' ? '#fde7e7' : '#fff4d6');
+  const statusText = r.status==='approved' ? `אושר ע"י ${esc(r.teacher_name||'המורה')}` : (r.status==='rejected' ? 'הבקשה נדחתה' : 'ממתין לאישור המורה');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:700px; z-index:-1; background:#fff;';
+  wrap.innerHTML = `
+    <div style="width:700px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:14px; color:#4b566d; margin-top:2px;">אישור יציאה מהישיבה</div>
+        </div>
+      </div>
+      ${row('תלמיד/ה:', `<b>${esc(r.student_name||'')}</b>${r.class_name ? ' — ' + esc(r.class_name) : ''}`)}
+      ${row('סיבה:', esc(reason))}
+      ${r.reason_details ? row('פירוט:', esc(r.reason_details)) : ''}
+      ${row('תאריך יציאה:', `${esc(hebDate)}${hebDate && gregDate ? ' ' : ''}${gregDate ? '(' + esc(gregDate) + ')' : ''}`)}
+      ${row('שעת יציאה:', esc(r.release_time||''))}
+      ${row('חזרה:', r.no_return ? 'לא חוזר/ת היום' : (r.return_time ? esc(r.return_time) : 'לא צוין'))}
+      ${row('מי אוסף/ת:', esc(r.pickup_name||''))}
+      ${row('הורה מאשר:', `${esc(r.parent_name||'')} · ת.ז ${esc(r.parent_id||'')} · ${esc(r.parent_phone||'')}`)}
+      <div class="pdf-avoid-break" style="padding:12px 0;">
+        <b style="color:#16223d; font-size:15.5px;">חתימת ההורה:</b><br>
+        ${r.signature ? `<img src="${r.signature}" style="max-width:260px; max-height:110px; margin-top:8px; border:1px solid #dde4ee; border-radius:8px; background:#fff;">` : ''}
+      </div>
+      <div class="pdf-avoid-break" style="margin-top:10px; padding:12px 16px; border-radius:10px; background:${statusBg}; color:${statusColor}; font-weight:700; font-size:15.5px;">
+        ${statusText}${r.teacher_note ? ' — ' + esc(r.teacher_note) : ''}
+      </div>
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:12px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
+      </div>
+    </div>`;
+  return wrap;
+}
+/* הורדה ישירה של אישור היציאה כ-PDF (כמו אישורי הטיול) — בלי חלון הדפסה */
+async function downloadEarlyReleasePdf(r){
+  toast('מכין PDF…');
+  try{
+    const blob = await renderNodeToPdfBlob(buildEarlyReleaseDocElement(r));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `אישור יציאה - ${r.student_name||''}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  }catch(err){ toast('שגיאה ביצירת ה-PDF: ' + (err.message||err)); }
 }
 async function renderEarlyReleases(body){
   const p = myProfile.permissions || {};
+  const isAdmin = isSystemAdminUser();
+  const seeAll = !!p.view_all_classes || isAdmin;
   let snap;
-  if (p.view_all_classes) snap = await db.collection('early_releases').orderBy('created_at','desc').limit(150).get();
+  if (seeAll) snap = await db.collection('early_releases').orderBy('created_at','desc').limit(300).get();
   else snap = await db.collection('early_releases').where('class_id','==', myProfile.class_id).get();
   const items = snap.docs.map(d=>({ id:d.id, ...d.data() }))
     .sort((a,b)=>{
@@ -7081,13 +7117,11 @@ async function renderEarlyReleases(body){
       return (b.created_at?.seconds||0) - (a.created_at?.seconds||0);
     });
   body.innerHTML = `
-    <div class="card card-pad">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div style="font-size:.9rem;color:var(--ink-soft);">הורים שולחים בקשות דרך <b>/parent.html</b> (כניסת הורה: ת.ז, טלפון ושם התלמיד/ה — בלי סיסמה).</div>
-        <div style="display:flex;gap:8px;"><button class="btn btn-outline btn-sm" id="copyParentLink">${ICON.link} העתקת קישור להורים</button><button class="btn btn-outline btn-sm" id="erRefresh">${ICON.refresh} רענון</button></div>
-      </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      <button class="btn btn-outline btn-sm" id="copyParentLink">${ICON.link} העתקת קישור כניסת הורה</button>
+      <button class="btn btn-outline btn-sm" id="erRefresh">${ICON.refresh} רענון</button>
     </div>
-    <div id="erList" style="margin-top:14px;">
+    <div id="erList">
       ${items.length ? items.map(r=>`
         <div class="card card-pad" style="margin-bottom:12px;" data-id="${r.id}">
           <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -7099,10 +7133,11 @@ async function renderEarlyReleases(body){
           <div style="margin-top:4px;font-size:.85rem;">הורה: ${esc(r.parent_name||'')} · ${esc(r.parent_phone||'')} · אוסף/ת: ${esc(r.pickup_name||'')}</div>
           ${r.signature ? `<img src="${r.signature}" alt="חתימה" style="height:60px;margin-top:8px;border:1px solid var(--line);border-radius:8px;background:#fff;">` : ''}
           ${r.teacher_note ? `<div style="margin-top:6px;font-size:.85rem;">הערה: ${esc(r.teacher_note)}</div>` : ''}
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
             ${r.status==='pending' ? `<button class="btn btn-primary btn-sm er-approve" data-id="${r.id}">${ICON.check} אישור יציאה</button><button class="btn btn-outline btn-sm er-reject" data-id="${r.id}">דחייה</button>` : ''}
-            <button class="btn btn-outline btn-sm er-print" data-id="${r.id}">${ICON.download} אישור יציאה חתום (הדפסה/PDF)</button>
+            <button class="btn btn-outline btn-sm er-pdf" data-id="${r.id}">${ICON.download} הורדת אישור יציאה (PDF)</button>
             ${r.parent_phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(r.parent_phone)}" target="_blank" title="וואטסאפ להורה">${WA_ICON_SVG}</a>` : ''}
+            ${isAdmin ? `<button class="icon-btn call er-del" data-id="${r.id}" title="מחיקה" style="margin-inline-start:auto;">${ICON.trash}</button>` : ''}
           </div>
         </div>`).join('') : '<p style="color:var(--ink-soft);">אין בקשות יציאה כרגע.</p>'}
     </div>`;
@@ -7113,16 +7148,26 @@ async function renderEarlyReleases(body){
   });
   const byId = id => items.find(x=>x.id===id);
   const decide = async (id, status)=>{
+    const r = byId(id);
     let note = '';
     if (status==='rejected'){ note = (prompt('סיבת הדחייה (תוצג להורה):') || '').trim(); }
     try{
       await db.collection('early_releases').doc(id).update({ status, teacher_note: note, teacher_name: myProfile.full_name || '', decided_by: myProfile.id, decided_at: firebase.firestore.FieldValue.serverTimestamp() });
+      notifyParent(r.parent_uid,
+        status==='approved' ? 'בקשת היציאה אושרה' : 'בקשת היציאה נדחתה',
+        `${r.student_name}${r.release_date ? ' · ' + r.release_date : ''}${r.release_time ? ' ' + r.release_time : ''}${note ? ' — ' + note : ''}`);
       toast(status==='approved' ? 'היציאה אושרה' : 'הבקשה נדחתה'); goto('earlyrelease');
     }catch(err){ toast('שגיאה: '+err.message); }
   };
   body.querySelectorAll('.er-approve').forEach(b=> b.addEventListener('click', ()=> decide(b.dataset.id,'approved')));
   body.querySelectorAll('.er-reject').forEach(b=> b.addEventListener('click', ()=> decide(b.dataset.id,'rejected')));
-  body.querySelectorAll('.er-print').forEach(b=> b.addEventListener('click', ()=> printEarlyReleaseSlip(byId(b.dataset.id))));
+  body.querySelectorAll('.er-pdf').forEach(b=> b.addEventListener('click', ()=> downloadEarlyReleasePdf(byId(b.dataset.id))));
+  body.querySelectorAll('.er-del').forEach(b=> b.addEventListener('click', async ()=>{
+    const r = byId(b.dataset.id);
+    if (!(await confirmDialog(`למחוק לצמיתות את בקשת היציאה של ${r.student_name}${r.class_name ? ' (' + r.class_name + ')' : ''}?`, { danger:true, confirmText:'מחיקה', cancelText:'ביטול' }))) return;
+    try{ await db.collection('early_releases').doc(r.id).delete(); toast('הבקשה נמחקה'); goto('earlyrelease'); }
+    catch(err){ toast('שגיאה: '+err.message); }
+  }));
 }
 
 const PUSH_NOTIFICATION_TYPES = [
