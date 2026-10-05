@@ -176,9 +176,9 @@ const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
    ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script. */
 const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
 const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
-function notifyPush(type, title, body, classId){
+function notifyPush(type, title, body, classId, className){
   if (!PUSH_WEBHOOK_URL || PUSH_WEBHOOK_URL.indexOf('PASTE_') === 0) return;
-  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body, class_id: classId || null }) }).catch(()=>{});
+  fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body, class_id: classId || null, class_name: className || null }) }).catch(()=>{});
 }
 function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.includes('₪') ? s : `${s} ₪`; }
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
@@ -281,7 +281,10 @@ async function load(){
   // class_id של התלמיד/ה — נשלף מ-roster_snapshot של הטיול (לא נשמר על מסמך האישור
   // עצמו), כדי שאפשר יהיה להעביר אותו ל-notifyPush ולסנן את ההתראה למחנך/ת הכיתה
   // הנכונה בלבד, גם בטיול/אירוע כלל-ישיבתי המשותף לכמה כיתות.
-  const studentClassId = (trip.roster_snapshot||[]).find(r=>r.id===studentId)?.class_id || null;
+  const studentClassId = (trip.roster_snapshot||[]).find(r=>r.id===studentId)?.class_id
+    || approval.class_id
+    || (trip.class_options||[]).find(c=>c.name && c.name===approval.class_name)?.id
+    || null;
   const itinerary = trip.itinerary || [];
   const gregDate = formatGregShort(trip.trip_date);
   const isEvent = trip.kind === 'event';
@@ -535,7 +538,7 @@ async function load(){
         const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
         db.collection('students').doc(studentId).update({ [field]: idDigits }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
       }
-      notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`, studentClassId);
+      notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`, studentClassId, className);
       load();
     }catch(err){
       // שגיאה כללית של המערכת (לא אי-התאמת פרטים) — למשל בעיית הרשאות/רשת מול
