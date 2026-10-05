@@ -415,6 +415,17 @@ async function buildVerifyHashes(student, className){
 }
 /* גיבוב עבור roster_snapshot (חוזר טיול כללי) — בלי רכיב כיתה, כי שם הכיתה שם נבחר מרשימה
    נגישה (class_options) ולא מוקלד חופשי; הכיתה כבר מסננת את המועמדים לפני ההשוואה. */
+/* גיבוב ת.ז של ההורים (כשהיא כבר שמורה בכרטיס) — מאפשר לטופס הציבורי להצליב ת.ז בלי לחשוף אותה.
+   מלח לפי מזהה התלמיד/ה, כך שאותו מספר לא נראה אותו דבר אצל תלמידים שונים. */
+function normIdDigits(s){ return (s||'').toString().replace(/\D/g,'').replace(/^0+/,''); }
+async function buildRosterIdHashes(student, studentId){
+  const out = [];
+  for (const slot of ['mother','father']){
+    const idv = normIdDigits(student[slot+'_id']);
+    if (idv) out.push({ slot, hash: await sha256Hex(`id|${studentId}|${idv}`) });
+  }
+  return out;
+}
 async function buildRosterVerifyHashes(student){
   const hashes = [];
   if (student.mother_name && student.mother_phone) hashes.push({ slot:'mother', hash: await sha256Hex(`${firstNameOf(student.mother_name)}|${normPhoneDigits(student.mother_phone)}`) });
@@ -508,7 +519,7 @@ async function refreshTripVerifyHashes(tripId){
     if (trip?.requires_registration !== false){
       const roster_snapshot = await Promise.all(studentDocs.map(async d=>{
         const sd = d.data();
-        return { id: d.id, full_name: sd.full_name, first_name: sd.first_name||'', last_name: sd.last_name||'', class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
+        return { id: d.id, full_name: sd.full_name, first_name: sd.first_name||'', last_name: sd.last_name||'', class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd), id_hashes: await buildRosterIdHashes(sd, d.id) };
       }));
       await db.collection('trips').doc(tripId).update({ roster_snapshot });
       rosterRebuilt = true;
@@ -2583,7 +2594,7 @@ async function renderTrips(body){
         // של שם ההורה+ת.ז, כדי שאי אפשר יהיה לשחזר מהמסמך הזה את פרטי ההורים.
         const roster_snapshot = await Promise.all(rosterDocs.map(async d=>{
           const sd = d.data();
-          return { id: d.id, full_name: sd.full_name, first_name: sd.first_name||'', last_name: sd.last_name||'', class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
+          return { id: d.id, full_name: sd.full_name, first_name: sd.first_name||'', last_name: sd.last_name||'', class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd), id_hashes: await buildRosterIdHashes(sd, d.id) };
         }));
         const class_options = class_ids.map(cid=>({ id: cid, name: classesCache.find(c=>c.id===cid)?.name || '' }));
         const batch = db.batch();
@@ -3104,7 +3115,7 @@ function renderTripsList(container, trips){
             const rosterDocs = await fetchStudentDocsForClassIds(class_ids);
             payload.roster_snapshot = await Promise.all(rosterDocs.map(async d=>{
               const sd = d.data();
-              return { id: d.id, full_name: sd.full_name, first_name: sd.first_name||'', last_name: sd.last_name||'', class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd) };
+              return { id: d.id, full_name: sd.full_name, first_name: sd.first_name||'', last_name: sd.last_name||'', class_id: sd.class_id, verify_hashes: await buildRosterVerifyHashes(sd), id_hashes: await buildRosterIdHashes(sd, d.id) };
             }));
           }catch(err){ toast('שגיאה בעדכון רשימת התלמידים: '+err.message); return; }
         }
