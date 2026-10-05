@@ -483,7 +483,7 @@ async function refreshTripVerifyHashes(tripId){
       const sd = d.data();
       const className = classesCache.find(c=>c.id===sd.class_id)?.name || '';
       batch.set(db.collection('trips').doc(tripId).collection('approvals').doc(d.id), {
-        student_name: sd.full_name, class_name: className,
+        student_name: sd.full_name, class_name: className, class_id: sd.class_id || null,
         verify_hashes: await buildVerifyHashes(sd, className),
         status: 'pending', notified: false,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1252,6 +1252,7 @@ function buildSideNav(){
     { id:'home', label:'בית', icon:ICON.home, show:true },
     { id:'myclass', label:'הכיתה שלי', icon:ICON.cap, show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:ICON.compass, show:true },
+    { id:'earlyrelease', label:'בקשות יציאה', icon:ICON.clock, show: (!!myProfile.class_id && !!p.manage_class_roster) || !!p.view_all_classes },
     { id:'search', label:'חיפוש תלמידים', icon:ICON.search, show: !!p.view_all_classes },
     { id:'payments', label:'ניהול תשלומים', icon:ICON.wallet, show: !!p.manage_payments || !!p.manage_users },
     { id:'mytasks', label:'המשימות שלי', icon:ICON.check, show:true },
@@ -1300,6 +1301,7 @@ const titles = {
   mytasks:'המשימות שלי', meetings:'ישיבות צוות',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
   pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור', search:'חיפוש תלמידים',
+  earlyrelease:'בקשות יציאה מוקדמת',
 };
 
 let currentView = 'home';
@@ -1314,7 +1316,7 @@ async function goto(view){
     mytasks: renderMyTasks, meetings: renderMeetings,
     announcements: renderAnnouncements, classes: renderClasses,
     users: renderUsers, pushprefs: renderPushPrefs, restore: renderRestoreHistory,
-    search: renderStudentSearch,
+    search: renderStudentSearch, earlyrelease: renderEarlyReleases,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -1343,7 +1345,7 @@ async function renderHome(body){
     const allTripsList = tripSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear).filter(t=> t.is_published !== false);
 
     // בוחר את הטיולים ה"פתוחים" — בלי תאריך שעבר — עד 6, לחישוב סטטוס אישורים חי לכל הישיבה
-    const todayIso0 = new Date().toISOString().slice(0,10);
+    const todayIso0 = (()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
     const openTrips = allTripsList
       .filter(t => !t.trip_date || t.trip_date >= todayIso0)
       .sort((a,b)=>{
@@ -1408,7 +1410,9 @@ async function renderHome(body){
   let teacherTripsHtml = '';
   if (!isAdminLevel && myProfile.class_id && p.manage_class_roster){
     const tripsSnap = await db.collection('trips').where('class_ids','array-contains', myProfile.class_id).orderBy('created_at','desc').get();
-    const tripsForClass = tripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear).filter(t=> t.is_published !== false);
+    // "טיולים קרובים" — רק טיולים שהתאריך שלהם עוד לא עבר (או שאין להם תאריך), לפי התאריך המקומי
+    const todayLocalIso = (()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
+    const tripsForClass = tripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear).filter(t=> t.is_published !== false).filter(t=> !t.trip_date || t.trip_date >= todayLocalIso);
     const summaries = [];
     for (const t of tripsForClass){
       try{
@@ -1449,12 +1453,21 @@ async function renderHome(body){
   }
 
   const canManageEvents = !!p.manage_events;
-  const todayIso = new Date().toISOString().slice(0,10);
+  const todayIso = (()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
   const eventsSnap = await db.collection('events').where('event_date','>=', todayIso).orderBy('event_date').limit(8).get().catch(()=>({docs:[]}));
-  const events = eventsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-  const eventsByMonth = groupEventsByHebrewMonth(events);
+  const manualEvents = eventsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
   const eventTripsSnap = await db.collection('trips').orderBy('created_at','desc').get().catch(()=>({docs:[]}));
   eventTripsCache = eventTripsSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear);
+  // טיולים/אירועים שסומנו "הצג בלוח האירועים" — מוצגים ישירות בלוח עם כל הפרטים שלהם.
+  // אם כבר קיים אירוע ידני שמקושר לאותו טיול — לא מכפילים.
+  const linkedTripIds = new Set(manualEvents.map(e=>e.trip_id).filter(Boolean));
+  const tripEvents = eventTripsCache
+    .filter(t=> t.show_in_calendar && t.is_published !== false && t.trip_date && t.trip_date >= todayIso && !linkedTripIds.has(t.id))
+    .map(t=> tripToEventFields(t, { id:'trip_'+t.id, trip_id:t.id, _fromTrip:true }));
+  const events = [...manualEvents, ...tripEvents]
+    .sort((a,b)=> (a.event_date||'9999').localeCompare(b.event_date||'9999'))
+    .slice(0,8);
+  const eventsByMonth = groupEventsByHebrewMonth(events);
 
   const eventsHtml = `
     <div class="card card-pad events-card" style="margin-top:20px;">
@@ -1466,7 +1479,7 @@ async function renderHome(body){
       <div id="eventsList" style="margin-top:14px;">
         ${eventsByMonth.map(g=>`
           <div class="month-group-head">${esc(g.month)}</div>
-          ${g.items.map(ev=>eventRowHtml(ev, canManageEvents, events.indexOf(ev))).join('')}
+          ${g.items.map(ev=>eventRowHtml(ev, canManageEvents && !ev._fromTrip, events.indexOf(ev))).join('')}
         `).join('') || '<p style="color:var(--ink-soft); font-size:.9rem; margin:12px 0 0;">אין אירועים קרובים בלוח כרגע.</p>'}
       </div>
     </div>`;
@@ -1666,6 +1679,35 @@ function groupEventsByHebrewMonth(events){
   });
   return order.map(month=>({ month, items: byMonth[month] }));
 }
+/* ממיר טיול לשדות של אירוע בלוח (תאריך עברי + לועזי, שעה, מיקום, תיאור) — משמש גם למילוי
+   אוטומטי בטופס אירוע וגם להצגת טיולים שסומנו "הצג בלוח" ישירות בלוח האירועים. */
+function tripToEventFields(trip, extra={}){
+  const time = trip.departure_time && trip.return_time ? `${trip.departure_time}–${trip.return_time}` : (trip.departure_time || trip.return_time || '');
+  const description = [trip.subtitle, trip.intro_text, trip.notes].map(x=>(x||'').trim()).filter(Boolean).join('\n');
+  return {
+    title: trip.title || '',
+    hebrew_date: trip.hebrew_date || formatFullHebrewDate(trip.trip_date) || '',
+    event_date: trip.trip_date || null,
+    time, location: trip.location || '', description,
+    ...extra,
+  };
+}
+/* בחירת טיול ברשימה בטופס אירוע ממלאת מיד את שאר השדות לפי מה שהוזן בטיול עצמו */
+function wireEventTripAutofill(prefix){
+  const sel = document.getElementById(`${prefix}_ev_trip`);
+  if (!sel) return;
+  sel.addEventListener('change', ()=>{
+    const trip = eventTripsCache.find(t=>t.id===sel.value);
+    if (!trip) return;
+    const f = tripToEventFields(trip);
+    const set = (suffix, val)=>{ const el = document.getElementById(`${prefix}_ev_${suffix}`); if (el) el.value = val || ''; };
+    const titleEl = document.getElementById(`${prefix}_ev_title`);
+    if (titleEl && !titleEl.value.trim()) titleEl.value = f.title;
+    set('hebrew', f.hebrew_date); set('date', f.event_date); set('time', f.time);
+    set('location', f.location); set('desc', f.description);
+    toast('הפרטים מולאו מהטיול — אפשר לערוך לפני שמירה');
+  });
+}
 function eventFormHtml(prefix, ev={}){
   return `
     <div class="form-grid">
@@ -1763,6 +1805,7 @@ function wireEventsUi(body, events, canManageEvents){
       const wrap = document.getElementById('addEventWrap');
       wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
     });
+    wireEventTripAutofill('new');
     document.getElementById('new_ev_save').addEventListener('click', async ()=>{
       const data = readEventForm('new');
       if (!data.title){ toast('יש להזין כותרת לאירוע'); return; }
@@ -1799,6 +1842,7 @@ function wireEventsUi(body, events, canManageEvents){
       box.style.display = opening ? '' : 'none';
       if (!opening) return;
       box.innerHTML = `<div class="card card-pad">${eventFormHtml('edit'+ev.id, ev)}</div>`;
+      wireEventTripAutofill('edit'+ev.id);
       document.getElementById(`edit${ev.id}_ev_save`).addEventListener('click', async ()=>{
         const data = readEventForm('edit'+ev.id);
         if (!data.title){ toast('יש להזין כותרת לאירוע'); return; }
@@ -2366,6 +2410,11 @@ async function renderTrips(body){
           </div>` : ''}
 
           <div class="field" style="grid-column:1/-1;">
+            <label class="chip-check" style="display:inline-flex;"><input type="checkbox" id="t_show_in_calendar"> ${ICON.calendar} הצג בלוח האירועים הקרובים (בדף הבית)</label>
+            <div style="font-size:.78rem; color:var(--ink-soft); margin-top:4px;">הטיול יופיע בלוח האירועים עם כל פרטיו (תאריך עברי ולועזי, שעה, מיקום ותיאור), בלי צורך להוסיף אותו ידנית כאירוע. יוצג רק לאחר שיפורסם.</div>
+          </div>
+
+          <div class="field" style="grid-column:1/-1;">
             <label>תוכנייה (מה בתוכנית)</label>
             <div id="itineraryRows"></div>
             <button type="button" class="btn btn-outline btn-sm" id="addItineraryRow" style="margin-top:6px;">${ICON.plus} הוספת שורה לתוכנייה</button>
@@ -2502,6 +2551,7 @@ async function renderTrips(body){
         head_name: document.getElementById('t_head_name').value.trim(),
         coordinator_name: document.getElementById('t_coordinator_name').value.trim(),
         custom_regards: kind === 'event' ? document.getElementById('t_custom_regards').value.trim() : '',
+        show_in_calendar: !!document.getElementById('t_show_in_calendar')?.checked,
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
         school_year: currentSchoolYear,
@@ -2534,7 +2584,7 @@ async function renderTrips(body){
           const sd = d.data();
           const className = classesCache.find(c=>c.id===sd.class_id)?.name || '';
           batch.set(tripRef.collection('approvals').doc(d.id), {
-            student_name: sd.full_name, class_name: className,
+            student_name: sd.full_name, class_name: className, class_id: sd.class_id || null,
             verify_hashes: await buildVerifyHashes(sd, className),
             status: 'pending', notified: false,
             created_at: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2967,6 +3017,9 @@ function renderTripsList(container, trips){
           <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="et_head_${id}" value="${esc(trip.head_name||'')}"></div>
           <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="et_coordinator_${id}" value="${esc(trip.coordinator_name||'')}"></div>
           ${trip.kind === 'event' ? `<div class="field" style="grid-column:1/-1;"><label>טקסט "בברכה" מותאם אישית (אופציונלי)</label><input id="et_regards_${id}" value="${esc(trip.custom_regards||'')}" placeholder="לדוגמה: בברכת גמר חתימה טובה לכולם"></div>` : ''}
+          <div class="field" style="grid-column:1/-1;">
+            <label class="chip-check ${trip.show_in_calendar ? 'checked' : ''}" style="display:inline-flex;"><input type="checkbox" id="et_show_cal_${id}" ${trip.show_in_calendar ? 'checked' : ''}> ${ICON.calendar} הצג בלוח האירועים הקרובים (בדף הבית)</label>
+          </div>
           ${myProfile.role === 'מנהל מערכת' ? `
           <div class="field" style="grid-column:1/-1;">
             <label class="chip-check ${trip.is_published !== false ? 'checked' : ''}" style="display:inline-flex;"><input type="checkbox" id="et_publish_${id}" ${trip.is_published !== false ? 'checked' : ''}> גלוי לצוות ולהורים (מפורסם)</label>
@@ -2989,6 +3042,9 @@ function renderTripsList(container, trips){
       (trip.itinerary||[]).forEach(r=> addRow(r.time, r.activity));
       if (!(trip.itinerary||[]).length) addRow();
       document.getElementById(`et_add_row_${id}`).addEventListener('click', ()=> addRow());
+      box.querySelectorAll('.chip-check').forEach(chip=>{
+        chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
+      });
 
       if (p.view_all_classes){
         box.querySelectorAll(`#et_classes_picker_${id} .chip-check`).forEach(chip=>{
@@ -3025,6 +3081,7 @@ function renderTripsList(container, trips){
         if (trip.kind === 'event'){
           payload.custom_regards = document.getElementById(`et_regards_${id}`).value.trim();
         }
+        payload.show_in_calendar = !!document.getElementById(`et_show_cal_${id}`)?.checked;
         const wasPublished = trip.is_published !== false;
         if (myProfile.role === 'מנהל מערכת'){
           payload.is_published = !!document.getElementById(`et_publish_${id}`).checked;
@@ -3066,6 +3123,7 @@ async function ensureApprovalDoc(tripId, student){
     await ref.set({
       student_name: student.full_name,
       class_name: className,
+      class_id: student.class_id || null,
       verify_hashes: await buildVerifyHashes(student, className),
       status: 'pending',
       notified: false,
@@ -3453,7 +3511,39 @@ async function exportTripRosterPdf(trip, approvedStudents){
 /* בונה אלמנט DOM של "מסמך פרטים נלווים" לטיול — הוצאות, אוטובוסים/אחראים, חובשים/מע"רים —
    בדיוק כמו שהם מוצגים במסך "ניהול טיול", אבל מעוצבים לדף PDF. זהו העמוד השני בקובץ
    המאוחד (עמוד ראשון הוא אישור הטיול המצורף עצמו, ר' exportTripFullPdf). */
-function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCacheRef, staffListRef){
+/* --- מסלול טיול (גם בלי אוטובוס — למשל טיול רגלי עם תחנות עצירה) --- */
+function fmtMinutes(m){
+  m = Math.round(Number(m)||0);
+  if (m <= 0) return '0 דק׳';
+  const h = Math.floor(m/60), r = m%60;
+  if (!h) return `${r} דק׳`;
+  if (!r) return h===1 ? 'שעה' : `${h} שעות`;
+  return `${h===1 ? 'שעה' : h+' שעות'} ו-${r} דק׳`;
+}
+/* travel_min = זמן ההגעה לתחנה הזו מהתחנה הקודמת (או מנקודת היציאה), stay_min = משך השהות/הפעילות בתחנה */
+function tripRouteTotals(stops){
+  const travel = (stops||[]).reduce((s,x)=> s + (Number(x.travel_min)||0), 0);
+  const stay = (stops||[]).reduce((s,x)=> s + (Number(x.stay_min)||0), 0);
+  return { travel, stay, total: travel + stay };
+}
+function tripRouteDocHtml(route){
+  const stops = (route && route.stops) || [];
+  if (!stops.length) return '<p style="color:#4b566d; font-size:14px; margin:0;">לא הוגדר מסלול.</p>';
+  const t = tripRouteTotals(stops);
+  return stops.map((st,i)=>`
+    <div class="pdf-avoid-break" style="padding:10px 0; border-bottom:1px solid #eef1f6;">
+      <div style="font-size:15.5px;"><b>${i+1}. ${esc(st.name||'תחנה')}</b></div>
+      <div style="font-size:13.5px; color:#4b566d; margin-top:2px;">
+        ${Number(st.travel_min)>0 ? `הגעה: ${esc(fmtMinutes(st.travel_min))}` : ''}${Number(st.travel_min)>0 && Number(st.stay_min)>0 ? ' · ' : ''}${Number(st.stay_min)>0 ? `שהות: ${esc(fmtMinutes(st.stay_min))}` : ''}
+      </div>
+      ${st.activity ? `<div style="font-size:14px; color:#333; margin-top:3px;">פעילות: ${esc(st.activity)}</div>` : ''}
+    </div>`).join('') + `
+    <div style="background:#16223d; border-radius:12px; padding:14px 20px; margin-top:12px; display:flex; justify-content:space-between; align-items:center; gap:14px;">
+      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:15px; color:#fff;">סה"כ זמן המסלול (הליכה/נסיעה ${esc(fmtMinutes(t.travel))} + שהות ${esc(fmtMinutes(t.stay))})</div>
+      <div style="flex-shrink:0; white-space:nowrap; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(fmtMinutes(t.total))}</div>
+    </div>`;
+}
+function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCacheRef, staffListRef, tripRoute){
   approvedCountsByClass = approvedCountsByClass || {};
   classesCacheRef = classesCacheRef || [];
   staffListRef = staffListRef || [];
@@ -3570,6 +3660,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
         ${formatTripDateLine(trip) ? esc(formatTripDateLine(trip)) : ''}${trip.location ? (formatTripDateLine(trip) ? ' · ' : '') + esc(trip.location) : ''}
       </div>
       ${section('אוטובוסים ואחראים', busesSectionHtml)}
+      ${(tripRoute && (tripRoute.stops||[]).length) ? section('מסלול הטיול', tripRouteDocHtml(tripRoute)) : ''}
       ${section('חובשים ומע"רים', medicsHtml)}
       ${section('הערות נוספות', notesHtml)}
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:12px; color:#4b566d; text-align:center;">
@@ -3633,7 +3724,7 @@ async function exportTripFullPdf(trip){
       }
     }
 
-    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCache, window._staffListCache);
+    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCache, window._staffListCache, logData.trip_route);
     const logisticsBlob = await renderNodeToPdfBlob(node);
     const logisticsBytes = await logisticsBlob.arrayBuffer();
     const logisticsDoc = await PDFDocument.load(logisticsBytes);
@@ -3940,6 +4031,8 @@ async function renderTripLogisticsCard(card, trip){
   catch(err){ card.innerHTML = `<p style="color:var(--danger); font-size:.85rem;">שגיאה בטעינת ניהול הטיול: ${esc(err.message)}</p>`; return; }
   const data = logSnap.exists ? logSnap.data() : {};
   const buses = data.buses || [];
+  const tripRoute = data.trip_route || { mode:'walking', stops:[] };
+  tripRoute.stops = tripRoute.stops || [];
   const medics = data.medics || [];
   const expenses = data.expenses || [];
   const fmtExpenseAmount = (n) => { const v = Number(n)||0; return v % 1 === 0 ? v.toLocaleString('he-IL') : v.toFixed(2); };
@@ -4165,6 +4258,42 @@ async function renderTripLogisticsCard(card, trip){
         </div>
       </div>
 
+      <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>מסלול הטיול (גם בלי אוטובוס)</span></div>
+        <div style="font-size:.82rem; color:var(--ink-soft); margin-bottom:10px;">למשל טיול רגלי עם תחנות עצירה: לכל תחנה מזינים כמה זמן לוקח להגיע אליה, כמה זמן שוהים בה ומה עושים שם. סה"כ זמן המסלול מחושב אוטומטית.</div>
+        <div class="field" style="max-width:260px; margin-bottom:12px;"><label>סוג המסלול</label>
+          <select id="route_mode">
+            <option value="walking" ${tripRoute.mode==='walking'?'selected':''}>טיול רגלי</option>
+            <option value="bus" ${tripRoute.mode==='bus'?'selected':''}>נסיעה</option>
+            <option value="mixed" ${tripRoute.mode==='mixed'?'selected':''}>משולב</option>
+            <option value="other" ${tripRoute.mode==='other'?'selected':''}>אחר</option>
+          </select>
+        </div>
+        <div id="routeStopsList">
+          ${tripRoute.stops.length ? tripRoute.stops.map((st,i)=>`
+            <div class="route-stop-card" data-idx="${i}">
+              <div class="route-stop-head"><b>תחנה ${i+1}</b>
+                <div style="display:flex; gap:4px;">
+                  <button type="button" class="icon-btn route-up" data-idx="${i}" title="הזזה למעלה" ${i===0?'disabled':''}>↑</button>
+                  <button type="button" class="icon-btn route-down" data-idx="${i}" title="הזזה למטה" ${i===tripRoute.stops.length-1?'disabled':''}>↓</button>
+                  <button type="button" class="icon-btn call route-del" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="field" style="grid-column:1/-1;"><label>שם התחנה</label><input class="rt-name" value="${esc(st.name||'')}" placeholder="לדוגמה: מעיין חרוד"></div>
+                <div class="field"><label>זמן הגעה לתחנה (דקות)</label><input class="rt-travel" type="number" min="0" step="1" value="${st.travel_min??''}" placeholder="${i===0?'מנקודת היציאה':'מהתחנה הקודמת'}"></div>
+                <div class="field"><label>זמן שהות בתחנה (דקות)</label><input class="rt-stay" type="number" min="0" step="1" value="${st.stay_min??''}" placeholder="0"></div>
+                <div class="field" style="grid-column:1/-1;"><label>מה עושים בתחנה (אם יש פעילות)</label><textarea class="rt-activity" rows="2" placeholder="לדוגמה: פעילות חברותא, ארוחת בוקר, סיפור על המקום...">${esc(st.activity||'')}</textarea></div>
+              </div>
+            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">עדיין לא הוגדרו תחנות.</p>'}
+        </div>
+        <div id="routeTotalBox" class="route-total-box"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+          <button type="button" class="btn btn-outline btn-sm" id="addRouteStopBtn">${ICON.plus} הוספת תחנה</button>
+          <button type="button" class="btn btn-sm" id="saveRouteBtn">${ICON.check} שמירת מסלול</button>
+        </div>
+      </div>
+
       <div class="meeting-section">
         <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>חובשים ומע"רים</span></div>
         <div id="medicsList">
@@ -4198,6 +4327,42 @@ async function renderTripLogisticsCard(card, trip){
         <button type="button" class="btn btn-outline btn-sm" id="saveLogisticsNotesBtn" style="margin-top:8px;">${ICON.check} שמירת הערות</button>
       </div>`;
 
+
+    // --- מסלול הטיול: סנכרון שדות לזיכרון, סה"כ חי, הוספה/מחיקה/הזזה/שמירה ---
+    const readRoute = ()=>{
+      tripRoute.mode = document.getElementById('route_mode').value;
+      tripRoute.stops = Array.from(card.querySelectorAll('.route-stop-card')).map(c=>({
+        name: c.querySelector('.rt-name').value.trim(),
+        travel_min: c.querySelector('.rt-travel').value === '' ? 0 : Math.max(0, Number(c.querySelector('.rt-travel').value)||0),
+        stay_min: c.querySelector('.rt-stay').value === '' ? 0 : Math.max(0, Number(c.querySelector('.rt-stay').value)||0),
+        activity: c.querySelector('.rt-activity').value.trim(),
+      }));
+    };
+    const updateRouteTotal = ()=>{
+      const box = document.getElementById('routeTotalBox');
+      if (!box) return;
+      readRoute();
+      if (!tripRoute.stops.length){ box.innerHTML = ''; return; }
+      const t = tripRouteTotals(tripRoute.stops);
+      box.innerHTML = `<div><b>סה"כ זמן המסלול: ${esc(fmtMinutes(t.total))}</b></div><div style="font-size:.82rem; color:var(--ink-soft); margin-top:2px;">הגעה/הליכה ${esc(fmtMinutes(t.travel))} + שהות בתחנות ${esc(fmtMinutes(t.stay))}</div>`;
+    };
+    card.querySelectorAll('.rt-travel, .rt-stay').forEach(el=> el.addEventListener('input', updateRouteTotal));
+    updateRouteTotal();
+    card.querySelector('#addRouteStopBtn').addEventListener('click', ()=>{ readRoute(); tripRoute.stops.push({ name:'', travel_min:0, stay_min:0, activity:'' }); render(); });
+    card.querySelectorAll('.route-del').forEach(btn=> btn.addEventListener('click', ()=>{ readRoute(); tripRoute.stops.splice(Number(btn.dataset.idx),1); render(); }));
+    card.querySelectorAll('.route-up, .route-down').forEach(btn=> btn.addEventListener('click', ()=>{
+      readRoute();
+      const i = Number(btn.dataset.idx), j = btn.classList.contains('route-up') ? i-1 : i+1;
+      if (j<0 || j>=tripRoute.stops.length) return;
+      [tripRoute.stops[i], tripRoute.stops[j]] = [tripRoute.stops[j], tripRoute.stops[i]];
+      render();
+    }));
+    card.querySelector('#saveRouteBtn').addEventListener('click', async ()=>{
+      readRoute();
+      if (tripRoute.stops.some(st=>!st.name)){ toast('יש להזין שם לכל תחנה'); return; }
+      data.trip_route = tripRoute;
+      await saveLogistics();
+    });
     card.querySelector('#saveLogisticsNotesBtn').addEventListener('click', async ()=>{
       data.general_notes = document.getElementById('logistics_notes').value.trim();
       await saveLogistics();
@@ -4393,7 +4558,7 @@ async function renderTripLogisticsCard(card, trip){
 
   async function saveLogistics(){
     try{
-      await logRef.set({ buses, medics, expenses, general_notes: data.general_notes||'' }, { merge:true });
+      await logRef.set({ buses, medics, expenses, trip_route: tripRoute, general_notes: data.general_notes||'' }, { merge:true });
       // ה-uid-ים של אחראי האוטובוסים נשמרים גם על מסמך הטיול עצמו, כדי שכללי
       // האבטחה יוכלו לבדוק בזול מי מורשה לסמן נוכחות (בלי get מקונן ל-logistics).
       await db.collection('trips').doc(trip.id).update({ bus_captain_uids: buses.map(b=>b.captain_uid).filter(Boolean) });
@@ -6872,6 +7037,94 @@ async function renderClasses(body){
    מקבלים כל סוג התראה. הנתונים נקראים על ידי סקריפט Apps Script חיצוני
    ששולח את ההתראות בפועל (ראו הסבר נפרד) — כאן רק ההגדרות עצמן.
    ============================================================ */
+
+/* ============================================================
+   EARLY RELEASES — בקשות יציאה מוקדמת מההורים (parent.html).
+   מחנך רואה את בקשות כיתתו; מי שיש לו view_all_classes רואה הכל.
+   המורה מאשר/דוחה, ומקבל אישור יציאה חתום להדפסה/שמירה כ-PDF.
+   ============================================================ */
+const EARLY_REASONS = { doctor:'תור לרופא / טיפול רפואי', shopping:'סידורים (רמי לוי / קניות)', family:'אירוע משפחתי', other:'אחר' };
+const EARLY_STATUS = { pending:'ממתין', approved:'אושר', rejected:'נדחה' };
+function printEarlyReleaseSlip(r){
+  const w = window.open('', '_blank');
+  if (!w){ toast('הדפדפן חסם את החלון — יש לאפשר חלונות קופצים'); return; }
+  const reason = EARLY_REASONS[r.reason_type] || r.reason_type || '';
+  w.document.write(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><title>אישור יציאה — ${esc(r.student_name)}</title>
+  <style>body{font-family:Assistant,Arial,sans-serif;max-width:640px;margin:30px auto;padding:0 24px;color:#16203a}
+  h1{font-family:Rubik,Arial,sans-serif;color:#16223d;border-bottom:3px solid #1c7a7a;padding-bottom:10px}
+  .row{padding:8px 0;border-bottom:1px solid #eef1f6}.row b{display:inline-block;min-width:130px}
+  img.sig{max-width:260px;border:1px solid #dde4ee;border-radius:8px;background:#fff}
+  .ok{margin-top:18px;padding:12px 16px;border-radius:10px;background:#e3f6ea;color:#1c7a45;font-weight:700}
+  @media print{button{display:none}}</style></head><body>
+  <button onclick="window.print()">הדפסה / שמירה כ-PDF</button>
+  <h1>אישור יציאה מהישיבה — ישיבה תיכונית עפולה</h1>
+  <div class="row"><b>תלמיד/ה:</b> ${esc(r.student_name)}${r.class_name?' — '+esc(r.class_name):''}</div>
+  <div class="row"><b>סיבה:</b> ${esc(reason)}</div>
+  <div class="row"><b>פירוט:</b> ${esc(r.reason_details||'')}</div>
+  <div class="row"><b>תאריך ושעת יציאה:</b> ${esc(r.release_date||'')} ${esc(r.release_time||'')}${r.release_date && formatFullHebrewDate(r.release_date) ? ' · '+esc(formatFullHebrewDate(r.release_date)) : ''}</div>
+  <div class="row"><b>חזרה:</b> ${r.no_return ? 'לא חוזר/ת היום' : (r.return_time ? esc(r.return_time) : 'לא צוין')}</div>
+  <div class="row"><b>מי אוסף/ת:</b> ${esc(r.pickup_name||'')}</div>
+  <div class="row"><b>הורה מאשר:</b> ${esc(r.parent_name||'')} · ת.ז ${esc(r.parent_id||'')} · ${esc(r.parent_phone||'')}</div>
+  <div class="row"><b>חתימת ההורה:</b><br>${r.signature ? `<img class="sig" src="${r.signature}">` : ''}</div>
+  <div class="ok">${r.status==='approved' ? `אושר ע"י ${esc(r.teacher_name||'המורה')}` : (r.status==='rejected' ? 'הבקשה נדחתה' : 'ממתין לאישור המורה')}${r.teacher_note ? ' — '+esc(r.teacher_note) : ''}</div>
+  </body></html>`);
+  w.document.close();
+}
+async function renderEarlyReleases(body){
+  const p = myProfile.permissions || {};
+  let snap;
+  if (p.view_all_classes) snap = await db.collection('early_releases').orderBy('created_at','desc').limit(150).get();
+  else snap = await db.collection('early_releases').where('class_id','==', myProfile.class_id).get();
+  const items = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+    .sort((a,b)=>{
+      if ((a.status==='pending') !== (b.status==='pending')) return a.status==='pending' ? -1 : 1;
+      return (b.created_at?.seconds||0) - (a.created_at?.seconds||0);
+    });
+  body.innerHTML = `
+    <div class="card card-pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:.9rem;color:var(--ink-soft);">הורים שולחים בקשות דרך <b>/parent.html</b> (כניסת הורה: ת.ז, טלפון ושם התלמיד/ה — בלי סיסמה).</div>
+        <div style="display:flex;gap:8px;"><button class="btn btn-outline btn-sm" id="copyParentLink">${ICON.link} העתקת קישור להורים</button><button class="btn btn-outline btn-sm" id="erRefresh">${ICON.refresh} רענון</button></div>
+      </div>
+    </div>
+    <div id="erList" style="margin-top:14px;">
+      ${items.length ? items.map(r=>`
+        <div class="card card-pad" style="margin-bottom:12px;" data-id="${r.id}">
+          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
+            <div><b>${esc(r.student_name)}</b>${r.class_name?` <span style="color:var(--ink-soft);">· ${esc(r.class_name)}</span>`:''}</div>
+            <span class="badge ${r.status==='approved'?'badge-ok':(r.status==='rejected'?'badge-urgent':'badge-wait')}">${esc(EARLY_STATUS[r.status]||r.status)}</span>
+          </div>
+          <div style="margin-top:8px;font-size:.92rem;"><b>${esc(EARLY_REASONS[r.reason_type]||r.reason_type||'')}</b> · ${esc(r.release_date||'')} ${esc(r.release_time||'')}${r.no_return?' · לא חוזר/ת':(r.return_time?' · חזרה '+esc(r.return_time):'')}</div>
+          <div style="margin-top:4px;font-size:.88rem;color:var(--ink-soft);">${esc(r.reason_details||'')}</div>
+          <div style="margin-top:4px;font-size:.85rem;">הורה: ${esc(r.parent_name||'')} · ${esc(r.parent_phone||'')} · אוסף/ת: ${esc(r.pickup_name||'')}</div>
+          ${r.signature ? `<img src="${r.signature}" alt="חתימה" style="height:60px;margin-top:8px;border:1px solid var(--line);border-radius:8px;background:#fff;">` : ''}
+          ${r.teacher_note ? `<div style="margin-top:6px;font-size:.85rem;">הערה: ${esc(r.teacher_note)}</div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            ${r.status==='pending' ? `<button class="btn btn-primary btn-sm er-approve" data-id="${r.id}">${ICON.check} אישור יציאה</button><button class="btn btn-outline btn-sm er-reject" data-id="${r.id}">דחייה</button>` : ''}
+            <button class="btn btn-outline btn-sm er-print" data-id="${r.id}">${ICON.download} אישור יציאה חתום (הדפסה/PDF)</button>
+            ${r.parent_phone ? `<a class="icon-btn wa" style="width:34px;height:34px;" href="https://wa.me/${waPhone(r.parent_phone)}" target="_blank" title="וואטסאפ להורה">${WA_ICON_SVG}</a>` : ''}
+          </div>
+        </div>`).join('') : '<p style="color:var(--ink-soft);">אין בקשות יציאה כרגע.</p>'}
+    </div>`;
+  body.querySelector('#erRefresh').addEventListener('click', ()=> goto('earlyrelease'));
+  body.querySelector('#copyParentLink').addEventListener('click', ()=>{
+    const url = new URL('parent.html', location.href).href;
+    (navigator.clipboard?.writeText(url) || Promise.reject()).then(()=>toast('הקישור הועתק'), ()=>toast(url));
+  });
+  const byId = id => items.find(x=>x.id===id);
+  const decide = async (id, status)=>{
+    let note = '';
+    if (status==='rejected'){ note = (prompt('סיבת הדחייה (תוצג להורה):') || '').trim(); }
+    try{
+      await db.collection('early_releases').doc(id).update({ status, teacher_note: note, teacher_name: myProfile.full_name || '', decided_by: myProfile.id, decided_at: firebase.firestore.FieldValue.serverTimestamp() });
+      toast(status==='approved' ? 'היציאה אושרה' : 'הבקשה נדחתה'); goto('earlyrelease');
+    }catch(err){ toast('שגיאה: '+err.message); }
+  };
+  body.querySelectorAll('.er-approve').forEach(b=> b.addEventListener('click', ()=> decide(b.dataset.id,'approved')));
+  body.querySelectorAll('.er-reject').forEach(b=> b.addEventListener('click', ()=> decide(b.dataset.id,'rejected')));
+  body.querySelectorAll('.er-print').forEach(b=> b.addEventListener('click', ()=> printEarlyReleaseSlip(byId(b.dataset.id))));
+}
+
 const PUSH_NOTIFICATION_TYPES = [
   { key:'trip_approved', label:'הורה אישר טיול עבור תלמיד/ה' },
   { key:'trip_certificate_uploaded', label:'רכזת הטיולים העלתה אישור טיול (קובץ)' },
@@ -6881,6 +7134,7 @@ const PUSH_NOTIFICATION_TYPES = [
   { key:'new_meeting', label:'נקבעה ישיבת צוות חדשה' },
   { key:'task_assigned', label:'שויכה משימה חדשה למורה' },
   { key:'new_staff_announcement', label:'עדכון פנימי חדש לצוות' },
+  { key:'early_release_request', label:'הורה שלח בקשת יציאה מוקדמת' },
   { key:'class_all_present', label:'כל תלמידי כיתה סומנו נוכחים ביום הטיול' },
 ];
 async function renderPushPrefs(body){
@@ -6918,6 +7172,15 @@ async function renderPushPrefs(body){
           </tbody>
         </table>
       </div>
+      <div class="push-prefs-cards">
+        ${PUSH_NOTIFICATION_TYPES.map(t=>`
+          <div class="push-pref-card">
+            <div class="push-pref-card-title">${esc(t.label)}</div>
+            <div class="push-pref-chips">
+              ${allRoles.map(r=>{ const on=(prefs[t.key]?.roles||[]).includes(r); return `<label class="chip-check ${on?'checked':''}"><input type="checkbox" class="push-pref-cb" data-type="${t.key}" data-role="${esc(r)}" ${on?'checked':''}> ${esc(roleLabel(r))}</label>`; }).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
     </div>`;
 
   body.querySelectorAll('.push-pref-cb').forEach(cb=>{
@@ -6926,8 +7189,16 @@ async function renderPushPrefs(body){
       const current = (prefs[type]?.roles || []).slice();
       const updated = cb.checked ? Array.from(new Set([...current, role])) : current.filter(r=>r!==role);
       prefs[type] = { roles: updated };
+      // מסנכרן את אותה תיבה בשתי התצוגות (מטריצה לדסקטופ / כרטיסים לנייד) ואת מראה הצ'יפ
+      const syncAll = (checked)=> body.querySelectorAll('.push-pref-cb').forEach(o=>{
+        if (o.dataset.type===type && o.dataset.role===role){
+          o.checked = checked;
+          o.closest('.chip-check')?.classList.toggle('checked', checked);
+        }
+      });
+      syncAll(cb.checked);
       try{ await db.collection('settings').doc('push_prefs').set({ [type]: { roles: updated } }, { merge:true }); }
-      catch(err){ toast('שגיאה: '+err.message); cb.checked = !cb.checked; }
+      catch(err){ toast('שגיאה: '+err.message); syncAll(!cb.checked); }
     });
   });
 }
