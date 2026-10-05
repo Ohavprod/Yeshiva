@@ -220,7 +220,7 @@ function typedStartsWithFirstName(typedNorm, candFirst){
 // התאמה סובלנית לשם תלמיד: מספיק שם פרטי (גם כפול, למשל "אוראל דוד") בלי שם המשפחה, או כל
 // צירוף של מילים מתוך השם המלא בכל סדר (גם אם בכרטיס השם מופיע "משפחה פרטי").
 function nameTokens(s){
-  return norm(s).replace(/["'׳״”“’‘`]/g,'').replace(/[-־–—.,()\/]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+  return String(s || '').toLowerCase().replace(/[\u05da]/g,'\u05db').replace(/[\u05dd]/g,'\u05de').replace(/[\u05df]/g,'\u05e0').replace(/[\u05e3]/g,'\u05e4').replace(/[\u05e5]/g,'\u05e6').replace(/[^\u05d0-\u05eaa-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
 }
 function typedMatchesStudent(typedNorm, r){
   const typed = nameTokens(typedNorm);
