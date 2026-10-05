@@ -217,6 +217,23 @@ function typedStartsWithFirstName(typedNorm, candFirst){
   if (!candFirst) return false;
   return typedNorm === candFirst || typedNorm.startsWith(candFirst + ' ');
 }
+// התאמה סובלנית לשם תלמיד: מספיק שם פרטי (גם כפול, למשל "אוראל דוד") בלי שם המשפחה, או כל
+// צירוף של מילים מתוך השם המלא בכל סדר — כל עוד המילה הראשונה של השם הפרטי נכללת.
+function nameTokens(s){
+  return norm(s).replace(/["'׳״”“’‘`]/g,'').replace(/[-־–—.,()\/]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+}
+function typedMatchesStudent(typedNorm, r){
+  const typed = nameTokens(typedNorm);
+  const first = nameTokens(candFirstName(r));
+  if (!typed.length || !first.length) return false;
+  const all = nameTokens([r.full_name, r.first_name, r.last_name].join(' '));
+  return typed.indexOf(first[0]) !== -1 && typed.every(x => all.indexOf(x) !== -1);
+}
+function typedEqualsFullName(typedNorm, r){
+  const a = nameTokens(typedNorm).sort().join(' ');
+  const b = nameTokens(r.full_name || '').sort().join(' ');
+  return !!a && a === b;
+}
 // מה שנשאר אחרי הורדת השם הפרטי שהתאים — זה מה שמשווים מול שם המשפחה של המועמד/ת.
 function remainderAfterFirstName(typedNorm, candFirst){
   return typedNorm === candFirst ? '' : typedNorm.slice(candFirst.length + 1);
@@ -475,7 +492,7 @@ async function load(){
     // האוטומטי; אפשר תמיד לבדוק ידנית מול הצוות אם יש אישורים לא-מזוהים שדורשים תשומת לב.
     const candidateHash = await sha256Hex(`${firstNameOf(approverName)}|${normPhoneDigits(approverPhone)}`);
     const typedNorm = norm(studentName);
-    const nameMatches = roster.filter(r => r.class_id === classId && typedStartsWithFirstName(typedNorm, candFirstName(r)));
+    const nameMatches = roster.filter(r => r.class_id === classId && (typedStartsWithFirstName(typedNorm, candFirstName(r)) || typedMatchesStudent(typedNorm, r)));
 
     if (nameMatches.length === 0){
       matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא תלמיד בשם זה בכיתה שנבחרה. יש לוודא שהכיתה ושם התלמיד נכונים, או לפנות למחנך/ת.</p>`;
@@ -491,30 +508,25 @@ async function load(){
       const match = (matchedStudent.verify_hashes||[]).find(h => h.hash === candidateHash);
       if (match){ identityVerified = true; matchedSlot = match.slot; }
     } else {
-      // יותר מתלמיד אחד עם אותו שם פרטי באותה כיתה — קודם מנסים לצמצם לפי שם המשפחה
-      // שההורה הקליד. משווים מול שם המשפחה האמיתי שנשמר בכרטיס (candLastName), אחרי
-      // שמורידים מהטקסט שהוקלד רק את השם הפרטי שכבר התאים למועמד/ת הספציפי/ת — כך זה
-      // עובד נכון גם כששם פרטי הוא מכמה מילים (למשל "בת אל"). רק אם זה לא הצליח לצמצם
-      // לתלמיד יחיד, נופלים חזרה על ההצלבה מול פרטי ההורה (verify_hashes) כפי שהיה קודם.
+      // יותר מתלמיד אחד שמתאים לשם שהוקלד — מצליבים מול שם ההורה והטלפון שהוזנו.
+      // אם זה לא מכריע, מצמצמים לפי שם מלא/שם משפחה שהוקלד; ורק אם עדיין לא ברור — שגיאה.
+      const verifiedMatches = nameMatches.filter(r => (r.verify_hashes||[]).some(h => h.hash === candidateHash));
       const candidates = nameMatches.filter(r => {
+        if (typedEqualsFullName(typedNorm, r)) return true;
         const remainder = remainderAfterFirstName(typedNorm, candFirstName(r));
         return !remainder || remainder === candLastName(r);
       });
-
-      if (candidates.length === 1){
+      if (verifiedMatches.length === 1){
+        matchedStudent = verifiedMatches[0];
+        identityVerified = true;
+        matchedSlot = matchedStudent.verify_hashes.find(h => h.hash === candidateHash).slot;
+      } else if (candidates.length === 1){
         matchedStudent = candidates[0];
         const match = (matchedStudent.verify_hashes||[]).find(h => h.hash === candidateHash);
         if (match){ identityVerified = true; matchedSlot = match.slot; }
       } else {
-        const verifiedMatches = nameMatches.filter(r => (r.verify_hashes||[]).some(h => h.hash === candidateHash));
-        if (verifiedMatches.length === 1){
-          matchedStudent = verifiedMatches[0];
-          identityVerified = true;
-          matchedSlot = matchedStudent.verify_hashes.find(h => h.hash === candidateHash).slot;
-        } else {
-          matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין גם שם משפחה מלא ומדויק (כפי שנמסר למחנך/ת) כדי לזהות את הילד/ה הנכון/ה, או לפנות למחנך/ת.</p>`;
-          return;
-        }
+        matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">יש בכיתה זו יותר מתלמיד אחד בשם "${esc(firstNameOf(studentName))}". נא להזין גם שם משפחה מלא ומדויק (כפי שנמסר למחנך/ת) כדי לזהות את הילד/ה הנכון/ה, או לפנות למחנך/ת.</p>`;
+        return;
       }
     }
 
