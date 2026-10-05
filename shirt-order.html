@@ -88,6 +88,16 @@ function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
+// התאמת שם סובלנית (כמו באישורי טיולים): מספיק שכל המילים שהוקלדו קיימות בשם התלמיד/ה, בכל סדר —
+// למשל "שילה נבו" מתאים גם ל"שילה נבו כהן" וגם ל"כהן שילה נבו".
+function nameTokens(s){
+  return norm(s).replace(/["'׳״”“’‘`]/g,'').replace(/[-־–—.,()\/]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+}
+function nameFits(typed, full){
+  const t = nameTokens(typed), f = nameTokens(full);
+  return t.length > 0 && t.every(x => f.indexOf(x) !== -1);
+}
+function sameNameSet(a, b){ return nameTokens(a).sort().join(' ') === nameTokens(b).sort().join(' '); }
 function normPhoneDigits(s){
   let d = (s||'').toString().replace(/\D/g,'');
   // תמיכה בהזנת מספר עם קידומת בינלאומית (972.../‎+972...) במקום 0 מקומי — כדי
@@ -130,8 +140,8 @@ function renderGeneralLookup(content){
       const nameQuery = cleanText(document.getElementById('lk_name').value);
       const snap = await db.collection('student_public').where('class_name','==', classQuery).get();
       const docs = snap.docs;
-      const exact = docs.find(d=> norm(d.data().full_name) === norm(nameQuery));
-      const partial = docs.find(d=> firstNameOf(d.data().full_name) === firstNameOf(nameQuery));
+      const exact = docs.find(d=> sameNameSet(d.data().full_name, nameQuery));
+      const partial = docs.find(d=> nameFits(nameQuery, d.data().full_name));
       const match = exact || partial;
       if (!match){
         document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">לא נמצא/ה תלמיד/ה בשם ובכיתה שהוזנו. נא לוודא את הפרטים (איות הכיתה כפי שמוכר בישיבה) ולנסות שוב, או לפנות למחנך/ת הכיתה.</div>`;
@@ -170,7 +180,7 @@ function renderVerificationGate(content, pub, studentId, onVerified){
   document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const enteredId = document.getElementById('v_id').value.replace(/\D/g,'');
-    const nameOk = firstNameOf(document.getElementById('v_name').value) === firstNameOf(pub.full_name);
+    const nameOk = nameFits(document.getElementById('v_name').value, pub.full_name);
     const candidate = await sha256Hex(`${firstNameOf(document.getElementById('v_parent').value)}|${normPhoneDigits(document.getElementById('v_phone').value)}|${norm(document.getElementById('v_class').value)}`);
     const match = (pub.verify_hashes||[]).find(h => h.hash === candidate);
     if (nameOk && match){
