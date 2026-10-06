@@ -91,7 +91,7 @@ function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
 // התאמת שם סובלנית (כמו באישורי טיולים): מספיק שכל המילים שהוקלדו קיימות בשם התלמיד/ה, בכל סדר —
 // למשל "שילה נבו" מתאים גם ל"שילה נבו כהן" וגם ל"כהן שילה נבו".
 function nameTokens(s){
-  return norm(s).replace(/["'׳״”“’‘`]/g,'').replace(/[-־–—.,()\/]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+  return String(s || '').toLowerCase().replace(/[\u05da]/g,'\u05db').replace(/[\u05dd]/g,'\u05de').replace(/[\u05df]/g,'\u05e0').replace(/[\u05e3]/g,'\u05e4').replace(/[\u05e5]/g,'\u05e6').replace(/[^\u05d0-\u05eaa-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
 }
 function nameFits(typed, full){
   const t = nameTokens(typed), f = nameTokens(full);
