@@ -7218,7 +7218,8 @@ async function renderWorkMeetings(body){
   const todayIso = localTodayIso();
   // הפגישה הקרובה: הראשונה מהיום והלאה; אם אין — האחרונה שהתקיימה
   const upcoming = meetings.filter(m=> (m.date||'') >= todayIso).sort((a,b)=> (a.date||'').localeCompare(b.date||''))[0];
-  if (!workMeetingOpenId || !meetings.some(m=>m.id===workMeetingOpenId)) workMeetingOpenId = (upcoming || meetings[0] || {}).id || null;
+  // ברירת מחדל: כל הפגישות מכווצות (רק כותרת). לחיצה על כותרת פותחת/סוגרת.
+  if (workMeetingOpenId && !meetings.some(m=>m.id===workMeetingOpenId)) workMeetingOpenId = null;
   const last = meetings.filter(m=> (m.date||'') <= todayIso)[0] || meetings[0];
   const carry = last ? [
     ...(last.next_items||[]).filter(i=>!i.done).map(i=>i.text),
@@ -7294,7 +7295,7 @@ async function renderWorkMeetings(body){
     const addRow = (kind, ph) => `<div class="wm-add"><input class="wm-add-input" data-kind="${kind}" placeholder="${ph}"><button type="button" class="btn btn-outline btn-sm wm-add-btn" data-kind="${kind}">${ICON.plus} הוספה</button></div>`;
     return `
     <div class="card wm-card ${isOpen?'open':''} ${isUpcoming?'upcoming':''}" data-mid="${m.id}">
-      <button type="button" class="wm-head" data-mid="${m.id}">
+      <button type="button" class="wm-head" data-mid="${m.id}" aria-expanded="${isOpen}">
         <div class="wm-date-badge"><span>${esc((m.hebrew_date||'').split(' ').slice(0,2).join(' ') || '—')}</span></div>
         <div class="wm-head-main">
           <div class="wm-head-title">${esc(m.title || 'פגישת עבודה')} ${isUpcoming ? '<span class="wm-pill">הפגישה הקרובה</span>' : ''}</div>
@@ -7362,8 +7363,8 @@ async function renderWorkMeetings(body){
   }).join('');
 
   listEl.querySelectorAll('.wm-head').forEach(h=> h.addEventListener('click', ()=>{
-    workMeetingOpenId = workMeetingOpenId === h.dataset.mid ? '__none__' : h.dataset.mid;
-    renderWorkMeetings(body);
+    workMeetingOpenId = workMeetingOpenId === h.dataset.mid ? null : h.dataset.mid;
+    renderWorkMeetings(body).then(()=>{ if (workMeetingOpenId) body.querySelector(`.wm-card[data-mid="${workMeetingOpenId}"]`)?.scrollIntoView({ behavior:'smooth', block:'start' }); });
   }));
   const open = meetings.find(m=> m.id === workMeetingOpenId);
   if (!open) return;
