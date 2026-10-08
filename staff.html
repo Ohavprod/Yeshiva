@@ -2669,6 +2669,8 @@ function showGroupSendModal(groups, text){
 
 function renderTripsList(container, trips){
   const p = myProfile.permissions || {};
+  const canLogisticsUI = !!p.manage_trip_logistics || isSystemAdminUser();
+  const canManageTripUI = canLogisticsUI || !!p.view_all_classes || !!p.manage_trip_certificates;
   const canEditInfo = !!p.edit_trip_details;
   // נדרש כאן גם (לא רק ב-renderTrips) כי טופס "עריכת טיול" מציג/מסנן לפי כיתות שנת הלימודים
   // הנוכחית — בלעדיו הייתה נזרקת שגיאה (ReferenceError) בלחיצה על עריכה, וחלון העריכה לא נפתח.
