@@ -2368,6 +2368,8 @@ async function renderTrips(body){
   }
 
   const canCreate = !!p.create_trips;
+  const canLogisticsUI = !!p.manage_trip_logistics || isSystemAdminUser();
+  const canManageTripUI = canLogisticsUI || !!p.view_all_classes || !!p.manage_trip_certificates;
   // בחירת כיתות ליצירת טיול: מציגים ובוחרים רק מכיתות שנת הלימודים הנוכחית (classesCache עצמו
   // נשאר בלי סינון — הוא משמש גם להצגת שמות כיתות על טיולים ישנים משנים קודמות).
   const currentYearClasses = classesCache.filter(inCurrentYear);
@@ -2384,6 +2386,7 @@ async function renderTrips(body){
     : `<input type="hidden" id="t_class_fixed" value="${myProfile.class_id||''}">`;
 
   body.innerHTML = `
+    ${canLogisticsUI ? `<div style="display:flex; justify-content:flex-end; margin-bottom:12px;"><button class="btn btn-outline btn-sm" id="expensesReportBtn">${ICON.wallet} דוח הוצאות לפי תקופה</button></div>` : ''}
     ${canCreate ? `
     <div class="section-toggle" id="newTripToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.plus} יצירת טיול חדש</span><span class="chev">⌄</span>
@@ -2453,6 +2456,7 @@ async function renderTrips(body){
     <div id="tripsList"></div>
   `;
 
+  document.getElementById('expensesReportBtn')?.addEventListener('click', ()=> showExpensesReportModal());
   document.getElementById('newTripToggleBtn')?.addEventListener('click', (e)=>{
     const box = document.getElementById('newTripCard');
     const opening = box.style.display === 'none';
@@ -2728,6 +2732,7 @@ function renderTripsList(container, trips){
           <button class="btn btn-outline btn-sm toggle-trip-info" data-id="${t.id}">${ICON.notes} ${t.kind === 'event' ? 'פרטי האירוע המלאים' : 'פרטי הטיול המלאים'}</button>
           ${showAttendanceBtn ? `<button class="btn btn-outline btn-sm toggle-trip-attendance" data-id="${t.id}">${ICON.bus} ${t.kind === 'event' ? 'נוכחות ביום האירוע' : 'נוכחות ביום הטיול'}</button>` : ''}
           <button class="btn-manage-approvals toggle-trip" data-id="${t.id}"><span>${ICON.check} ניהול אישורים</span><span class="chev">⌄</span></button>
+          ${canManageTripUI ? `<button class="btn-manage-approvals toggle-trip-manage" data-id="${t.id}"><span>${ICON.wallet} ניהול טיול</span><span class="chev">⌄</span></button>` : ''}
           ${(canEditInfo || p.view_all_classes || p.create_trips || p.edit_trip_details || p.manage_class_roster || myProfile.role === 'מנהל מערכת') ? `
           <details class="kebab-menu">
             <summary class="icon-btn kebab-btn" title="עוד פעולות">⋮</summary>
@@ -2748,6 +2753,7 @@ function renderTripsList(container, trips){
       <div class="trip-edit-box" id="trip-edit-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="notice-preview trip-info" id="trip-info-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="trip-attendance-standalone" id="trip-attendance-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
+      <div class="trip-manage-standalone" id="trip-manage-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
       <div class="trip-detail" id="trip-detail-${t.id}" style="display:none; margin-top:18px; border-top:1px solid var(--line); padding-top:18px;"></div>
     </div>
   `;
@@ -2923,7 +2929,7 @@ function renderTripsList(container, trips){
       // אישורים) — בלי זה הכרטיס "לא מתקפל" בעין: שורת הכפתורים נעלמת אבל
       // הפאנל שהיה פתוח מתחתיה נשאר גלוי כאילו שום דבר לא קרה.
       if (!opening){
-        ['trip-edit-','trip-info-','trip-attendance-','trip-detail-'].forEach(prefix=>{
+        ['trip-edit-','trip-info-','trip-attendance-','trip-manage-','trip-detail-'].forEach(prefix=>{
           const panel = document.getElementById(prefix+id);
           if (panel) panel.style.display = 'none';
         });
@@ -2961,6 +2967,30 @@ function renderTripsList(container, trips){
           panel.dataset.loaded = ''; // מאפשר ניסיון חוזר אחרי שהבעיה תתוקן
           panel.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינת אישורי הטיול: ${esc(err.message||err)}</p>`;
         }
+      }
+    });
+  });
+
+  // "ניהול טיול" (אישור מסמך, הוצאות, אוטובוסים, מסלול) — כפתור עצמאי ליד "ניהול אישורים",
+  // בלי צורך לפתוח את אישורי ההורים בשביל זה. מוצג רק למי שמורשה.
+  container.querySelectorAll('.toggle-trip-manage').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.dataset.id;
+      const panel = document.getElementById('trip-manage-'+id);
+      const opening = panel.style.display === 'none';
+      panel.style.display = opening ? '' : 'none';
+      btn.classList.toggle('open', opening);
+      if (opening && !panel.dataset.loaded){
+        panel.dataset.loaded = '1';
+        const trip = trips.find(t=>t.id===id);
+        const canCert = !!(p.view_all_classes || p.manage_trip_certificates);
+        panel.innerHTML = `
+          ${canCert ? `<div class="card card-pad" id="tripCertCard-${id}" style="margin-bottom:16px;">טוען…</div>` : ''}
+          ${canLogisticsUI ? `<div class="card card-pad" id="tripLogisticsInner-${id}">טוען…</div>` : ''}`;
+        try{
+          if (canCert) renderTripCertificateCard(panel.querySelector('#tripCertCard-'+id), trip, !!p.manage_trip_certificates);
+          if (canLogisticsUI) renderTripLogisticsCard(panel.querySelector('#tripLogisticsInner-'+id), trip);
+        }catch(err){ panel.dataset.loaded = ''; panel.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינת ניהול הטיול: ${esc(err.message||err)}</p>`; }
       }
     });
   });
@@ -3766,6 +3796,158 @@ function fmtExpenseAmountStatic(n){ const v = Number(n)||0; return v % 1 === 0 ?
    סכום, ומיד מתחתיו צילום הקבלה עצמה (אם צורפה כתמונה). קבלה שצורפה כקובץ PDF (למשל
    קבלה סרוקה) לא ניתנת להטמעה כתמונה בתוך ה-HTML, ולכן רק מוזכרת כאן עם הפניה
    לעמודים הנוספים בסוף הקובץ — ר' exportTripExpensesPdf שמצרף אותם בפועל. */
+function localTodayIso(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
+/* חודשים עבריים (למשל "תשרי תשפ״ז") עם תחילה וסוף בלועזי — לבחירה מהירה בדוח הוצאות לפי תקופה */
+function hebrewYearLabel(n){
+  let v = n % 1000;
+  const parts = [[400,'ת'],[300,'ש'],[200,'ר'],[100,'ק'],[90,'צ'],[80,'פ'],[70,'ע'],[60,'ס'],[50,'נ'],[40,'מ'],[30,'ל'],[20,'כ'],[10,'י'],[9,'ט'],[8,'ח'],[7,'ז'],[6,'ו'],[5,'ה'],[4,'ד'],[3,'ג'],[2,'ב'],[1,'א']];
+  let out = '';
+  if (v === 15){ out = 'טו'; v = 0; } else if (v === 16){ out = 'טז'; v = 0; }
+  for (const [val, ch] of parts){ while (v >= val){ out += ch; v -= val; } }
+  return out.length > 1 ? out.slice(0,-1) + '״' + out.slice(-1) : out + '׳';
+}
+function hebrewMonthOptions(){
+  const fmtKey = new Intl.DateTimeFormat('en-u-ca-hebrew', { year:'numeric', month:'numeric' });
+  const fmtMonth = new Intl.DateTimeFormat('he-u-ca-hebrew', { month:'long' });
+  const fmtYear = new Intl.DateTimeFormat('en-u-ca-hebrew', { year:'numeric' });
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const map = new Map();
+  const start = new Date(); start.setDate(start.getDate() - 1000);
+  const end = new Date(); end.setDate(end.getDate() + 60);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+    const key = fmtKey.format(d);
+    const cur = map.get(key);
+    if (!cur){
+      const yr = parseInt(fmtYear.format(d), 10);
+      map.set(key, { label: `${fmtMonth.format(d)} ${hebrewYearLabel(yr)}`, from: iso(d), to: iso(d) });
+    } else cur.to = iso(d);
+  }
+  const arr = Array.from(map.values());
+  return arr.slice(1, -1).reverse();   // בלי החודשים החלקיים בקצוות הטווח
+}
+function buildExpensesPeriodReportElement(label, groups, grandTotal){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
+  const rowHtml = (ex, i) => {
+    const isPdfReceipt = !!ex.receipt_url && /\.pdf(\?|$)/i.test(ex.receipt_filename || ex.receipt_url);
+    const dt = ex._date ? `${esc(formatGregShort(ex._date))} · ` : '';
+    return `
+    <div class="pdf-avoid-break" style="margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid #dde4ee;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div style="font-size:14.5px; font-weight:700; color:#16203a;">${i+1}. <span style="font-weight:400; color:#4b566d;">${dt}</span>${esc(ex.description||'')}</div>
+        <div style="font-size:14.5px; font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(ex.amount))}</div>
+      </div>
+      ${ex.receipt_url
+        ? (isPdfReceipt
+            ? `<div style="margin-top:6px; font-size:12px; color:#4b566d;">קבלה מצורפת כקובץ PDF — בעמודים הבאים בסוף המסמך.</div>`
+            : `<img src="${ex.receipt_url}" crossorigin="anonymous" style="max-width:100%; max-height:420px; margin-top:8px; border:1px solid #dde4ee; border-radius:8px; object-fit:contain; display:block;">`)
+        : `<div style="margin-top:6px; font-size:12px; color:#b7bfcc;">לא צורפה קבלה להוצאה זו.</div>`}
+    </div>`;
+  };
+  wrap.innerHTML = `
+    <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:22px; padding-bottom:18px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:13px; color:#4b566d; margin-top:2px;">דוח הוצאות — ${esc(label)}</div>
+        </div>
+      </div>
+      ${groups.map(g=>`
+        <div style="margin-bottom:26px;">
+          <div class="pdf-avoid-break" style="background:#eef3f8; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div><b style="font-family:'Rubik',Arial,sans-serif; color:#16223d; font-size:16px;">${esc(g.trip.title||'')}</b>
+              <div style="font-size:12px; color:#4b566d;">${formatTripDateLine(g.trip) ? esc(formatTripDateLine(g.trip)) : ''}</div></div>
+            <div style="font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(g.total))}</div>
+          </div>
+          ${g.expenses.map(rowHtml).join('')}
+        </div>`).join('')}
+      <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#fff;">סה"כ הוצאות לתקופה</span>
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">₪${esc(fmtExpenseAmountStatic(grandTotal))}</span>
+      </div>
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
+      </div>
+    </div>`;
+  return wrap;
+}
+async function exportExpensesPeriodPdf(label, groups){
+  const all = groups.flatMap(g=> g.expenses);
+  const grandTotal = all.reduce((s,e)=> s + (Number(e.amount)||0), 0);
+  const summaryBlob = await renderNodeToPdfBlob(buildExpensesPeriodReportElement(label, groups, grandTotal));
+  const { PDFDocument } = PDFLib;
+  const mergedPdf = await PDFDocument.create();
+  const summaryDoc = await PDFDocument.load(await summaryBlob.arrayBuffer());
+  (await mergedPdf.copyPages(summaryDoc, summaryDoc.getPageIndices())).forEach(pg=> mergedPdf.addPage(pg));
+  for (const ex of all.filter(ex=> ex.receipt_url && /\.pdf(\?|$)/i.test(ex.receipt_filename || ex.receipt_url))){
+    try{
+      const rd = await PDFDocument.load(await (await fetch(ex.receipt_url)).arrayBuffer()).catch(()=>null);
+      if (rd) (await mergedPdf.copyPages(rd, rd.getPageIndices())).forEach(pg=> mergedPdf.addPage(pg));
+    }catch(err){ /* קבלה שנכשלה בטעינה לא עוצרת את הדוח */ }
+  }
+  const blob = new Blob([await mergedPdf.save()], { type:'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `דוח הוצאות - ${label}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  return grandTotal;
+}
+/* חלון "דוח הוצאות לפי תקופה": חודש עברי (למשל תשרי תשפ״ז) או מתאריך עד תאריך, על פני כל הטיולים */
+function showExpensesReportModal(){
+  const months = hebrewMonthOptions();
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:460px; text-align:right;">
+      <h3>דוח הוצאות לפי תקופה</h3>
+      <div class="field" style="margin-bottom:10px;"><label>חודש עברי</label>
+        <select id="er_month"><option value="">— בחירת טווח תאריכים ידנית —</option>${months.map((m,i)=>`<option value="${i}">${esc(m.label)}</option>`).join('')}</select></div>
+      <div class="form-grid">
+        <div class="field"><label>מתאריך</label><input id="er_from" type="date"></div>
+        <div class="field"><label>עד תאריך</label><input id="er_to" type="date"></div>
+      </div>
+      <div id="er_msg" style="font-size:.85rem; color:var(--ink-soft); margin-top:8px; min-height:1.2em;"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-primary btn-sm" id="er_go">${ICON.download} הפקת דוח (PDF)</button>
+        <button class="btn btn-outline btn-sm" id="er_close">סגירה</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const $ = sel => overlay.querySelector(sel);
+  $('#er_close').addEventListener('click', ()=> overlay.remove());
+  $('#er_month').addEventListener('change', e=>{
+    const m = months[Number(e.target.value)];
+    if (m){ $('#er_from').value = m.from; $('#er_to').value = m.to; }
+  });
+  $('#er_go').addEventListener('click', async ()=>{
+    const from = $('#er_from').value, to = $('#er_to').value;
+    const msg = $('#er_msg');
+    if (!from || !to){ msg.textContent = 'יש לבחור חודש או טווח תאריכים.'; return; }
+    if (from > to){ msg.textContent = 'תאריך ההתחלה מאוחר מתאריך הסיום.'; return; }
+    const btn = $('#er_go'); btn.disabled = true; msg.textContent = 'אוסף הוצאות מכל הטיולים…';
+    try{
+      const tripDocs = (await db.collection('trips').get()).docs.map(d=>({ id:d.id, ...d.data() }));
+      const logs = await Promise.all(tripDocs.map(t=> db.collection('trips').doc(t.id).collection('logistics').doc('data').get().catch(()=>null)));
+      const groups = [];
+      tripDocs.forEach((trip,i)=>{
+        const exps = ((logs[i] && logs[i].exists ? logs[i].data().expenses : null) || [])
+          .map(ex=>({ ...ex, _date: ex.date || trip.trip_date || '' }))
+          .filter(ex=> ex._date && ex._date >= from && ex._date <= to)
+          .sort((a,b)=> a._date.localeCompare(b._date));
+        if (exps.length) groups.push({ trip, expenses: exps, total: exps.reduce((s,e)=> s + (Number(e.amount)||0), 0), sortKey: exps[0]._date });
+      });
+      if (!groups.length){ msg.textContent = 'לא נמצאו הוצאות בתקופה שנבחרה.'; btn.disabled = false; return; }
+      groups.sort((a,b)=> a.sortKey.localeCompare(b.sortKey));
+      const m = months[Number($('#er_month').value)];
+      const label = m ? m.label : `${formatGregShort(from)} – ${formatGregShort(to)}`;
+      msg.textContent = 'מכין PDF…';
+      const total = await exportExpensesPeriodPdf(label, groups);
+      toast(`הדוח הופק — סה"כ ₪${fmtExpenseAmountStatic(total)}`);
+      overlay.remove();
+    }catch(err){ msg.textContent = 'שגיאה: ' + (err.message || err); btn.disabled = false; }
+  });
+}
 function buildExpensesReportElement(trip, expenses, total){
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
@@ -3774,7 +3956,7 @@ function buildExpensesReportElement(trip, expenses, total){
     return `
     <div class="pdf-avoid-break" style="margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid #dde4ee;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <div style="font-size:15px; font-weight:700; color:#16203a;">${i+1}. ${esc(ex.description||'')}</div>
+        <div style="font-size:15px; font-weight:700; color:#16203a;">${i+1}. ${ex.date ? `<span style="font-weight:400; color:#4b566d;">${esc(formatGregShort(ex.date))} · </span>` : ''}${esc(ex.description||'')}</div>
         <div style="font-size:15px; font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(ex.amount))}</div>
       </div>
       ${ex.receipt_url
@@ -4053,6 +4235,7 @@ async function renderTripLogisticsCard(card, trip){
   tripRoute.stops = tripRoute.stops || [];
   const medics = data.medics || [];
   const expenses = data.expenses || [];
+  let editingExpense = -1;
   const fmtExpenseAmount = (n) => { const v = Number(n)||0; return v % 1 === 0 ? v.toLocaleString('he-IL') : v.toFixed(2); };
   // לכל חובש/מע"ר חייב להיות מזהה יציב כדי לשייך אותו/ה לאוטובוס בלי תלות במיקום
   // ברשימה (שיכול להשתנות אם נמחק מישהו) — לרשומות ישנות בלי מזהה, יוצרים אחד עכשיו
@@ -4113,14 +4296,29 @@ async function renderTripLogisticsCard(card, trip){
       <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
         <div class="meeting-section-head"><span class="ms-icon">${ICON.wallet}</span><span>הוצאות</span></div>
         <div id="expensesList">
-          ${expenses.length ? expenses.map((ex,i)=>`
+          ${expenses.length ? expenses.map((ex,i)=> i === editingExpense ? `
+            <div style="background:var(--paper-2); border:1.5px solid var(--teal); border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:10px;">
+              <div class="form-grid">
+                <div class="field"><label>תיאור ההוצאה</label><input class="ee-desc" value="${esc(ex.description||'')}"></div>
+                <div class="field"><label>סכום (₪)</label><input class="ee-amount" type="number" step="0.01" value="${esc(ex.amount ?? '')}"></div>
+                <div class="field"><label>תאריך</label><input class="ee-date" type="date" value="${esc(ex.date||'')}"></div>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button type="button" class="btn btn-primary btn-sm save-expense-edit" data-idx="${i}">${ICON.check} שמירה</button>
+                <button type="button" class="btn btn-outline btn-sm cancel-expense-edit">ביטול</button>
+              </div>
+            </div>` : `
             <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:10px;">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
                 <div>
                   <b>${esc(ex.description||'הוצאה')}</b>
                   <div style="font-size:1.02rem; font-weight:700; color:var(--navy); margin-top:2px;">₪${esc(fmtExpenseAmount(ex.amount))}</div>
+                  ${ex.date ? `<div style="font-size:.8rem; color:var(--ink-soft); margin-top:2px;">${esc(formatGregShort(ex.date))}</div>` : ''}
                 </div>
-                <button type="button" class="icon-btn call del-expense" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="icon-btn edit-expense" data-idx="${i}" title="עריכה">${ICON.edit}</button>
+                  <button type="button" class="icon-btn call del-expense" data-idx="${i}" title="מחיקה">${ICON.trash}</button>
+                </div>
               </div>
               <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 ${ex.receipt_url ? `
@@ -4137,6 +4335,7 @@ async function renderTripLogisticsCard(card, trip){
         <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
           <div class="field"><label>תיאור ההוצאה</label><input id="expense_desc" placeholder="לדוגמה: כניסה לאתר, הסעה, ציוד..."></div>
           <div class="field"><label>סכום (₪)</label><input id="expense_amount" type="number" step="0.01" placeholder="0"></div>
+          <div class="field"><label>תאריך</label><input id="expense_date" type="date" value="${localTodayIso()}"></div>
           <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addExpenseBtn">${ICON.plus} הוספת הוצאה</button></div>
         </div>
         ${expenses.length ? `<button type="button" class="btn btn-outline btn-sm" id="exportExpensesBtn" style="margin-top:10px;">${ICON.download} ייצוא דוח הוצאות (PDF + צילומי קבלות)</button>` : ''}
@@ -4389,7 +4588,22 @@ async function renderTripLogisticsCard(card, trip){
       const description = document.getElementById('expense_desc').value.trim();
       const amount = parseFloat(document.getElementById('expense_amount').value);
       if (!description){ toast('יש להזין תיאור להוצאה'); return; }
-      expenses.push({ id: genToken().slice(0,8), description, amount: isNaN(amount) ? 0 : amount, receipt_url:'', receipt_filename:'' });
+      expenses.push({ id: genToken().slice(0,8), description, amount: isNaN(amount) ? 0 : amount, date: document.getElementById('expense_date').value || localTodayIso(), receipt_url:'', receipt_filename:'' });
+      await saveLogistics();
+    });
+    card.querySelectorAll('.edit-expense').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ editingExpense = Number(btn.dataset.idx); render(); });
+    });
+    card.querySelector('.cancel-expense-edit')?.addEventListener('click', ()=>{ editingExpense = -1; render(); });
+    card.querySelector('.save-expense-edit')?.addEventListener('click', async (e)=>{
+      const idx = Number(e.currentTarget.dataset.idx);
+      const description = card.querySelector('.ee-desc').value.trim();
+      const amount = parseFloat(card.querySelector('.ee-amount').value);
+      if (!description){ toast('יש להזין תיאור להוצאה'); return; }
+      expenses[idx].description = description;
+      expenses[idx].amount = isNaN(amount) ? 0 : amount;
+      expenses[idx].date = card.querySelector('.ee-date').value || expenses[idx].date || localTodayIso();
+      editingExpense = -1;
       await saveLogistics();
     });
     card.querySelectorAll('.del-expense').forEach(btn=>{
@@ -4873,7 +5087,7 @@ async function renderTripDetail(panel, trip){
   const className = tripClassIds.map(cid=>classesCache.find(c=>c.id===cid)?.name).filter(Boolean).join(', ');
 
   if (students.length === 0){
-    panel.innerHTML = `<p style="color:var(--ink-soft); font-size:.9rem;">אין עדיין תלמידים רשומים בכיתה זו.</p>`;
+    panel.innerHTML = `<p style="color:var(--ink-soft); font-size:.9rem;">${trip.kind === 'event' ? 'אין תלמידים רשומים לאירוע זה.' : 'אין עדיין תלמידים רשומים בכיתה זו.'}</p>`;
     return;
   }
 
@@ -4937,13 +5151,6 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     ${summaryHtml}
     ${eventTotalsHtml}
     ${cityStatsHtml}
-    ${(p.manage_trip_logistics || canViewCert) ? `<div class="section-toggle" id="tripLogisticsToggleBtn" style="margin-bottom:14px;">
-      <span>${ICON.wallet} ניהול טיול</span><span class="chev">⌄</span>
-    </div>
-    <div id="tripLogisticsCard" style="margin-bottom:16px; display:none;">
-      ${canViewCert ? `<div class="card card-pad" id="tripCertCard" style="margin-bottom:16px;">טוען אישור טיול…</div>` : ''}
-      ${p.manage_trip_logistics ? `<div class="card card-pad" id="tripLogisticsInner">טוען ניהול טיול…</div>` : ''}
-    </div>` : ''}
     ${canManage ? `<div style="margin-bottom:16px; display:flex; justify-content:flex-end;">
       <div class="more-actions-wrap">
         <button class="more-actions-btn" id="tripMoreActionsBtn" title="פעולות נוספות">${ICON.dots}</button>
@@ -4957,20 +5164,6 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     </div>` : ''}
     <div id="approvalRows"></div>`;
 
-  let logisticsLoaded = false;
-  if (p.manage_trip_logistics || canViewCert){
-    panel.querySelector('#tripLogisticsToggleBtn').addEventListener('click', (e)=>{
-      const box = panel.querySelector('#tripLogisticsCard');
-      const opening = box.style.display === 'none';
-      box.style.display = opening ? '' : 'none';
-      e.currentTarget.classList.toggle('open', opening);
-      if (opening && !logisticsLoaded){
-        logisticsLoaded = true;
-        if (canViewCert) renderTripCertificateCard(panel.querySelector('#tripCertCard'), trip, !!p.manage_trip_certificates);
-        if (p.manage_trip_logistics) renderTripLogisticsCard(panel.querySelector('#tripLogisticsInner'), trip);
-      }
-    });
-  }
   renderTripAttendanceCard(panel.querySelector('#tripAttendanceCard'), trip, students, approvedStudents, tripClassIds, canManage);
   if (showEventTotals) updateEventParticipantsTotal(panel, students, approvalsById);
 
