@@ -1280,6 +1280,7 @@ function buildSideNav(){
     { id:'classes', label:'ניהול כיתות', icon:ICON.building, show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:ICON.user, show: !!p.manage_users },
     { id:'pushprefs', label:'הגדרות התראות', icon:ICON.bell, show: myProfile.role === 'מנהל מערכת' },
+    { id:'parentpw', label:'סיסמאות הורים', icon:ICON.lock, show: isSystemAdminUser() },
     { id:'restore', label:'היסטוריית מחיקות ושחזור', icon:ICON.clock, show: myProfile.role === 'מנהל מערכת' || myProfile.role === 'ראש הישיבה' },
     { id:'smartschool', label:'סמארט סקול', icon:ICON.monitor, show:true, external:'https://www.smartschool.co.il/homepage.aspx?page_id=20' },
   ];
@@ -1320,7 +1321,7 @@ const titles = {
   mytasks:'המשימות שלי', meetings:'פגישות עבודה',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
   pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור', search:'חיפוש תלמידים',
-  earlyrelease:'בקשות יציאה מוקדמת',
+  earlyrelease:'בקשות יציאה מוקדמת', parentpw:'ניהול סיסמאות הורים',
 };
 
 let currentView = 'home';
@@ -1335,7 +1336,7 @@ async function goto(view){
     mytasks: renderMyTasks, meetings: renderMeetings,
     announcements: renderAnnouncements, classes: renderClasses,
     users: renderUsers, pushprefs: renderPushPrefs, restore: renderRestoreHistory,
-    search: renderStudentSearch, earlyrelease: renderEarlyReleases,
+    search: renderStudentSearch, earlyrelease: renderEarlyReleases, parentpw: renderParentPasswords,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -2156,8 +2157,8 @@ async function renderClassRosterView(container, classId){
         if (!ids.length) return;
         if (!(await confirmDialog(`לאפס את סיסמת כניסת ההורה של ${student.full_name}? בכניסה הבאה ההורה יזין טלפון ות.ז ויבחר סיסמה חדשה.`))) return;
         try{
-          await Promise.all(ids.map(id=> db.collection('parent_accounts').doc('p' + ('000000000' + id).slice(-9)).delete()));
-          toast('הסיסמה אופסה');
+          const results = await Promise.all(ids.map(id=> resetParentPassword('p' + ('000000000' + id).slice(-9)).then(()=>true).catch(()=>false)));
+          toast(results.some(Boolean) ? 'הסיסמה אופסה' : 'לא נמצא חשבון כניסה פעיל להורים של התלמיד/ה (אולי עוד לא נכנסו)');
         }catch(err){ toast('שגיאה באיפוס: ' + (err.code||err.message)); }
       });
     });
@@ -3445,40 +3446,56 @@ function buildApprovalDocElement(trip, studentName, studentClassName, approval){
    לתחילת קופסה כזו במקום לחתוך אותה בדיוק באמצע בין שני עמודים. */
 function getAvoidBreakRangesCss(rootEl){
   const rootTop = rootEl.getBoundingClientRect().top;
-  return Array.from(rootEl.querySelectorAll('.pdf-avoid-break, .pdf-keep-together')).map(el=>{
+  const ranges = Array.from(rootEl.querySelectorAll('.pdf-avoid-break, .pdf-keep-together')).map(el=>{
     const r = el.getBoundingClientRect();
     return { top: r.top - rootTop, bottom: r.bottom - rootTop, strict: el.classList.contains('pdf-keep-together') };
   });
+  // רשת ביטחון: כל שורת טקסט וכל תמונה במסמך הן יחידות שאסור לחתוך באמצע — גם כשלא
+  // סומנו במפורש (פסקת הערות ארוכה, הערות אוטובוס וכו'). נקודת חיתוך שנופלת על שורה
+  // נדחית לראש השורה, כך שטקסט לעולם לא נחתך לרוחבו בין שני עמודים.
+  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, { acceptNode: n => n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const range = document.createRange();
+  let n;
+  while ((n = walker.nextNode())){
+    range.selectNodeContents(n);
+    for (const r of range.getClientRects()){
+      if (r.height > 0) ranges.push({ top: r.top - rootTop - 2, bottom: r.bottom - rootTop + 2, line: true });
+    }
+  }
+  rootEl.querySelectorAll('img').forEach(img=>{
+    const r = img.getBoundingClientRect();
+    if (r.height > 0) ranges.push({ top: r.top - rootTop, bottom: r.bottom - rootTop, line: true });
+  });
+  return ranges;
 }
 /* מחשב את נקודות החיתוך בפועל (בפיקסלים של הקנבס) לפיצול לעמודים בגובה usablePageHeightPx
-   כל אחד — נקודת חיתוך שהייתה חותכת קופסה מסומנת נדחית לתחילת אותה קופסה, כך שהקופסה
-   כולה עוברת לעמוד הבא בשלמותה במקום להיחתך. הגנה מלולאה אינסופית אם קופסה בודדת
-   גדולה מעמוד שלם (אז פשוט חותכים כרגיל, כמו שהיה קודם). */
+   כל אחד. סדר העדיפויות:
+   1. .pdf-keep-together (אירוע שלם וכו') שנכנס בעמוד — עובר כולו לעמוד הבא.
+   2. .pdf-avoid-break (כרטיס, שורת טבלה) — החיתוך נדחה לתחילת הקופסה, אלא אם זה היה
+      משאיר את העמוד כמעט ריק; אז חותכים בתוכה.
+   3. בכל מקרה — החיתוך לעולם לא עובר דרך שורת טקסט או תמונה (נדחה לראש השורה).
+   עמוד לעולם לא גבוה מגובה עמוד A4 — פלח גבוה יותר היה נחתך בתחתית הדף ב-PDF. */
 function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges){
   const breaks = [0];
   let cursor = 0;
-  // כדי לא לחתוך קופסה מסומנת, הנקודה נדחית אחורה לתחילת הקופסה — אבל אם הקופסה
-  // ארוכה (למשל כרטיס עם המון שורות) והדחייה אחורה הייתה משאירה כמעט את כל העמוד
-  // ריק (פחות מ-MIN_FILL_RATIO ממנו מנוצל), עדיף "להאריך" את העמוד עד סוף הקופסה
-  // (גם אם זה חורג מעט מגובה עמוד רגיל) מאשר לייצר עמוד כמעט-ריק.
   const MIN_FILL_RATIO = 0.5;
-  const MAX_OVERFLOW_RATIO = 1.4;
+  const minGain = usablePageHeightPx * 0.15;   // לא ליצור עמוד כמעט ריק בגלל תמונה ענקית
+  const boxes = avoidBreakRanges.filter(r=>!r.line), lines = avoidBreakRanges.filter(r=>r.line);
   while (canvasHeight - cursor > usablePageHeightPx){
     let candidate = cursor + usablePageHeightPx;
-    // .pdf-keep-together (למשל אירוע שלם בדוח הוצאות): אם הוא נכנס בעמוד אחד אבל היה נחתך
-    // כאן — כולו עובר לעמוד הבא, בלי קשר לכמה ריק יישאר העמוד הנוכחי. אירוע ארוך מעמוד
-    // שלם ממשיך לחלוקה הרגילה לפי השורות שבתוכו (שגם הן מסומנות).
-    const strictSplit = avoidBreakRanges.find(r => r.strict && r.top < candidate && r.bottom > candidate && r.top > cursor && (r.bottom - r.top) <= usablePageHeightPx);
-    if (strictSplit){ breaks.push(strictSplit.top); cursor = strictSplit.top; continue; }
-    const splitting = avoidBreakRanges.find(r => !r.strict && r.top < candidate && r.bottom > candidate && r.top > cursor);
-    if (splitting){
-      const filledIfEarlier = splitting.top - cursor;
-      const filledIfLater = splitting.bottom - cursor;
-      const wouldBeTooEmpty = filledIfEarlier < usablePageHeightPx * MIN_FILL_RATIO;
-      const extendingIsAcceptable = filledIfLater <= usablePageHeightPx * MAX_OVERFLOW_RATIO;
-      candidate = (wouldBeTooEmpty && extendingIsAcceptable) ? splitting.bottom : splitting.top;
+    const strictSplit = boxes.find(r => r.strict && r.top < candidate && r.bottom > candidate && r.top > cursor && (r.bottom - r.top) <= usablePageHeightPx);
+    if (strictSplit){ candidate = strictSplit.top; }
+    else {
+      const splitting = boxes.find(r => !r.strict && r.top < candidate && r.bottom > candidate && r.top > cursor);
+      if (splitting && (splitting.top - cursor) >= usablePageHeightPx * MIN_FILL_RATIO) candidate = splitting.top;
     }
-    if (candidate <= cursor) candidate = cursor + usablePageHeightPx;
+    // שורות טקסט/תמונות: מזיזים למעלה עד שאין שורה שהחיתוך עובר דרכה
+    for (let guard = 0; guard < 50; guard++){
+      const hit = lines.find(r => r.top < candidate && r.bottom > candidate && r.top > cursor + minGain);
+      if (!hit) break;
+      candidate = hit.top;
+    }
+    if (candidate <= cursor + 10) candidate = cursor + usablePageHeightPx;
     breaks.push(candidate);
     cursor = candidate;
   }
@@ -3535,7 +3552,7 @@ async function renderNodeToPdfBlob(node){
     const scale = canvas.width / cssWidth;
     const pxPerPt = canvas.width / imgWidth;
     const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
-    const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale, strict:!!r.strict }));
+    const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale, strict:!!r.strict, line:!!r.line }));
     const contentHeightPx = contentBottomCss ? Math.min(canvas.height, Math.ceil(contentBottomCss*scale) + 6) : canvas.height;
     const breaks = computePageBreaksPx(contentHeightPx, usablePageHeightPx, avoidBreakRanges);
     addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, true);
@@ -3673,7 +3690,7 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       const scale = canvas.width / cssWidth;
       const pxPerPt = canvas.width / imgWidth;
       const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
-      const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale, strict:!!r.strict }));
+      const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale, strict:!!r.strict, line:!!r.line }));
       const contentHeightPx = contentBottomCss ? Math.min(canvas.height, Math.ceil(contentBottomCss*scale) + 6) : canvas.height;
       const breaks = computePageBreaksPx(contentHeightPx, usablePageHeightPx, avoidBreakRanges);
       addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, firstPage);
@@ -3762,8 +3779,8 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   // כדי שהטקסט לא "יעלה" ויתערבב עם הקו בשום מצב רינדור.
   const section = (title, bodyHtml) => `
     <div style="margin-bottom:28px;">
-      <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#16223d; margin-bottom:8px;">${esc(title)}</div>
-      <div style="border-bottom:2.5px solid #1c7a7a; margin-bottom:14px;"></div>
+      <div class="pdf-avoid-break" style="padding-bottom:70px; margin-bottom:-70px;"><div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#16223d; margin-bottom:8px;">${esc(title)}</div>
+      <div style="border-bottom:2.5px solid #1c7a7a; margin-bottom:14px;"></div></div>
       ${bodyHtml}
     </div>`;
   // תגית-כותרת בולטת (רקע צבעוני מלא) לתת-קבוצות בתוך מדור — למשל "כיתות" / "צוות" /
@@ -3810,7 +3827,8 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     }).join('');
     return `
     <div style="background:#f6f8fb; border:1.5px solid #dde4ee; border-radius:12px; padding:18px 20px; margin-bottom:16px;">
-      <div class="pdf-avoid-break" style="display:flex; justify-content:space-between; align-items:center; gap:14px;">
+      <div class="pdf-avoid-break">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:14px;">
         <div style="flex:1; min-width:0;">
           <span style="font-weight:800; font-size:20px; color:#16203a;">🚌 ${esc(b.name||'אוטובוס')}</span>
           <span style="font-weight:400; font-size:14px; color:#4b566d;"> · ${b.vehicle_type==='minibus'?'מיניבוס':'אוטובוס'}</span>
@@ -3819,7 +3837,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
           <span style="font-family:'Rubik',Arial,sans-serif; font-size:16px; font-weight:800; color:${occ>cap?'#b3372e':'#16223d'};">${occ} <span style="font-weight:600; color:#4b566d; font-size:14px;">/ ${cap} מקומות</span></span>
         </div>
       </div>
-      <div class="pdf-avoid-break" style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
+      <div style="background:#fff; border:1px solid #dde4ee; border-radius:9px; padding:14px 16px; margin-top:14px;">
         <div style="font-size:12.5px; font-weight:700; color:#4b566d;">אחראי אוטובוס</div>
         <div style="font-size:17px; font-weight:800; color:#16203a; margin-top:2px;">${esc(b.captain_name||'לא נבחר')}</div>
         ${b.captain_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.captain_phone)}</div>` : ''}
@@ -3828,6 +3846,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
           <div style="font-size:17px; font-weight:800; color:#16203a; margin-top:2px;">${esc(b.driver_name||'—')}</div>
           ${b.driver_phone ? `<div style="font-size:16px; font-weight:700; color:#16223d; margin-top:3px;">📞 ${esc(b.driver_phone)}</div>` : ''}
         </div>` : ''}
+      </div>
       </div>
       ${b.notes ? `<div style="font-size:14.5px; margin-top:12px; white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
       ${route.length ? `<div class="pdf-avoid-break" style="margin-top:14px; padding-top:12px; border-top:1px dashed #dde4ee;">
@@ -7411,6 +7430,120 @@ async function renderWorkMeetings(body){
     try{ await ref.delete(); workMeetingOpenId = null; toast('הפגישה נמחקה'); renderWorkMeetings(body); }
     catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
   });
+}
+
+/* ============================================================
+   ניהול סיסמאות הורים (מנהל מערכת)
+   רשימת כל ההורים שיש להם ת.ז בכרטיס תלמיד, עם מצב החשבון: פעיל / ממתין לבחירת סיסמה
+   (אחרי איפוס) / טרם נכנס. איפוס = מחיקת הסיסמה בלבד (מייל השחזור נשמר) — בכניסה הבאה
+   ההורה מזין טלפון + ת.ז ובוחר סיסמה חדשה. מחיקת חשבון = מחיקה מלאה כולל מייל השחזור.
+   ============================================================ */
+async function resetParentPassword(uid){
+  const del = firebase.firestore.FieldValue.delete();
+  const ref = db.collection('parent_accounts').doc(uid);
+  try{
+    await ref.update({ pw_hash:del, salt:del, reset_code_hash:del, reset_salt:del, reset_expires:del, reset_attempts:del });
+  }catch(err){
+    if (err.code === 'not-found') return;   // עוד לא נוצר חשבון — אין מה לאפס
+    throw err;
+  }
+}
+async function renderParentPasswords(body){
+  const [stuSnap, accSnap] = await Promise.all([
+    db.collection('students').get(),
+    db.collection('parent_accounts').get(),
+  ]);
+  if (!classesCache.length){
+    classesCache = sortClassesByGrade((await db.collection('classes').orderBy('name').get()).docs.map(d=>({ id:d.id, ...d.data() })));
+  }
+  const className = id => classesCache.find(c=>c.id===id)?.name || '';
+  const accounts = {}; accSnap.docs.forEach(d=> accounts[d.id] = d.data());
+  const normId = v => String(v||'').replace(/\D/g,'').replace(/^0+/,'');
+  const parents = {};
+  stuSnap.docs.forEach(d=>{
+    const s = d.data();
+    ['mother','father'].forEach(slot=>{
+      const idN = normId(s[slot+'_id']);
+      if (!idN) return;
+      const uid = 'p' + ('000000000' + idN).slice(-9);
+      const p0 = parents[uid] = parents[uid] || { uid, id: s[slot+'_id'], name: s[slot+'_name'] || '', phone: s[slot+'_phone'] || '', relation: slot==='mother'?'אמא':'אבא', kids: [] };
+      if (!p0.name && s[slot+'_name']) p0.name = s[slot+'_name'];
+      p0.kids.push(`${s.full_name||''}${className(s.class_id) ? ' (' + className(s.class_id) + ')' : ''}`);
+    });
+  });
+  // חשבונות שאין להם כרטיס תלמיד תואם (למשל ת.ז שנמחקה מהכרטיס)
+  Object.keys(accounts).forEach(uid=>{ if (!parents[uid]) parents[uid] = { uid, id: uid.slice(1).replace(/^0+/,''), name: accounts[uid].parent_name || '', phone: accounts[uid].phone || '', relation:'', kids: [], orphan:true }; });
+  const statusOf = p => { const a = accounts[p.uid]; if (!a) return 'none'; return a.pw_hash ? 'active' : 'reset'; };
+  const STATUS_LABEL = { active:'פעיל', reset:'ממתין לסיסמה חדשה', none:'טרם נכנס/ה' };
+  const list = Object.values(parents).sort((a,b)=> (a.name||'').localeCompare(b.name||'','he'));
+  const counts = { all:list.length, active:0, reset:0, none:0 }; list.forEach(p=> counts[statusOf(p)]++);
+  let filter = 'all', q = '';
+
+  body.innerHTML = `
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <p style="margin:0 0 12px; color:var(--ink-soft); font-size:.9rem;">הורים נכנסים עם טלפון + ת.ז + סיסמה אישית. <b>איפוס</b> מוחק את הסיסמה בלבד — בכניסה הבאה ההורה יבחר סיסמה חדשה (מייל השחזור נשמר). <b>מחיקת חשבון</b> מוחקת גם את מייל השחזור.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input id="ppw_q" placeholder="חיפוש לפי שם הורה / תלמיד, ת.ז או טלפון" style="flex:1; min-width:220px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; font:inherit; background:var(--surface); color:var(--ink);">
+        <div class="ppw-filters">
+          ${[['all','הכל'],['active','פעילים'],['reset','ממתינים'],['none','טרם נכנסו']].map(([k,l])=>`<button class="ppw-f ${k==='all'?'on':''}" data-f="${k}">${l} <span>${counts[k]}</span></button>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div id="ppw_list"></div>`;
+
+  const draw = ()=>{
+    const qq = q.trim().toLowerCase(), qd = qq.replace(/\D/g,'');
+    const shown = list.filter(p=> (filter==='all' || statusOf(p)===filter) && (!qq
+      || (p.name||'').toLowerCase().includes(qq) || p.kids.some(k=>k.toLowerCase().includes(qq))
+      || (qd.length>=3 && (String(p.id).includes(qd) || String(p.phone).replace(/\D/g,'').includes(qd)))));
+    const el = document.getElementById('ppw_list');
+    if (!shown.length){ el.innerHTML = '<div class="card card-pad" style="color:var(--ink-soft);">אין הורים שתואמים לחיפוש.</div>'; return; }
+    el.innerHTML = shown.slice(0, 300).map(p=>{
+      const a = accounts[p.uid] || {}, st = statusOf(p);
+      const last = a.last_login_at ? new Date(a.last_login_at).toLocaleDateString('he-IL') : '';
+      return `<div class="card ppw-row" data-uid="${p.uid}">
+        <div class="ppw-main">
+          <div class="ppw-name">${esc(p.name || 'ללא שם')}${p.relation ? ` <span class="ppw-rel">${p.relation}</span>` : ''} <span class="ppw-st ${st}">${STATUS_LABEL[st]}</span></div>
+          <div class="ppw-sub">ת.ז ${esc(p.id)}${p.phone ? ` · <span dir="ltr">${esc(p.phone)}</span>` : ''}${last ? ` · כניסה אחרונה ${esc(last)}` : ''}</div>
+          <div class="ppw-sub">${p.kids.length ? esc(p.kids.join(' · ')) : (p.orphan ? 'לא נמצא כרטיס תלמיד עם ת.ז זו' : '')}</div>
+          <div class="ppw-sub">מייל לשחזור: ${a.recovery_email ? `<span dir="ltr">${esc(a.recovery_email)}</span>` : '<span style="color:#a86a00;">לא הוגדר</span>'}
+            ${accounts[p.uid] ? `<a href="#" class="ppw-email" data-uid="${p.uid}">עריכה</a>` : ''}</div>
+        </div>
+        <div class="ppw-actions">
+          ${st==='active' ? `<button class="btn btn-outline btn-sm ppw-reset" data-uid="${p.uid}">${ICON.refresh} איפוס סיסמה</button>` : ''}
+          ${accounts[p.uid] ? `<button class="btn btn-outline btn-sm ppw-del" data-uid="${p.uid}" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקת חשבון</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') + (shown.length > 300 ? `<p style="color:var(--ink-soft); font-size:.85rem;">מוצגים 300 הראשונים — צמצמו בחיפוש.</p>` : '');
+    const P = uid => parents[uid];
+    el.querySelectorAll('.ppw-reset').forEach(b=> b.addEventListener('click', async ()=>{
+      const p = P(b.dataset.uid);
+      if (!(await confirmDialog(`לאפס את הסיסמה של ${p.name || 'ההורה'} (ת.ז ${p.id})? בכניסה הבאה יזין/תזין טלפון ות.ז ויבחר/תבחר סיסמה חדשה.`))) return;
+      try{ await resetParentPassword(p.uid); accounts[p.uid] = { ...accounts[p.uid] }; delete accounts[p.uid].pw_hash; counts.active--; counts.reset++; toast('הסיסמה אופסה'); draw(); }
+      catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+    }));
+    el.querySelectorAll('.ppw-del').forEach(b=> b.addEventListener('click', async ()=>{
+      const p = P(b.dataset.uid);
+      if (!(await confirmDialog(`למחוק לגמרי את חשבון כניסת ההורה של ${p.name || 'ההורה'} (ת.ז ${p.id})? גם מייל השחזור יימחק.`, { danger:true, confirmText:'מחיקה', cancelText:'ביטול' }))) return;
+      try{ await db.collection('parent_accounts').doc(p.uid).delete(); counts[statusOf(p)]--; delete accounts[p.uid]; counts.none++; toast('החשבון נמחק'); draw(); }
+      catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+    }));
+    el.querySelectorAll('.ppw-email').forEach(a=> a.addEventListener('click', async e=>{
+      e.preventDefault();
+      const uid = a.dataset.uid, cur = accounts[uid].recovery_email || '';
+      const v = prompt('מייל לשחזור סיסמה (ריק = מחיקה):', cur);
+      if (v === null) return;
+      const email = v.trim().toLowerCase();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ toast('כתובת המייל לא תקינה'); return; }
+      try{ await db.collection('parent_accounts').doc(uid).update({ recovery_email: email || firebase.firestore.FieldValue.delete() }); accounts[uid].recovery_email = email; toast('נשמר'); draw(); }
+      catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+    }));
+  };
+  document.getElementById('ppw_q').addEventListener('input', e=>{ q = e.target.value; draw(); });
+  body.querySelectorAll('.ppw-f').forEach(b=> b.addEventListener('click', ()=>{
+    filter = b.dataset.f; body.querySelectorAll('.ppw-f').forEach(x=> x.classList.toggle('on', x===b)); draw();
+  }));
+  draw();
 }
 
 /* ============================================================
