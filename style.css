@@ -1421,3 +1421,21 @@ html[data-theme="dark"] .wm-pill{ background:#163a38; }
   .wm-date-badge{ width:54px; font-size:.76rem; }
   .wm-body{ padding:6px 14px 16px; }
 }
+
+/* ---- ניהול סיסמאות הורים ---- */
+.ppw-filters{ display:flex; gap:6px; flex-wrap:wrap; }
+.ppw-f{ font:inherit; font-size:.85rem; font-weight:700; padding:8px 12px; border-radius:999px; border:1.5px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer; }
+.ppw-f span{ font-weight:600; color:var(--ink-soft); margin-inline-start:2px; }
+.ppw-f.on{ background:var(--navy); border-color:var(--navy); color:#fff; }
+.ppw-f.on span{ color:#cfd9ec; }
+.ppw-row{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 18px; margin-bottom:10px; }
+.ppw-main{ flex:1; min-width:220px; }
+.ppw-name{ font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ppw-rel{ font-size:.75rem; font-weight:600; color:var(--ink-soft); }
+.ppw-sub{ font-size:.84rem; color:var(--ink-soft); margin-top:3px; }
+.ppw-sub a{ margin-inline-start:6px; font-weight:700; }
+.ppw-st{ font-size:.72rem; font-weight:700; padding:2px 9px; border-radius:999px; }
+.ppw-st.active{ background:#e3f6ea; color:#1c7a45; }
+.ppw-st.reset{ background:#fff4d6; color:#8a6100; }
+.ppw-st.none{ background:var(--paper-2); color:var(--ink-soft); }
+.ppw-actions{ display:flex; gap:8px; flex-wrap:wrap; }
