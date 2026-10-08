@@ -3805,7 +3805,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const passengerRowHtml = (a, isLast) => {
     const borderStyle = isLast ? '' : 'border-bottom:1px solid #eef1f6;';
     if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div class="pdf-avoid-break" style="display:flex; justify-content:space-between; padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
-    if (a.type==='staff'){ const u = staffListRef.find(u=>u.id===a.uid); return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(u?.full_name||'איש/אשת צוות')}</span></div>`; }
+    if (a.type==='staff'){ const u = a.uid ? staffListRef.find(u=>u.id===a.uid) : null; const nm = a.name || u?.full_name || 'איש/אשת צוות'; return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(nm)}</span>${a.phone ? ` <span style="color:#4b566d; direction:ltr; unicode-bidi:isolate;">· ${esc(a.phone)}</span>` : ''}</div>`; }
     if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
     if (a.type==='parent'){ return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:14px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
     return '';
@@ -4580,7 +4580,7 @@ async function renderTripLogisticsCard(card, trip){
             const chipHtml = (a, ai) => {
               let label = '';
               if (a.type==='class'){ const cls = classesCache.find(c=>c.id===a.class_id); label = `🏫 ${esc(cls?.name||'כיתה')} — ${approvedCountsByClass[a.class_id]||0} מאושרים`; }
-              else if (a.type==='staff'){ const u = staffList.find(u=>u.id===a.uid); label = `👤 ${esc(u?.full_name||'איש/אשת צוות')} · צוות`; }
+              else if (a.type==='staff'){ const u = a.uid ? staffList.find(u=>u.id===a.uid) : null; label = `👤 ${esc(a.name || u?.full_name || 'איש/אשת צוות')}${a.phone ? ` · <span dir="ltr">${esc(a.phone)}</span>` : ''} · ${a.custom ? 'צוות (נוסף ידנית)' : 'צוות'}`; }
               else if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); label = `⛑️ ${esc(m?.name||'חובש/מע"ר')}`; }
               else if (a.type==='parent'){ label = `👪 ${esc(a.name||'הורה מלווה')} — הורה של ${esc(a.student_name||'')}${a.class_name?` (${esc(a.class_name)})`:''}`; }
               return `<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:.85rem;">
@@ -4644,7 +4644,15 @@ async function renderTripLogisticsCard(card, trip){
                     <select class="assign-staff-select" data-bus-idx="${bi}">
                       <option value="">בחירת איש/אשת צוות</option>
                       ${availableStaff.map(u=>`<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}
+                      ${remaining >= 1 ? '<option value="__custom__">＋ איש/אשת צוות אחר/ת (הקלדה חופשית)</option>' : ''}
                     </select>
+                    <div class="custom-staff-wrap" data-bus-idx="${bi}" style="display:none; flex-direction:column; gap:6px; margin-top:6px;">
+                      <input class="custom-staff-name" data-bus-idx="${bi}" placeholder="שם איש/אשת הצוות">
+                      <div style="display:flex; gap:6px;">
+                        <input class="custom-staff-phone" data-bus-idx="${bi}" placeholder="טלפון (רשות)" inputmode="tel" dir="ltr" style="text-align:right; flex:1; min-width:0;">
+                        <button type="button" class="btn btn-outline btn-sm add-custom-staff-btn" data-bus-idx="${bi}" title="הוספה">${ICON.plus}</button>
+                      </div>
+                    </div>
                   </div>
                   <div class="field"><label>שיוך חובש/מע"ר</label>
                     <select class="assign-medic-select" data-bus-idx="${bi}">
@@ -4955,10 +4963,28 @@ async function renderTripLogisticsCard(card, trip){
       sel.addEventListener('change', async ()=>{
         if (!sel.value) return;
         const bi = Number(sel.dataset.busIdx);
+        const wrap = card.querySelector(`.custom-staff-wrap[data-bus-idx="${bi}"]`);
+        if (sel.value === '__custom__'){ wrap.style.display = 'flex'; wrap.querySelector('.custom-staff-name').focus(); return; }
+        wrap.style.display = 'none';
         buses[bi].assigned = buses[bi].assigned || [];
         buses[bi].assigned.push({ type:'staff', uid: sel.value });
         await saveLogistics();
       });
+    });
+    // איש/אשת צוות שלא ברשימת המשתמשים (למשל מדריך חיצוני או מורה מחליף/ה) — שם + טלפון בהקלדה חופשית
+    card.querySelectorAll('.add-custom-staff-btn').forEach(btn=>{
+      const bi = Number(btn.dataset.busIdx);
+      const add = async ()=>{
+        const name = card.querySelector(`.custom-staff-name[data-bus-idx="${bi}"]`).value.trim();
+        const phone = card.querySelector(`.custom-staff-phone[data-bus-idx="${bi}"]`).value.trim();
+        if (!name){ toast('יש להזין שם'); return; }
+        buses[bi].assigned = buses[bi].assigned || [];
+        buses[bi].assigned.push({ type:'staff', custom:true, name, phone });
+        await saveLogistics();
+      };
+      btn.addEventListener('click', add);
+      card.querySelectorAll(`.custom-staff-name[data-bus-idx="${bi}"], .custom-staff-phone[data-bus-idx="${bi}"]`)
+        .forEach(inp=> inp.addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); add(); } }));
     });
     card.querySelectorAll('.assign-medic-select').forEach(sel=>{
       sel.addEventListener('change', async ()=>{
