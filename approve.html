@@ -153,6 +153,12 @@
   <div class="notice-body" id="content"><p class="center-msg">טוען פרטי טיול…</p></div>
 </div>
 
+<div id="supportBox" style="display:none; text-align:center; margin:6px auto 36px; max-width:720px; padding:0 16px;">
+  <a id="supportBtn" href="#" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:8px; padding:11px 20px; border:1.5px solid #cfd8e6; border-radius:999px; background:#fff; color:#16223d; font:inherit; font-weight:700; font-size:.92rem; text-decoration:none;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    נתקלתם בבעיה? תמיכה טכנית בוואטסאפ
+  </a>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -573,6 +579,23 @@ document.addEventListener('click', (e)=>{
   input.value = val;
 });
 load();
+</script>
+<script>
+/* כפתור "תמיכה טכנית": המספר נקבע במסך "הגדרות התראות" (settings/public_config.support_phone). אין מספר — הכפתור לא מוצג. */
+(function(){
+  try{
+    db.collection('settings').doc('public_config').get().then(function(snap){
+      var raw = snap.exists ? (snap.data().support_phone || '') : '';
+      var d = String(raw).replace(/\D/g,'');
+      if (d.length < 9) return;
+      if (d.charAt(0) === '0') d = '972' + d.slice(1);
+      var msg = 'שלום, אני נתקל/ת בבעיה בדף: ' + location.href;
+      var a = document.getElementById('supportBtn');
+      a.href = 'https://wa.me/' + d + '?text=' + encodeURIComponent(msg);
+      document.getElementById('supportBox').style.display = '';
+    }).catch(function(){});
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
