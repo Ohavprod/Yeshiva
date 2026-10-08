@@ -29,6 +29,9 @@
   .sigthumb{ height:56px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-top:8px; }
   .pw-wrap{ position:relative; } .pw-wrap input{ width:100%; box-sizing:border-box; padding-left:60px; }
   .pw-eye{ position:absolute; left:8px; top:50%; transform:translateY(-50%); background:none; border:0; font:inherit; font-size:.82rem; font-weight:700; color:var(--navy); cursor:pointer; padding:4px 6px; }
+  .email-prompt{ border-color:#e9c46a; background:#fffaf0; }
+  .ids-chip{ display:flex; justify-content:space-between; align-items:center; gap:10px; background:var(--paper-2,#eef2f8); border-radius:10px; padding:9px 12px; margin-bottom:14px; font-size:.9rem; font-weight:600; }
+  .ids-chip a{ font-weight:700; font-size:.85rem; }
   .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media(max-width:480px){ .row2{ grid-template-columns:1fr; } }
 </style>
 </head>
@@ -118,65 +121,192 @@ const todayIso = ()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n
 const gregShort = s=>{ if(!s) return ''; const d=new Date(s); return isNaN(d)?'':`${d.getDate()}.${d.getMonth()+1}.${String(d.getFullYear()).slice(-2)}`; };
 const tsDate = t=> t && t.toDate ? t.toDate().toLocaleDateString('he-IL') : '';
 
-/* ---------------- כניסה: טלפון + ת.ז + סיסמה אישית ----------------
-   כניסה ראשונה: טלפון + ת.ז → בחירת סיסמה (פעמיים). הילד/ים מזוהים אוטומטית לפי הטלפון בכרטיס.
-   מהפעם השנייה: טלפון + ת.ז + סיסמה. */
+/* ---------------- כניסה: טלפון + ת.ז, ואז סיסמה ----------------
+   שלב 1: טלפון + ת.ז → בדיקה מול הישיבה.
+   שלב 2: אם כבר הוגדרה סיסמה — שדה סיסמה. אם לא — בחירת סיסמה (פעמיים) + מייל לשחזור (רשות).
+   שכחתי סיסמה: קוד בן 6 ספרות נשלח למייל השחזור; אין מייל → פנייה למנהל המערכת. */
 const LOGIN_ERRORS = {
   phone_not_found: 'מספר הטלפון לא נמצא ברישום. יש להזין את המספר כפי שנמסר לישיבה.',
   id_mismatch: 'תעודת הזהות לא תואמת לרישום בכרטיס התלמיד/ה. יש לפנות למחנך/ת.',
   invalid_input: 'יש למלא מספר טלפון ותעודת זהות.',
   weak_password: 'הסיסמה צריכה להכיל לפחות 4 תווים.',
-  wrong_password: 'הסיסמה שגויה. שכחתם? המחנך/ת יכול/ה לאפס אותה.',
-  already_registered: 'כבר הוגדרה סיסמה לתעודת הזהות הזו. יש להיכנס עם הסיסמה, או לבקש מהמחנך/ת איפוס.',
+  wrong_password: 'הסיסמה שגויה.',
+  already_registered: 'כבר הוגדרה סיסמה. יש להיכנס עם הסיסמה.',
   too_many_attempts: 'בוצעו יותר מדי ניסיונות. נסו שוב בעוד כרבע שעה.',
+  bad_email: 'כתובת המייל לא תקינה.',
+  no_email: 'לא הוגדר מייל לשחזור סיסמה.',
+  mail_failed: 'שליחת המייל נכשלה. נסו שוב מאוחר יותר או פנו למנהל המערכת.',
+  wrong_code: 'הקוד שגוי. בדקו במייל ונסו שוב.',
+  code_expired: 'תוקף הקוד פג. בקשו קוד חדש.',
+  no_reset: 'לא נמצאה בקשת איפוס. בקשו קוד חדש.',
 };
-let loginMode = 'login';
-function renderLogin(msg='', prefill={}){
-  const reg = loginMode === 'register';
-  app.innerHTML = `
-    <div class="pcard">
-      <h3 style="margin:0 0 6px;">${reg ? 'כניסה ראשונה — הגדרת סיסמה' : 'כניסת הורה'}</h3>
-      <p style="margin:0 0 14px;font-size:.88rem;color:var(--ink-soft);">${reg
-        ? 'מזינים את הטלפון ותעודת הזהות כפי שנמסרו לישיבה, ובוחרים סיסמה אישית. הילדים שלכם יזוהו אוטומטית.'
-        : 'טלפון, תעודת זהות והסיסמה שבחרתם.'}</p>
-      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" dir="ltr" style="text-align:right;" value="${esc(prefill.phone||'')}"></div>
-      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="username" maxlength="9" value="${esc(prefill.id||'')}"></div>
-      <div class="field"><label>${reg ? 'בחירת סיסמה (לפחות 4 תווים)' : 'סיסמה'}</label>
-        <div class="pw-wrap"><input id="l_pw" type="password" autocomplete="${reg?'new-password':'current-password'}"><button type="button" class="pw-eye" data-for="l_pw" aria-label="הצגת סיסמה">הצג</button></div></div>
-      ${reg ? `<div class="field"><label>הקלדת הסיסמה שוב לאימות</label>
-        <div class="pw-wrap"><input id="l_pw2" type="password" autocomplete="new-password"><button type="button" class="pw-eye" data-for="l_pw2" aria-label="הצגת סיסמה">הצג</button></div></div>` : ''}
-      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">${reg ? 'שמירת סיסמה וכניסה' : 'כניסה'}</button>
-      <div class="perr" id="l_err">${esc(msg)}</div>
-      <div style="text-align:center;margin-top:14px;font-size:.9rem;">
-        <a href="#" id="l_switch">${reg ? 'כבר הגדרתם סיסמה? לכניסה רגילה' : 'כניסה ראשונה? הגדרת סיסמה'}</a>
-      </div>
-    </div>`;
+async function parentAuthCall(payload){
+  const res = await fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret:PUSH_WEBHOOK_SECRET, type:'parent_auth', ...payload }) });
+  return res.json();
+}
+let supportPhone = null;
+function loadSupportPhone(){
+  if (supportPhone !== null) return Promise.resolve(supportPhone);
+  return db.collection('settings').doc('public_config').get()
+    .then(s=> supportPhone = (s.exists && s.data().support_phone) || '').catch(()=> supportPhone = '');
+}
+function waLink(phone, text){
+  let d = String(phone||'').replace(/\D/g,''); if (d.startsWith('0')) d = '972' + d.slice(1);
+  return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
+}
+function pwField(id, label, autocomplete){
+  return `<div class="field"><label>${label}</label>
+    <div class="pw-wrap"><input id="${id}" type="password" autocomplete="${autocomplete}"><button type="button" class="pw-eye" data-for="${id}" aria-label="הצגת סיסמה">הצג</button></div></div>`;
+}
+function wireLoginCommon(){
   app.querySelectorAll('.pw-eye').forEach(b=>b.onclick=()=>{ const i=document.getElementById(b.dataset.for); const show=i.type==='password'; i.type=show?'text':'password'; b.textContent=show?'הסתר':'הצג'; });
-  const vals = ()=>({ phone:document.getElementById('l_phone').value.trim(), id:document.getElementById('l_id').value.trim() });
-  document.getElementById('l_switch').onclick = e=>{ e.preventDefault(); loginMode = reg ? 'login' : 'register'; renderLogin('', vals()); };
-  const go = async ()=>{
-    const { phone, id } = vals();
-    const pw = document.getElementById('l_pw').value, pw2 = reg ? document.getElementById('l_pw2').value : pw;
-    const err = m=>document.getElementById('l_err').textContent=m;
-    if (id.replace(/\D/g,'').length<5 || phone.replace(/\D/g,'').length<9) return err(LOGIN_ERRORS.invalid_input);
-    if (pw.length < 4) return err(LOGIN_ERRORS.weak_password);
-    if (reg && pw !== pw2) return err('שתי הסיסמאות אינן זהות. יש להקליד שוב.');
-    const btn=document.getElementById('l_go'), label=btn.textContent; btn.disabled=true; btn.textContent='בודק…'; err('');
-    try{
-      const res = await fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret:PUSH_WEBHOOK_SECRET, type:'parent_auth', mode: reg?'register':'login', id_number:id, phone, password:pw }) });
-      const data = await res.json();
-      if (!data.ok){
-        btn.disabled=false; btn.textContent=label;
-        if (data.error === 'no_password'){ loginMode='register'; return renderLogin('זו הכניסה הראשונה שלכם — יש לבחור סיסמה אישית ולהקליד אותה פעמיים.', { phone, id }); }
-        return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.');
-      }
-      saveSession({ uid:data.uid, name:data.parent_name||'', id_number:id.replace(/\D/g,''), phone, children:data.children });
-      loginMode = 'login';
-      await auth.signInWithCustomToken(data.token);
-    }catch(e){ btn.disabled=false; btn.textContent=label; err('אירעה שגיאה בחיבור, נסו שוב.'); }
-  };
-  document.getElementById('l_go').onclick = go;
-  app.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); }));
+}
+const loginState = { step:'ids', phone:'', id:'', emailHint:'' };
+function loginCard(title, sub, inner){
+  return `<div class="pcard">
+      <h3 style="margin:0 0 6px;">${title}</h3>
+      ${sub ? `<p style="margin:0 0 14px;font-size:.88rem;color:var(--ink-soft);">${sub}</p>` : ''}
+      ${inner}
+      <div class="perr" id="l_err"></div>
+    </div>`;
+}
+function idsSummary(){
+  return `<div class="ids-chip"><span><span dir="ltr">${esc(loginState.phone)}</span> · ת.ז ${esc(loginState.id)}</span><a href="#" id="l_back">שינוי</a></div>`;
+}
+function onEnter(fn){ app.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter') fn(); })); }
+async function finishLogin(data){
+  saveSession({ uid:data.uid, name:data.parent_name||'', id_number:loginState.id.replace(/\D/g,''), phone:loginState.phone, children:data.children, has_email:!!data.has_email });
+  Object.assign(loginState, { step:'ids' });
+  await auth.signInWithCustomToken(data.token);
+}
+function busy(btn, on, label){ btn.disabled = on; btn.textContent = on ? 'רגע…' : label; }
+
+function renderLogin(msg=''){
+  const s = loginState.step;
+  if (s === 'ids'){
+    app.innerHTML = loginCard('כניסת הורה', 'הזינו את מספר הטלפון ותעודת הזהות כפי שנמסרו לישיבה.', `
+      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" dir="ltr" style="text-align:right;" value="${esc(loginState.phone)}"></div>
+      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="username" maxlength="9" value="${esc(loginState.id)}"></div>
+      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">המשך</button>`);
+    const go = async ()=>{
+      const phone=document.getElementById('l_phone').value.trim(), id=document.getElementById('l_id').value.trim();
+      const err = m=>document.getElementById('l_err').textContent=m;
+      if (id.replace(/\D/g,'').length<5 || phone.replace(/\D/g,'').length<9) return err(LOGIN_ERRORS.invalid_input);
+      const btn=document.getElementById('l_go'); busy(btn,true); err('');
+      try{
+        const data = await parentAuthCall({ mode:'check', id_number:id, phone });
+        busy(btn,false,'המשך');
+        if (!data.ok) return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.');
+        Object.assign(loginState, { phone, id, step: data.has_password ? 'password' : 'register' });
+        renderLogin();
+      }catch(e){ busy(btn,false,'המשך'); err('אירעה שגיאה בחיבור, נסו שוב.'); }
+    };
+    document.getElementById('l_go').onclick = go; onEnter(go);
+  }
+  else if (s === 'password'){
+    app.innerHTML = loginCard('כניסת הורה', '', `
+      ${idsSummary()}
+      ${pwField('l_pw','סיסמה','current-password')}
+      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">כניסה</button>
+      <div style="text-align:center;margin-top:14px;font-size:.9rem;"><a href="#" id="l_forgot">שכחתי סיסמה</a></div>`);
+    const go = async ()=>{
+      const pw=document.getElementById('l_pw').value, err=m=>document.getElementById('l_err').textContent=m;
+      if (!pw) return err('יש להזין סיסמה.');
+      const btn=document.getElementById('l_go'); busy(btn,true); err('');
+      try{
+        const data = await parentAuthCall({ mode:'login', id_number:loginState.id, phone:loginState.phone, password:pw });
+        if (!data.ok){ busy(btn,false,'כניסה'); return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.'); }
+        await finishLogin(data);
+      }catch(e){ busy(btn,false,'כניסה'); err('אירעה שגיאה בחיבור, נסו שוב.'); }
+    };
+    document.getElementById('l_go').onclick = go; onEnter(go);
+    document.getElementById('l_forgot').onclick = async e=>{
+      e.preventDefault();
+      const a = e.currentTarget, err=m=>document.getElementById('l_err').textContent=m; a.textContent='שולח קוד…'; err('');
+      try{
+        const data = await parentAuthCall({ mode:'forgot', id_number:loginState.id, phone:loginState.phone });
+        if (data.ok){ Object.assign(loginState, { step:'reset', emailHint:data.email_hint||'' }); return renderLogin(); }
+        if (data.error === 'no_email'){ loginState.step = 'no_email'; return renderLogin(); }
+        a.textContent='שכחתי סיסמה'; err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב.');
+      }catch(x){ a.textContent='שכחתי סיסמה'; err('אירעה שגיאה בחיבור, נסו שוב.'); }
+    };
+  }
+  else if (s === 'register'){
+    app.innerHTML = loginCard('בחירת סיסמה', 'בחרו סיסמה אישית — איתה תיכנסו מעכשיו יחד עם הטלפון ותעודת הזהות.', `
+      ${idsSummary()}
+      ${pwField('l_pw','סיסמה (לפחות 4 תווים)','new-password')}
+      ${pwField('l_pw2','הקלדת הסיסמה שוב לאימות','new-password')}
+      <div class="field"><label>מייל לשחזור סיסמה <span style="font-weight:400;color:var(--ink-soft);">(מומלץ)</span></label>
+        <input id="l_email" type="email" inputmode="email" autocomplete="email" dir="ltr" style="text-align:right;" placeholder="name@gmail.com"></div>
+      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">שמירה וכניסה</button>`);
+    const go = async ()=>{
+      const pw=document.getElementById('l_pw').value, pw2=document.getElementById('l_pw2').value, email=document.getElementById('l_email').value.trim();
+      const err=m=>document.getElementById('l_err').textContent=m;
+      if (pw.length < 4) return err(LOGIN_ERRORS.weak_password);
+      if (pw !== pw2) return err('שתי הסיסמאות אינן זהות. יש להקליד שוב.');
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return err(LOGIN_ERRORS.bad_email);
+      const btn=document.getElementById('l_go'); busy(btn,true); err('');
+      try{
+        const data = await parentAuthCall({ mode:'register', id_number:loginState.id, phone:loginState.phone, password:pw, recovery_email:email });
+        if (!data.ok){
+          busy(btn,false,'שמירה וכניסה');
+          if (data.error === 'already_registered'){ loginState.step='password'; return renderLogin(); }
+          return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.');
+        }
+        await finishLogin(data);
+      }catch(e){ busy(btn,false,'שמירה וכניסה'); err('אירעה שגיאה בחיבור, נסו שוב.'); }
+    };
+    document.getElementById('l_go').onclick = go; onEnter(go);
+  }
+  else if (s === 'reset'){
+    app.innerHTML = loginCard('איפוס סיסמה', `שלחנו קוד בן 6 ספרות למייל <b dir="ltr">${esc(loginState.emailHint)}</b>. הקוד תקף לרבע שעה (כדאי לבדוק גם בתיקיית הספאם).`, `
+      ${idsSummary()}
+      <div class="field"><label>הקוד מהמייל</label><input id="l_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" dir="ltr" style="text-align:center;letter-spacing:6px;font-size:1.2rem;"></div>
+      ${pwField('l_pw','סיסמה חדשה (לפחות 4 תווים)','new-password')}
+      ${pwField('l_pw2','הקלדת הסיסמה החדשה שוב','new-password')}
+      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">שמירת סיסמה חדשה וכניסה</button>
+      <div style="text-align:center;margin-top:14px;font-size:.9rem;"><a href="#" id="l_resend">לא קיבלתי — שליחה מחדש</a></div>
+      <div id="l_help"></div>`);
+    const go = async ()=>{
+      const code=document.getElementById('l_code').value.replace(/\D/g,''), pw=document.getElementById('l_pw').value, pw2=document.getElementById('l_pw2').value;
+      const err=m=>document.getElementById('l_err').textContent=m;
+      if (code.length !== 6) return err('יש להזין את הקוד בן 6 הספרות מהמייל.');
+      if (pw.length < 4) return err(LOGIN_ERRORS.weak_password);
+      if (pw !== pw2) return err('שתי הסיסמאות אינן זהות. יש להקליד שוב.');
+      const btn=document.getElementById('l_go'), label=btn.textContent; busy(btn,true); err('');
+      try{
+        const data = await parentAuthCall({ mode:'reset', id_number:loginState.id, phone:loginState.phone, code, password:pw });
+        if (!data.ok){ busy(btn,false,label); err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב.'); if (data.error==='code_expired' || data.error==='wrong_code') showHelp(); return; }
+        await finishLogin(data);
+      }catch(e){ busy(btn,false,label); err('אירעה שגיאה בחיבור, נסו שוב.'); }
+    };
+    const showHelp = ()=> loadSupportPhone().then(ph=>{ const h=document.getElementById('l_help'); if (h && ph) h.innerHTML = adminHelpHtml(); });
+    document.getElementById('l_go').onclick = go; onEnter(go);
+    document.getElementById('l_resend').onclick = async e=>{
+      e.preventDefault(); const a=e.currentTarget; a.textContent='שולח…';
+      try{ const d = await parentAuthCall({ mode:'forgot', id_number:loginState.id, phone:loginState.phone });
+        a.textContent = d.ok ? (d.already_sent ? 'הקוד כבר נשלח — אפשר לבקש שוב בעוד דקה' : 'נשלח קוד חדש') : (LOGIN_ERRORS[d.error] || 'שגיאה');
+      }catch(x){ a.textContent='שגיאה בשליחה'; }
+      showHelp();
+    };
+  }
+  else if (s === 'no_email'){
+    app.innerHTML = loginCard('שכחתי סיסמה', 'לא הוגדר מייל לשחזור עבור החשבון הזה, ולכן אי אפשר לאפס לבד. מנהל המערכת יכול לאפס את הסיסמה — ואז תבחרו סיסמה חדשה בכניסה הבאה.', `
+      ${idsSummary()}
+      <div id="l_help"><p style="color:var(--ink-soft);font-size:.9rem;">טוען…</p></div>
+      <button class="btn btn-outline" id="l_back2" style="width:100%;margin-top:10px;">חזרה לכניסה</button>`);
+    loadSupportPhone().then(()=>{ document.getElementById('l_help').innerHTML = adminHelpHtml() || '<p style="font-size:.9rem;">יש לפנות למחנך/ת או למזכירות הישיבה ולבקש איפוס סיסמה לכניסת הורה.</p>'; });
+    document.getElementById('l_back2').onclick = ()=>{ loginState.step='password'; renderLogin(); };
+  }
+  if (msg) document.getElementById('l_err').textContent = msg;
+  wireLoginCommon();
+  document.getElementById('l_back')?.addEventListener('click', e=>{ e.preventDefault(); loginState.step='ids'; renderLogin(); });
+  setTimeout(()=> app.querySelector('input:not([value]), input[value=""]')?.focus(), 50);
+}
+function adminHelpHtml(){
+  if (!supportPhone) return '';
+  return `<a class="btn btn-outline" style="width:100%;margin-top:10px;display:flex;justify-content:center;" target="_blank" rel="noopener"
+    href="${waLink(supportPhone, `שלום, אני הורה בישיבה תיכונית עפולה (ת.ז ${loginState.id}) ושכחתי את הסיסמה לכניסת הורה. אשמח לאיפוס.`)}">פנייה למנהל המערכת בוואטסאפ</a>`;
 }
 
 /* ---------------- מסך ראשי ---------------- */
@@ -189,6 +319,12 @@ function renderShell(user, sess){
       <button class="btn btn-outline btn-sm" id="lo">יציאה</button>
     </div>
     ${('Notification' in window) && Notification.permission==='default' ? '<button class="btn btn-outline btn-sm" id="enablePush" style="width:100%;margin-bottom:12px;">🔔 הפעלת התראות</button>' : ''}
+    ${sess.has_email === false && !sess.email_dismissed ? `<div class="pcard email-prompt">
+      <b>הוסיפו מייל לשחזור סיסמה</b>
+      <div style="font-size:.85rem;color:var(--ink-soft);margin:4px 0 10px;">אם תשכחו את הסיסמה, נשלח אליו קוד לאיפוס — בלי צורך לפנות לישיבה.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><input id="rec_email" type="email" inputmode="email" dir="ltr" placeholder="name@gmail.com" style="flex:1;min-width:180px;padding:9px 12px;border:1.5px solid var(--line);border-radius:10px;font:inherit;">
+        <button class="btn btn-primary btn-sm" id="rec_save">שמירה</button><button class="btn btn-outline btn-sm" id="rec_later">אחר כך</button></div>
+      <div class="perr" id="rec_err"></div></div>` : ''}
     <div class="ptabs">
       <button data-tab="new" class="${currentTab==='new'?'on':''}">בקשת יציאה</button>
       <button data-tab="releases" class="${currentTab==='releases'?'on':''}">הבקשות שלי</button>
@@ -197,6 +333,17 @@ function renderShell(user, sess){
     <div id="tabBody"></div>`;
   document.getElementById('lo').onclick = async ()=>{ clearSession(); await auth.signOut(); };
   document.getElementById('enablePush')?.addEventListener('click', ()=> enablePush(user, sess));
+  document.getElementById('rec_later')?.addEventListener('click', ()=>{ sess.email_dismissed = true; saveSession(sess); renderShell(user, sess); });
+  document.getElementById('rec_save')?.addEventListener('click', async ()=>{
+    const email = document.getElementById('rec_email').value.trim(), err = m=>document.getElementById('rec_err').textContent = m;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return err('כתובת המייל לא תקינה.');
+    const btn = document.getElementById('rec_save'); btn.disabled = true; btn.textContent = 'שומר…';
+    try{
+      const data = await parentAuthCall({ mode:'set_email', id_token: await user.getIdToken(), email });
+      if (!data.ok){ btn.disabled = false; btn.textContent = 'שמירה'; return err(LOGIN_ERRORS[data.error] || 'השמירה נכשלה, נסו שוב.'); }
+      sess.has_email = true; saveSession(sess); toast('המייל לשחזור נשמר'); renderShell(user, sess);
+    }catch(e){ btn.disabled = false; btn.textContent = 'שמירה'; err('אירעה שגיאה בחיבור, נסו שוב.'); }
+  });
   app.querySelectorAll('.ptabs button').forEach(b=>b.onclick=()=>{ currentTab=b.dataset.tab; renderShell(user, sess); });
   const body = document.getElementById('tabBody');
   if (currentTab==='new') renderNewRequest(body, user, sess);
