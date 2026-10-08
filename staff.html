@@ -1085,10 +1085,11 @@ async function deleteSchoolYearData(year){
     try{ await deleteTripCascade(d.id); }
     catch(err){ failures.push(`טיול ${d.data().title||d.id}: ${err.message}`); }
   }
-  for (const colName of ['personal_tasks','meetings','assigned_tasks']){
+  for (const colName of ['personal_tasks','meetings','assigned_tasks','work_meetings']){
     const snap = await db.collection(colName).where('school_year','==', year).get();
     for (const doc of snap.docs){
-      await logDeletion(colName, doc.id, doc.data());
+      // פגישות עבודה אישיות הן פרטיות — לא נשמרות בהיסטוריית המחיקות שההנהלה רואה
+      if (colName !== 'work_meetings') await logDeletion(colName, doc.id, doc.data());
       await safeDelete(colName, doc.ref);
     }
   }
@@ -1274,7 +1275,7 @@ function buildSideNav(){
     { id:'search', label:'חיפוש תלמידים', icon:ICON.search, show: !!p.view_all_classes },
     { id:'payments', label:'ניהול תשלומים', icon:ICON.wallet, show: !!p.manage_payments || !!p.manage_users },
     { id:'mytasks', label:'המשימות שלי', icon:ICON.check, show:true },
-    { id:'meetings', label:'ישיבות צוות', icon:ICON.notes, show:true },
+    { id:'meetings', label:'פגישות עבודה', icon:ICON.notes, show:true },
     { id:'announcements', label:'עדכונים באתר', icon:ICON.megaphone, show: !!p.manage_announcements },
     { id:'classes', label:'ניהול כיתות', icon:ICON.building, show: !!p.manage_classes },
     { id:'users', label:'ניהול משתמשים', icon:ICON.user, show: !!p.manage_users },
@@ -1316,7 +1317,7 @@ function setActiveNav(id){
 
 const titles = {
   home:'בית', myclass:'הכיתה שלי', trips:'טיולים ואישורים', payments:'ניהול תשלומים',
-  mytasks:'המשימות שלי', meetings:'ישיבות צוות',
+  mytasks:'המשימות שלי', meetings:'פגישות עבודה',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
   pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור', search:'חיפוש תלמידים',
   earlyrelease:'בקשות יציאה מוקדמת',
@@ -2141,11 +2142,25 @@ async function renderClassRosterView(container, classId){
         <div style="display:flex; gap:8px; margin-top:14px;">
           <button class="btn btn-outline btn-sm edit-student" data-id="${s.id}">✏️ עריכה</button>
           <button class="btn btn-outline btn-sm del-student" data-id="${s.id}" style="color:var(--danger); border-color:#f2c6c2;">🗑 מחיקה</button>
+          ${(s.mother_id || s.father_id) ? `<button class="btn btn-outline btn-sm reset-parent-pw" data-id="${s.id}" title="ההורה יגדיר סיסמה חדשה בכניסה הבאה">איפוס סיסמת הורה</button>` : ''}
         </div>
       </div>
     </div>`;
 
   const wireRosterRows = (listEl) => {
+    listEl.querySelectorAll('.reset-parent-pw').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const student = students.find(s=>s.id===btn.dataset.id);
+        const ids = [student.mother_id, student.father_id].map(v=>String(v||'').replace(/\D/g,'').replace(/^0+/,'')).filter(Boolean);
+        if (!ids.length) return;
+        if (!(await confirmDialog(`לאפס את סיסמת כניסת ההורה של ${student.full_name}? בכניסה הבאה ההורה יזין טלפון ות.ז ויבחר סיסמה חדשה.`))) return;
+        try{
+          await Promise.all(ids.map(id=> db.collection('parent_accounts').doc('p' + ('000000000' + id).slice(-9)).delete()));
+          toast('הסיסמה אופסה');
+        }catch(err){ toast('שגיאה באיפוס: ' + (err.code||err.message)); }
+      });
+    });
     listEl.querySelectorAll('.roster-row-head').forEach(head=>{
       head.addEventListener('click', ()=> head.closest('.roster-row').classList.toggle('open'));
     });
@@ -3430,9 +3445,9 @@ function buildApprovalDocElement(trip, studentName, studentClassName, approval){
    לתחילת קופסה כזו במקום לחתוך אותה בדיוק באמצע בין שני עמודים. */
 function getAvoidBreakRangesCss(rootEl){
   const rootTop = rootEl.getBoundingClientRect().top;
-  return Array.from(rootEl.querySelectorAll('.pdf-avoid-break')).map(el=>{
+  return Array.from(rootEl.querySelectorAll('.pdf-avoid-break, .pdf-keep-together')).map(el=>{
     const r = el.getBoundingClientRect();
-    return { top: r.top - rootTop, bottom: r.bottom - rootTop };
+    return { top: r.top - rootTop, bottom: r.bottom - rootTop, strict: el.classList.contains('pdf-keep-together') };
   });
 }
 /* מחשב את נקודות החיתוך בפועל (בפיקסלים של הקנבס) לפיצול לעמודים בגובה usablePageHeightPx
@@ -3450,7 +3465,12 @@ function computePageBreaksPx(canvasHeight, usablePageHeightPx, avoidBreakRanges)
   const MAX_OVERFLOW_RATIO = 1.4;
   while (canvasHeight - cursor > usablePageHeightPx){
     let candidate = cursor + usablePageHeightPx;
-    const splitting = avoidBreakRanges.find(r => r.top < candidate && r.bottom > candidate && r.top > cursor);
+    // .pdf-keep-together (למשל אירוע שלם בדוח הוצאות): אם הוא נכנס בעמוד אחד אבל היה נחתך
+    // כאן — כולו עובר לעמוד הבא, בלי קשר לכמה ריק יישאר העמוד הנוכחי. אירוע ארוך מעמוד
+    // שלם ממשיך לחלוקה הרגילה לפי השורות שבתוכו (שגם הן מסומנות).
+    const strictSplit = avoidBreakRanges.find(r => r.strict && r.top < candidate && r.bottom > candidate && r.top > cursor && (r.bottom - r.top) <= usablePageHeightPx);
+    if (strictSplit){ breaks.push(strictSplit.top); cursor = strictSplit.top; continue; }
+    const splitting = avoidBreakRanges.find(r => !r.strict && r.top < candidate && r.bottom > candidate && r.top > cursor);
     if (splitting){
       const filledIfEarlier = splitting.top - cursor;
       const filledIfLater = splitting.bottom - cursor;
@@ -3515,7 +3535,7 @@ async function renderNodeToPdfBlob(node){
     const scale = canvas.width / cssWidth;
     const pxPerPt = canvas.width / imgWidth;
     const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
-    const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
+    const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale, strict:!!r.strict }));
     const contentHeightPx = contentBottomCss ? Math.min(canvas.height, Math.ceil(contentBottomCss*scale) + 6) : canvas.height;
     const breaks = computePageBreaksPx(contentHeightPx, usablePageHeightPx, avoidBreakRanges);
     addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, true);
@@ -3653,7 +3673,7 @@ async function renderNodesToMultiPagePdfBlob(nodes){
       const scale = canvas.width / cssWidth;
       const pxPerPt = canvas.width / imgWidth;
       const usablePageHeightPx = (pageHeight - margin*2) * pxPerPt;
-      const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale }));
+      const avoidBreakRanges = avoidBreakRangesCss.map(r=>({ top:r.top*scale, bottom:r.bottom*scale, strict:!!r.strict }));
       const contentHeightPx = contentBottomCss ? Math.min(canvas.height, Math.ceil(contentBottomCss*scale) + 6) : canvas.height;
       const breaks = computePageBreaksPx(contentHeightPx, usablePageHeightPx, avoidBreakRanges);
       addCanvasSlicesToPdf(pdf, canvas, breaks, pxPerPt, imgWidth, margin, firstPage);
@@ -3729,7 +3749,8 @@ function tripRouteDocHtml(route){
       <div style="flex-shrink:0; white-space:nowrap; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(fmtMinutes(t.total))}</div>
     </div>`;
 }
-function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCacheRef, staffListRef, tripRoute){
+function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCacheRef, staffListRef, tripRoute, equipmentList){
+  equipmentList = equipmentList || [];
   approvedCountsByClass = approvedCountsByClass || {};
   classesCacheRef = classesCacheRef || [];
   staffListRef = staffListRef || [];
@@ -3832,6 +3853,19 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
     </div>`;
   const medicsHtml = medics.length ? medics.map((m,idx)=> medicRowHtml(m, idx===medics.length-1)).join('') : `<p style="color:#4b566d; font-size:14px; margin:0;">אין חובשים/מע"רים רשומים.</p>`;
 
+  // ציוד נדרש: טבלת צ'קליסט — ריבוע סימון, פריט, כמות ואחראי/ת. שורה = יחידת אל-תחתוך.
+  const equipHtml = `
+    <div class="pdf-avoid-break" style="display:flex; border-bottom:2px solid #16223d; padding-bottom:7px; font-size:12.5px; color:#4b566d; font-weight:700;">
+      <div style="width:44px; text-align:center;">הוכן</div><div style="flex:1; padding:0 8px;">פריט</div>
+      <div style="width:70px; text-align:center;">כמות</div><div style="width:190px; padding:0 8px;">אחראי/ת</div>
+    </div>` + equipmentList.map(it=>`
+    <div class="pdf-avoid-break" style="display:flex; align-items:center; border-bottom:1px solid #eef1f6; padding:9px 0; font-size:15px;">
+      <div style="width:44px; display:flex; justify-content:center;"><div style="width:18px; height:18px; border:2px solid #16223d; border-radius:4px; text-align:center; line-height:16px; font-size:14px; font-weight:800; color:#1c7a45;">${it.done?'✓':''}</div></div>
+      <div style="flex:1; padding:0 8px; font-weight:700; color:#16203a;">${esc(it.item||'')}</div>
+      <div style="width:70px; text-align:center; color:#16203a;">${esc(it.qty||1)}</div>
+      <div style="width:190px; padding:0 8px; color:#4b566d;">${esc(it.owner||'—')}</div>
+    </div>`).join('');
+
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px; padding-bottom:20px; border-bottom:3px solid #1c7a7a;">
@@ -3848,6 +3882,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
       ${section('אוטובוסים ואחראים', busesSectionHtml)}
       ${(tripRoute && (tripRoute.stops||[]).length) ? section('מסלול הטיול', tripRouteDocHtml(tripRoute)) : ''}
       ${section('חובשים ומע"רים', medicsHtml)}
+      ${equipmentList.length ? section('ציוד נדרש', equipHtml) : ''}
       ${section('הערות נוספות', notesHtml)}
       <div style="margin-top:22px; padding-top:16px; border-top:1px solid #dde4ee; font-size:12px; color:#4b566d; text-align:center;">
         הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
@@ -3910,7 +3945,7 @@ async function exportTripFullPdf(trip){
       }
     }
 
-    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCache, window._staffListCache, logData.trip_route);
+    const node = buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approvedCountsByClass, classesCache, window._staffListCache, logData.trip_route, logData.equipment_list);
     const logisticsBlob = await renderNodeToPdfBlob(node);
     const logisticsBytes = await logisticsBlob.arrayBuffer();
     const logisticsDoc = await PDFDocument.load(logisticsBytes);
@@ -3966,11 +4001,11 @@ function hebrewMonthOptions(){
 function buildExpensesPeriodReportElement(label, groups, grandTotal){
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
-  const rowHtml = (ex, i) => {
+  const rowHtml = (ex, i, isLast) => {
     const isPdfReceipt = !!ex.receipt_url && /\.pdf(\?|$)/i.test(ex.receipt_filename || ex.receipt_url);
     const dt = ex._date ? `${esc(formatGregShort(ex._date))} · ` : '';
     return `
-    <div class="pdf-avoid-break" style="margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid #dde4ee;">
+    <div class="pdf-avoid-break" style="padding:14px 18px; ${isLast ? '' : 'border-bottom:1px solid #e3e8f0;'}">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
         <div style="font-size:14.5px; font-weight:700; color:#16203a;">${i+1}. <span style="font-weight:400; color:#4b566d;">${dt}</span>${esc(ex.description||'')}</div>
         <div style="font-size:14.5px; font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(ex.amount))}</div>
@@ -3982,6 +4017,36 @@ function buildExpensesPeriodReportElement(label, groups, grandTotal){
         : `<div style="margin-top:6px; font-size:12px; color:#b7bfcc;">לא צורפה קבלה להוצאה זו.</div>`}
     </div>`;
   };
+  // כל טיול/אירוע הוא "כרטיס" נפרד ובולט: פס כותרת כחול עם מספר סידורי, סוג (טיול/אירוע),
+  // שם, תאריך ומקום, וסכום. הכרטיס כולו מסומן pdf-keep-together — אם הוא לא נכנס במה
+  // שנשאר בעמוד, כולו עובר לעמוד חדש. הכותרת כבולה גם לשורה הראשונה, כך שגם באירוע
+  // ארוך מעמוד שלם הכותרת לעולם לא נשארת לבד בתחתית עמוד.
+  const groupHtml = (g, gi) => {
+    const isEv = g.trip.kind === 'event';
+    const dateLine = formatTripDateLine(g.trip);
+    const sub = [dateLine, g.trip.location].filter(Boolean).map(esc).join(' · ');
+    const head = `
+      <div style="background:#16223d; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:14px;">
+        <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+          <div style="flex:none; width:34px; height:34px; border-radius:50%; background:#fff; color:#16223d; text-align:center; line-height:34px; font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px;">${gi+1}</div>
+          <div style="min-width:0;">
+            <div style="font-size:11.5px; font-weight:700; color:#9fc9c6; letter-spacing:.3px;">${isEv ? 'אירוע' : 'טיול'} · ${g.expenses.length} הוצאות</div>
+            <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:18px; color:#fff; margin-top:1px;">${esc(g.trip.title||'')}</div>
+            ${sub ? `<div style="font-size:12.5px; color:#cfd9ec; margin-top:2px;">${sub}</div>` : ''}
+          </div>
+        </div>
+        <div style="flex:none; text-align:left;">
+          <div style="font-size:11px; color:#cfd9ec; font-weight:600;">סה"כ</div>
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(g.total))}</div>
+        </div>
+      </div>`;
+    const rows = g.expenses.map((ex,i)=> rowHtml(ex, i, i===g.expenses.length-1));
+    return `
+      <div class="pdf-keep-together" style="border:2px solid #16223d; border-radius:14px; overflow:hidden; margin-bottom:26px; background:#fff;">
+        <div class="pdf-avoid-break">${head}${rows[0] || ''}</div>
+        ${rows.slice(1).join('')}
+      </div>`;
+  };
   wrap.innerHTML = `
     <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
       <div style="display:flex; align-items:center; gap:16px; margin-bottom:22px; padding-bottom:18px; border-bottom:3px solid #1c7a7a;">
@@ -3991,16 +4056,14 @@ function buildExpensesPeriodReportElement(label, groups, grandTotal){
           <div style="font-size:13px; color:#4b566d; margin-top:2px;">דוח הוצאות — ${esc(label)}</div>
         </div>
       </div>
-      ${groups.map(g=>`
-        <div style="margin-bottom:26px;">
-          <div class="pdf-avoid-break" style="background:#eef3f8; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
-            <div><b style="font-family:'Rubik',Arial,sans-serif; color:#16223d; font-size:16px;">${esc(g.trip.title||'')}</b>
-              <div style="font-size:12px; color:#4b566d;">${formatTripDateLine(g.trip) ? esc(formatTripDateLine(g.trip)) : ''}</div></div>
-            <div style="font-weight:800; color:#16223d; white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(g.total))}</div>
-          </div>
-          ${g.expenses.map(rowHtml).join('')}
-        </div>`).join('')}
-      <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
+      <div class="pdf-avoid-break" style="margin-bottom:22px; border:1px solid #dde4ee; border-radius:12px; overflow:hidden;">
+        <div style="background:#f3f5f9; padding:9px 16px; font-size:12.5px; font-weight:700; color:#4b566d;">סיכום לפי טיול/אירוע</div>
+        ${groups.map((g,gi)=>`<div style="display:flex; justify-content:space-between; gap:10px; padding:8px 16px; border-top:1px solid #eef1f6; font-size:14px;">
+          <span><b>${gi+1}.</b> ${esc(g.trip.title||'')} <span style="color:#4b566d;">(${g.trip.kind==='event'?'אירוע':'טיול'})</span></span>
+          <b style="white-space:nowrap;">₪${esc(fmtExpenseAmountStatic(g.total))}</b></div>`).join('')}
+      </div>
+      ${groups.map(groupHtml).join('')}
+      <div class="pdf-avoid-break" style="background:#1c7a7a; border-radius:12px; padding:14px 18px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
         <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#fff;">סה"כ הוצאות לתקופה</span>
         <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">₪${esc(fmtExpenseAmountStatic(grandTotal))}</span>
       </div>
@@ -4373,6 +4436,9 @@ async function renderTripLogisticsCard(card, trip){
   tripRoute.stops = tripRoute.stops || [];
   const medics = data.medics || [];
   const expenses = data.expenses || [];
+  // רשימת ציוד נדרש לטיול (לצוות): פריט, כמות, אחראי/ת, והאם כבר הוכן
+  const equipmentList = data.equipment_list || [];
+  equipmentList.forEach(it=>{ if (!it.id) it.id = genToken().slice(0,8); });
   let editingExpense = -1;
   const fmtExpenseAmount = (n) => { const v = Number(n)||0; return v % 1 === 0 ? v.toLocaleString('he-IL') : v.toFixed(2); };
   // לכל חובש/מע"ר חייב להיות מזהה יציב כדי לשייך אותו/ה לאוטובוס בלי תלות במיקום
@@ -4677,6 +4743,32 @@ async function renderTripLogisticsCard(card, trip){
       </div>
 
       <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="meeting-section-head"><span class="ms-icon">${ICON.check}</span><span>ציוד נדרש</span>
+          ${equipmentList.length ? `<span style="margin-inline-start:auto; font-size:.82rem; color:var(--ink-soft); font-weight:600;">${equipmentList.filter(i=>i.done).length} מתוך ${equipmentList.length} הוכנו</span>` : ''}</div>
+        <div id="equipmentList">
+          ${equipmentList.length ? equipmentList.map(it=>`
+            <div class="equip-row${it.done?' done':''}" data-id="${it.id}">
+              <label class="equip-check"><input type="checkbox" class="equip-done" data-id="${it.id}" ${it.done?'checked':''}><span></span></label>
+              <div class="equip-main">
+                <div class="equip-name">${esc(it.item)}${Number(it.qty)>1?` <span class="equip-qty">× ${esc(it.qty)}</span>`:''}</div>
+                ${it.owner ? `<div class="equip-owner">אחראי/ת: ${esc(it.owner)}</div>` : ''}
+              </div>
+              <button type="button" class="icon-btn call del-equip" data-id="${it.id}" title="מחיקה">${ICON.trash}</button>
+            </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">עדיין לא נרשם ציוד לטיול.</p>'}
+        </div>
+        <div class="equip-quick">
+          ${['תיק עזרה ראשונה','אלונקה','מגפון','מים (ג׳ריקנים)','רשימות תלמידים מודפסות','טלפונים טעונים','שקיות אשפה','כובעים/קרם הגנה'].filter(n=>!equipmentList.some(i=>i.item===n)).map(n=>`<button type="button" class="equip-chip" data-item="${esc(n)}">+ ${esc(n)}</button>`).join('')}
+        </div>
+        <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
+          <div class="field" style="grid-column:1/-1;"><label>פריט</label><input id="equip_item" placeholder="לדוגמה: ערכת עזרה ראשונה"></div>
+          <div class="field"><label>כמות</label><input id="equip_qty" type="number" min="1" step="1" value="1"></div>
+          <div class="field"><label>אחראי/ת להביא (רשות)</label><input id="equip_owner" list="equipOwnerOptions" placeholder="שם איש/אשת צוות">
+            <datalist id="equipOwnerOptions">${staffList.map(u=>`<option value="${esc(u.full_name||'')}">`).join('')}</datalist></div>
+          <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addEquipBtn">${ICON.plus} הוספת פריט</button></div>
+        </div>
+      </div>
+
+      <div class="meeting-section" style="margin-top:12px; border-top:1px solid var(--line); padding-top:16px;">
         <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>הערות נוספות</span></div>
         <div class="field" style="grid-column:1/-1;"><textarea id="logistics_notes" placeholder="הערות כלליות לטיול...">${esc(data.general_notes||'')}</textarea></div>
         <button type="button" class="btn btn-outline btn-sm" id="saveLogisticsNotesBtn" style="margin-top:8px;">${ICON.check} שמירת הערות</button>
@@ -4896,6 +4988,24 @@ async function renderTripLogisticsCard(card, trip){
         await saveLogistics();
       });
     });
+    const addEquip = async (item, qty, owner)=>{
+      if (!item){ toast('יש להזין שם פריט'); return; }
+      equipmentList.push({ id: genToken().slice(0,8), item, qty: Math.max(1, parseInt(qty,10)||1), owner: owner||'', done:false });
+      await saveLogistics();
+    };
+    card.querySelector('#addEquipBtn').addEventListener('click', ()=> addEquip(
+      document.getElementById('equip_item').value.trim(), document.getElementById('equip_qty').value, document.getElementById('equip_owner').value.trim()));
+    card.querySelector('#equip_item').addEventListener('keydown', e=>{ if (e.key==='Enter') card.querySelector('#addEquipBtn').click(); });
+    card.querySelectorAll('.equip-chip').forEach(btn=> btn.addEventListener('click', ()=> addEquip(btn.dataset.item, 1, '')));
+    card.querySelectorAll('.equip-done').forEach(cb=> cb.addEventListener('change', async ()=>{
+      const it = equipmentList.find(i=>i.id===cb.dataset.id); if (!it) return;
+      it.done = cb.checked; await saveLogistics();
+    }));
+    card.querySelectorAll('.del-equip').forEach(btn=> btn.addEventListener('click', async ()=>{
+      const idx = equipmentList.findIndex(i=>i.id===btn.dataset.id);
+      if (idx>-1) equipmentList.splice(idx, 1);
+      await saveLogistics();
+    }));
     card.querySelector('#addMedicBtn').addEventListener('click', async ()=>{
       const name = document.getElementById('medic_name').value.trim();
       const role = document.getElementById('medic_role').value.trim();
@@ -4928,7 +5038,7 @@ async function renderTripLogisticsCard(card, trip){
 
   async function saveLogistics(){
     try{
-      await logRef.set({ buses, medics, expenses, trip_route: tripRoute, general_notes: data.general_notes||'' }, { merge:true });
+      await logRef.set({ buses, medics, expenses, equipment_list: equipmentList, trip_route: tripRoute, general_notes: data.general_notes||'' }, { merge:true });
       // ה-uid-ים של אחראי האוטובוסים נשמרים גם על מסמך הטיול עצמו, כדי שכללי
       // האבטחה יוכלו לבדוק בזול מי מורשה לסמן נוכחות (בלי get מקונן ל-logistics).
       await db.collection('trips').doc(trip.id).update({ bus_captain_uids: buses.map(b=>b.captain_uid).filter(Boolean) });
@@ -6269,6 +6379,9 @@ async function renderMyTasks(body){
           </div>`).join('')}
       </div>
     </div>` : ''}
+    <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+      <button class="btn btn-outline btn-sm" id="exportTasksPdfBtn">${ICON.download} ייצוא משימות ל-PDF</button>
+    </div>
     <div class="section-toggle" id="addTaskToggleBtn" style="margin-bottom:14px;">
       <span>${ICON.plus} הוספת משימה</span><span class="chev">⌄</span>
     </div>
@@ -6293,6 +6406,7 @@ async function renderMyTasks(body){
     </div>
     <div id="tasksGroups"></div>`;
 
+  document.getElementById('exportTasksPdfBtn').addEventListener('click', ()=> showTasksPdfModal(tasks, assignedTasks));
   document.getElementById('addTaskToggleBtn').addEventListener('click', (e)=>{
     const box = document.getElementById('addTaskCard');
     const opening = box.style.display === 'none';
@@ -6461,6 +6575,120 @@ function renderTaskGroups(tasks){
   });
 }
 
+/* --- ייצוא משימות ל-PDF להדפסה: לכל משימה שתי תיבות סימון — "בוצע" / "לא בוצע" ---
+   מקובץ לפי נושא, באותו סדר כמו במסך (דחוף ← תאריך יעד קרוב). אפשר לבחור אם לכלול
+   משימות שכבר בוצעו (הן יופיעו כשתיבת "בוצע" כבר מסומנת) ומשימות שהוקצו לי. */
+function showTasksPdfModal(tasks, assignedTasks){
+  const groups = [...new Set(tasks.map(t=> t.group_title || 'כללי'))].sort((a,b)=> a.localeCompare(b,'he'));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:460px; text-align:right;">
+      <h3>ייצוא משימות ל-PDF</h3>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+        <label style="display:flex; gap:8px; align-items:center;"><input type="checkbox" id="tp_done" checked> לכלול משימות שכבר בוצעו</label>
+        ${assignedTasks.length ? `<label style="display:flex; gap:8px; align-items:center;"><input type="checkbox" id="tp_assigned" checked> לכלול משימות שהוקצו לי (${assignedTasks.length})</label>` : ''}
+      </div>
+      ${groups.length > 1 ? `<div class="field"><label>נושאים</label>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">${groups.map(g=>`<label class="chip-check checked" style="display:inline-flex;"><input type="checkbox" class="tp_group" value="${esc(g)}" checked> ${esc(g)}</label>`).join('')}</div></div>` : ''}
+      <div id="tp_msg" style="font-size:.85rem; color:var(--ink-soft); min-height:1.2em;"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-primary btn-sm" id="tp_go">${ICON.download} הפקת PDF</button>
+        <button class="btn btn-outline btn-sm" id="tp_close">סגירה</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const $ = s=> overlay.querySelector(s);
+  overlay.querySelectorAll('.tp_group').forEach(cb=> cb.addEventListener('change', ()=> cb.closest('.chip-check').classList.toggle('checked', cb.checked)));
+  $('#tp_close').addEventListener('click', ()=> overlay.remove());
+  overlay.addEventListener('click', e=>{ if (e.target===overlay) overlay.remove(); });
+  $('#tp_go').addEventListener('click', async ()=>{
+    const withDone = $('#tp_done').checked;
+    const withAssigned = !!$('#tp_assigned')?.checked;
+    const pickedGroups = overlay.querySelectorAll('.tp_group').length ? Array.from(overlay.querySelectorAll('.tp_group:checked')).map(c=>c.value) : groups;
+    const personal = tasks.filter(t=> pickedGroups.includes(t.group_title || 'כללי') && (withDone || !t.done));
+    const assigned = withAssigned ? assignedTasks.filter(t=> withDone || !t.done) : [];
+    if (!personal.length && !assigned.length){ $('#tp_msg').textContent = 'אין משימות לייצוא לפי הבחירה.'; return; }
+    $('#tp_go').disabled = true; $('#tp_msg').textContent = 'מכין PDF…';
+    try{
+      const blob = await renderNodeToPdfBlob(buildTasksPdfElement(personal, assigned));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `משימות - ${myProfile?.full_name || ''} - ${new Date().toLocaleDateString('he-IL').replace(/\./g,'-')}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=> URL.revokeObjectURL(url), 3000);
+      overlay.remove();
+    }catch(err){ $('#tp_msg').textContent = 'שגיאה: ' + (err.message||err); $('#tp_go').disabled = false; }
+  });
+}
+function buildTasksPdfElement(personal, assigned){
+  const todayIso = new Date().toISOString().slice(0,10);
+  const sortTasks = list=> list.slice().sort((a,b)=>{
+    if (!!a.done !== !!b.done) return a.done ? 1 : -1;
+    if (!!a.urgent !== !!b.urgent) return a.urgent ? -1 : 1;
+    if (!a.due_date && !b.due_date) return 0;
+    if (!a.due_date) return 1; if (!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  });
+  const byGroup = {};
+  personal.forEach(t=> (byGroup[t.group_title || 'כללי'] = byGroup[t.group_title || 'כללי'] || []).push(t));
+  const prio = items=>{ const open = items.filter(t=>!t.done); return { u: open.some(t=>t.urgent), d: open.map(t=>t.due_date).filter(Boolean).sort()[0] || '9999' }; };
+  const keys = Object.keys(byGroup).sort((a,b)=>{ const pa=prio(byGroup[a]), pb=prio(byGroup[b]); if (pa.u!==pb.u) return pa.u?-1:1; return pa.d.localeCompare(pb.d) || a.localeCompare(b,'he'); });
+  const sections = keys.map(k=>({ title:k, items: sortTasks(byGroup[k]) }));
+  if (assigned.length) sections.push({ title:'משימות שהוקצו לי', items: sortTasks(assigned), assigned:true });
+  const box = checked => `<div style="width:20px; height:20px; border:2px solid #16223d; border-radius:5px; margin:0 auto; text-align:center; line-height:18px; font-size:15px; font-weight:800; color:#1c7a45;">${checked?'✓':''}</div>`;
+  const rowHtml = (t, i, last) => {
+    const overdue = !t.done && t.due_date && t.due_date < todayIso;
+    const meta = [
+      t.urgent && !t.done ? '<span style="color:#b3372e; font-weight:800;">דחוף</span>' : '',
+      t.due_date ? `<span style="color:${overdue?'#b3372e':'#4b566d'};">יעד: ${esc(new Date(t.due_date).toLocaleDateString('he-IL'))}${overdue?' (עבר)':''}</span>` : '',
+      t.trip_title ? `<span style="color:#4b566d;">${esc(t.trip_title)}</span>` : '',
+      t.meeting_title ? `<span style="color:#4b566d;">מישיבת: ${esc(t.meeting_title)}</span>` : '',
+    ].filter(Boolean).join(' · ');
+    return `
+      <div class="pdf-avoid-break" style="display:flex; align-items:center; padding:10px 0; ${last?'':'border-bottom:1px solid #e3e8f0;'}">
+        <div style="width:30px; text-align:center; font-size:13px; color:#4b566d; font-weight:700;">${i+1}</div>
+        <div style="flex:1; padding:0 8px;">
+          <div style="font-size:15px; font-weight:700; color:#16203a;">${esc(t.text||'')}</div>
+          ${meta ? `<div style="font-size:12px; margin-top:3px;">${meta}</div>` : ''}
+        </div>
+        <div style="width:62px;">${box(!!t.done)}</div>
+        <div style="width:62px;">${box(false)}</div>
+      </div>`;
+  };
+  const colHead = `<div style="display:flex; padding:6px 0 7px; border-bottom:2px solid #16223d; font-size:12px; font-weight:700; color:#4b566d;">
+      <div style="width:30px;"></div><div style="flex:1; padding:0 8px;">משימה</div>
+      <div style="width:62px; text-align:center;">בוצע</div><div style="width:62px; text-align:center;">לא בוצע</div></div>`;
+  const sectionHtml = s => {
+    const rows = s.items.map((t,i)=> rowHtml(t, i, i===s.items.length-1));
+    const head = `<div style="background:#16223d; border-radius:10px 10px 0 0; padding:11px 16px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:16px; color:#fff;">${esc(s.title)}</span>
+        <span style="font-size:12.5px; color:#cfd9ec; font-weight:600;">${s.items.length} משימות</span></div>`;
+    return `<div class="pdf-keep-together" style="border:1.5px solid #16223d; border-radius:12px; margin-bottom:20px;">
+      <div class="pdf-avoid-break">${head}<div style="padding:0 14px;">${colHead}${rows[0]||''}</div></div>
+      <div style="padding:0 14px;">${rows.slice(1).join('')}</div></div>`;
+  };
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; top:-10000px; right:0; width:760px; z-index:-1; background:#fff;';
+  const total = personal.length + assigned.length, doneCount = [...personal, ...assigned].filter(t=>t.done).length;
+  wrap.innerHTML = `
+    <div style="width:760px; background:#fff; padding:44px; font-family:'Assistant',Arial,sans-serif; color:#16203a; direction:rtl;" dir="rtl">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px; padding-bottom:18px; border-bottom:3px solid #1c7a7a;">
+        <img src="assets/img/logo.png" crossorigin="anonymous" style="height:64px; width:64px; border-radius:50%; object-fit:cover; border:2px solid #dde4ee;">
+        <div style="flex:1;">
+          <div style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:21px; color:#16223d;">ישיבה תיכונית עפולה</div>
+          <div style="font-size:13px; color:#4b566d; margin-top:2px;">רשימת משימות — ${esc(myProfile?.full_name||'')}${currentSchoolYear ? ' · ' + esc(currentSchoolYear) : ''}</div>
+        </div>
+        <div style="text-align:left; font-size:12.5px; color:#4b566d;">${esc(new Date().toLocaleDateString('he-IL'))}<br>${doneCount} מתוך ${total} בוצעו</div>
+      </div>
+      ${sections.map(sectionHtml).join('')}
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid #dde4ee; font-size:11px; color:#4b566d; text-align:center;">
+        הופק ממערכת ניהול ישיבה תיכונית עפולה · ${new Date().toLocaleDateString('he-IL')}
+      </div>
+    </div>`;
+  return wrap;
+}
+
 /* --- טופס עריכת משימה קיימת, נפתח בתוך הכרטיס במקום התצוגה הרגילה --- */
 function openTaskEditForm(t){
   const card = document.querySelector(`.task-card[data-id="${t.id}"]`);
@@ -6556,7 +6784,25 @@ async function checkTaskReminders(){
    STAFF MEETINGS (public protocol + decisions + task assignments,
    plus a personal-notes area visible only to the logged-in teacher)
    ============================================================ */
+/* לשונית "פגישות עבודה": שני חלקים — ישיבות צוות (הקיים) ופגישות עבודה אישיות */
+let meetingsSubTab = (()=>{ try{ return localStorage.getItem('yeshiva_meetings_tab') || 'staff'; }catch(e){ return 'staff'; } })();
 async function renderMeetings(body){
+  body.innerHTML = `
+    <div class="tabbar" id="meetingsTabs">
+      <button data-tab="staff" class="${meetingsSubTab==='staff'?'active':''}">ישיבות צוות</button>
+      <button data-tab="work" class="${meetingsSubTab==='work'?'active':''}">פגישות עבודה אישיות</button>
+    </div>
+    <div id="meetingsTabBody"><p style="color:var(--ink-soft);">טוען…</p></div>`;
+  body.querySelectorAll('#meetingsTabs button').forEach(b=> b.addEventListener('click', ()=>{
+    meetingsSubTab = b.dataset.tab;
+    try{ localStorage.setItem('yeshiva_meetings_tab', meetingsSubTab); }catch(e){}
+    renderMeetings(body);
+  }));
+  const inner = document.getElementById('meetingsTabBody');
+  if (meetingsSubTab === 'work') return renderWorkMeetings(inner);
+  return renderStaffMeetings(inner);
+}
+async function renderStaffMeetings(body){
   const p = myProfile.permissions || {};
   const canManage = !!p.manage_events;
   const meetingsSnap = await db.collection('meetings').orderBy('date','desc').get();
@@ -6901,6 +7147,271 @@ async function renderMeetings(body){
   }
 }
 
+
+/* ============================================================
+   פגישות עבודה אישיות — הפגישה השבועית של כל מורה/איש מקצוע עם ראש הישיבה.
+   פרטיות לגמרי (רק הבעלים רואה, ר' כללי האבטחה ל-work_meetings).
+   לכל פגישה: תאריך עברי + לועזי, שעה, עם מי, נושאים להעלות (סדר יום עם סימון "נדון"),
+   דברים שעלו, סיכום, החלטות, הערות חשובות, משימות (נוצרות כמשימות אישיות ומופיעות
+   בלשונית "המשימות שלי"), ונושאים לפגישה הבאה — שעוברים אוטומטית לסדר היום של
+   הפגישה החדשה הבאה, יחד עם נושאים שלא הספיקו לעלות.
+   ============================================================ */
+let workMeetingOpenId = null;
+const wmGenId = () => 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+function wmDateLine(m){
+  const greg = m.date ? new Date(m.date + 'T00:00:00').toLocaleDateString('he-IL') : '';
+  return [m.hebrew_date, greg ? (m.hebrew_date ? `(${greg})` : greg) : ''].filter(Boolean).join(' ');
+}
+async function renderWorkMeetings(body){
+  const [mSnap, tSnap] = await Promise.all([
+    db.collection('work_meetings').where('owner_uid','==', me.uid).get(),
+    db.collection('personal_tasks').where('owner_uid','==', me.uid).get().catch(()=>null),
+  ]);
+  const meetings = mSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(inCurrentYear)
+    .sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.time||'').localeCompare(a.time||''));
+  const allTasks = tSnap ? tSnap.docs.map(d=>({ id:d.id, ...d.data() })) : [];
+  const todayIso = localTodayIso();
+  // הפגישה הקרובה: הראשונה מהיום והלאה; אם אין — האחרונה שהתקיימה
+  const upcoming = meetings.filter(m=> (m.date||'') >= todayIso).sort((a,b)=> (a.date||'').localeCompare(b.date||''))[0];
+  if (!workMeetingOpenId || !meetings.some(m=>m.id===workMeetingOpenId)) workMeetingOpenId = (upcoming || meetings[0] || {}).id || null;
+  const last = meetings.filter(m=> (m.date||'') <= todayIso)[0] || meetings[0];
+  const carry = last ? [
+    ...(last.next_items||[]).filter(i=>!i.done).map(i=>i.text),
+    ...(last.agenda||[]).filter(i=>!i.done).map(i=>i.text),
+  ].filter(Boolean) : [];
+  const nextWeek = todayIso;
+
+  body.innerHTML = `
+    <div class="card card-pad wm-intro">
+      <div>
+        <h3 style="margin:0 0 4px;">פגישות העבודה שלי</h3>
+        <p style="margin:0; color:var(--ink-soft); font-size:.9rem;">תיעוד אישי של פגישות העבודה השבועיות — גלוי רק לך. משימות שנרשמות כאן מופיעות גם בלשונית "המשימות שלי".</p>
+      </div>
+      <button class="btn btn-primary btn-sm" id="wmNewBtn">${ICON.plus} פגישה חדשה</button>
+    </div>
+    <div class="card card-pad" id="wmNewCard" style="display:none; margin-bottom:18px;">
+      <h3 style="margin-top:0;">פגישת עבודה חדשה</h3>
+      <div class="form-grid">
+        <div class="field"><label>תאריך לועזי</label><input type="date" id="wm_date" value="${nextWeek}"></div>
+        <div class="field"><label>תאריך עברי</label><input id="wm_heb" value="${esc(hebrewDateOnly(nextWeek))}" placeholder="ה' חשוון תשפ״ז"></div>
+        <div class="field"><label>שעה (רשות)</label><input type="time" id="wm_time" value="${esc(last?.time||'')}"></div>
+        <div class="field"><label>עם</label><input id="wm_with" value="${esc(last?.with_whom || 'ראש הישיבה')}"></div>
+        <div class="field" style="grid-column:1/-1;"><label>כותרת (רשות)</label><input id="wm_title" placeholder="פגישת עבודה שבועית"></div>
+      </div>
+      ${carry.length ? `<label style="display:flex; gap:8px; align-items:flex-start; margin:6px 0 4px; font-size:.9rem;"><input type="checkbox" id="wm_carry" checked>
+        <span>להעביר לסדר היום ${carry.length} נושאים פתוחים מהפגישה הקודמת<br><span style="color:var(--ink-soft); font-size:.82rem;">${carry.slice(0,4).map(esc).join(' · ')}${carry.length>4?' …':''}</span></span></label>` : ''}
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button class="btn btn-primary btn-sm" id="wmCreateBtn">${ICON.save} יצירת הפגישה</button>
+        <button class="btn btn-outline btn-sm" id="wmCancelBtn">ביטול</button>
+      </div>
+    </div>
+    <div id="wmList">${meetings.length ? '' : `<div class="card card-pad" style="color:var(--ink-soft);">עדיין לא נרשמו פגישות עבודה. לוחצים "פגישה חדשה" כדי להתחיל.</div>`}</div>`;
+
+  const newCard = document.getElementById('wmNewCard');
+  document.getElementById('wmNewBtn').addEventListener('click', ()=>{ newCard.style.display = newCard.style.display==='none' ? '' : 'none'; });
+  document.getElementById('wmCancelBtn').addEventListener('click', ()=>{ newCard.style.display = 'none'; });
+  bindHebrewGregSync(document.getElementById('wm_heb'), document.getElementById('wm_date'));
+  document.getElementById('wmCreateBtn').addEventListener('click', async ()=>{
+    const date = document.getElementById('wm_date').value;
+    if (!date){ toast('יש לבחור תאריך'); return; }
+    const withCarry = !!document.getElementById('wm_carry')?.checked;
+    try{
+      const ref = await db.collection('work_meetings').add({
+        owner_uid: me.uid, owner_name: myProfile.full_name || '',
+        title: document.getElementById('wm_title').value.trim(),
+        date, hebrew_date: document.getElementById('wm_heb').value.trim() || hebrewDateOnly(date),
+        time: document.getElementById('wm_time').value || '',
+        with_whom: document.getElementById('wm_with').value.trim() || 'ראש הישיבה',
+        agenda: withCarry ? carry.map(text=>({ id: wmGenId(), text, done:false, carried:true })) : [],
+        discussed:'', summary:'', decisions:'', important:'', next_items:[],
+        school_year: currentSchoolYear,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      workMeetingOpenId = ref.id;
+      toast('הפגישה נוצרה'); renderWorkMeetings(body);
+    }catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+  });
+
+  if (!meetings.length) return;
+  const listEl = document.getElementById('wmList');
+  listEl.innerHTML = meetings.map(m=>{
+    const tasks = allTasks.filter(t=> t.work_meeting_id === m.id);
+    const openTasks = tasks.filter(t=>!t.done).length;
+    const isOpen = m.id === workMeetingOpenId;
+    const isUpcoming = upcoming && m.id === upcoming.id;
+    const agenda = m.agenda || [], nextItems = m.next_items || [];
+    const listItems = (arr, kind, emptyText) => arr.length ? arr.map(i=>`
+      <div class="wm-item ${i.done?'done':''}">
+        <label class="equip-check"><input type="checkbox" class="wm-item-toggle" data-kind="${kind}" data-iid="${i.id}" ${i.done?'checked':''}><span></span></label>
+        <span class="wm-item-text">${esc(i.text)}${i.carried ? ' <span class="wm-carried">מהפגישה הקודמת</span>' : ''}</span>
+        <button type="button" class="icon-btn call wm-item-del" data-kind="${kind}" data-iid="${i.id}" title="מחיקה">${ICON.trash}</button>
+      </div>`).join('') : `<p class="wm-empty">${emptyText}</p>`;
+    const addRow = (kind, ph) => `<div class="wm-add"><input class="wm-add-input" data-kind="${kind}" placeholder="${ph}"><button type="button" class="btn btn-outline btn-sm wm-add-btn" data-kind="${kind}">${ICON.plus} הוספה</button></div>`;
+    return `
+    <div class="card wm-card ${isOpen?'open':''} ${isUpcoming?'upcoming':''}" data-mid="${m.id}">
+      <button type="button" class="wm-head" data-mid="${m.id}">
+        <div class="wm-date-badge"><span>${esc((m.hebrew_date||'').split(' ').slice(0,2).join(' ') || '—')}</span></div>
+        <div class="wm-head-main">
+          <div class="wm-head-title">${esc(m.title || 'פגישת עבודה')} ${isUpcoming ? '<span class="wm-pill">הפגישה הקרובה</span>' : ''}</div>
+          <div class="wm-head-sub">${esc(wmDateLine(m))}${m.time ? ' · ' + esc(m.time) : ''}${m.with_whom ? ' · עם ' + esc(m.with_whom) : ''}</div>
+        </div>
+        <div class="wm-head-stats">
+          ${agenda.length ? `<span>${agenda.filter(i=>i.done).length}/${agenda.length} נושאים</span>` : ''}
+          ${tasks.length ? `<span class="${openTasks?'warn':''}">${openTasks ? openTasks + ' משימות פתוחות' : 'כל המשימות בוצעו'}</span>` : ''}
+        </div>
+        <span class="chev">⌄</span>
+      </button>
+      ${isOpen ? `
+      <div class="wm-body">
+        <div class="meeting-section" style="border-top:0; padding-top:0;">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.folder}</span><span>נושאים להעלות</span><span class="ms-sub">סדר היום — מסמנים מה נדון</span></div>
+          ${listItems(agenda, 'agenda', 'עדיין לא נרשמו נושאים לפגישה.')}
+          ${addRow('agenda', 'נושא שרוצים להעלות…')}
+        </div>
+        <div class="meeting-section">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.notes}</span><span>דברים שעלו בפגישה</span></div>
+          <textarea class="notes-box wm-field" data-field="discussed" style="min-height:110px;" placeholder="מה נאמר, נקודות שעלו, משוב שקיבלת…">${esc(m.discussed||'')}</textarea>
+        </div>
+        <div class="meeting-section">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.check}</span><span>סיכום הפגישה</span></div>
+          <textarea class="notes-box wm-field" data-field="summary" style="min-height:110px;" placeholder="סיכום קצר של עיקרי הדברים…">${esc(m.summary||'')}</textarea>
+        </div>
+        <div class="meeting-section">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.pin}</span><span>החלטות</span></div>
+          <textarea class="notes-box wm-field" data-field="decisions" style="min-height:90px;" placeholder="מה הוחלט…">${esc(m.decisions||'')}</textarea>
+        </div>
+        <div class="meeting-section">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.bell}</span><span>הערות חשובות</span><span class="ms-sub">מודגש לעיון חוזר</span></div>
+          <textarea class="notes-box wm-field wm-important" data-field="important" style="min-height:80px;" placeholder="דברים שאסור לשכוח…">${esc(m.important||'')}</textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+          <button class="btn btn-primary btn-sm wm-save" data-mid="${m.id}">${ICON.save} שמירת הרישומים</button>
+        </div>
+        <div class="meeting-section">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.check}</span><span>משימות מהפגישה</span><span class="ms-sub">מופיעות גם ב"המשימות שלי"</span></div>
+          ${tasks.length ? tasks.sort((a,b)=> (!!a.done - !!b.done) || (a.due_date||'9').localeCompare(b.due_date||'9')).map(t=>`
+            <div class="wm-item ${t.done?'done':''}">
+              <label class="equip-check"><input type="checkbox" class="wm-task-toggle" data-tid="${t.id}" ${t.done?'checked':''}><span></span></label>
+              <span class="wm-item-text">${esc(t.text)}${t.urgent && !t.done ? ' <span class="badge badge-urgent" style="font-size:.72rem;">דחוף</span>' : ''}${t.due_date ? ` <span class="wm-due ${!t.done && t.due_date < todayIso ? 'overdue' : ''}">יעד ${esc(new Date(t.due_date).toLocaleDateString('he-IL'))}</span>` : ''}</span>
+              <button type="button" class="icon-btn call wm-task-del" data-tid="${t.id}" title="מחיקה">${ICON.trash}</button>
+            </div>`).join('') : '<p class="wm-empty">אין עדיין משימות מהפגישה.</p>'}
+          <div class="wm-add wm-task-add">
+            <input class="wm-task-text" placeholder="משימה חדשה…">
+            <input type="date" class="wm-task-due" title="תאריך יעד">
+            <label class="chip-check wm-task-urgent-chip"><input type="checkbox" class="wm-task-urgent"> דחוף</label>
+            <button type="button" class="btn btn-outline btn-sm wm-task-add-btn">${ICON.plus} הוספה</button>
+          </div>
+        </div>
+        <div class="meeting-section">
+          <div class="meeting-section-head"><span class="ms-icon">${ICON.calendar}</span><span>לפגישה הבאה</span><span class="ms-sub">יועבר אוטומטית לסדר היום של הפגישה הבאה</span></div>
+          ${listItems(nextItems, 'next_items', 'אין עדיין נושאים לפגישה הבאה.')}
+          ${addRow('next_items', 'לבדוק / לעדכן בפגישה הבאה…')}
+        </div>
+        <div class="wm-foot">
+          <button class="btn btn-outline btn-sm wm-edit" data-mid="${m.id}">${ICON.edit} עריכת תאריך ופרטים</button>
+          <button class="btn btn-outline btn-sm wm-del" data-mid="${m.id}" style="color:var(--danger); border-color:#f2c6c2;">${ICON.trash} מחיקת הפגישה</button>
+        </div>
+        <div class="wm-edit-box" style="display:none;"></div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('.wm-head').forEach(h=> h.addEventListener('click', ()=>{
+    workMeetingOpenId = workMeetingOpenId === h.dataset.mid ? '__none__' : h.dataset.mid;
+    renderWorkMeetings(body);
+  }));
+  const open = meetings.find(m=> m.id === workMeetingOpenId);
+  if (!open) return;
+  const card = listEl.querySelector(`.wm-card[data-mid="${open.id}"]`);
+  const ref = db.collection('work_meetings').doc(open.id);
+  const readFields = ()=>{ const o = {}; card.querySelectorAll('.wm-field').forEach(t=> o[t.dataset.field] = t.value.trim()); return o; };
+  // שמירת הטקסטים לפני כל פעולה שמרנדרת מחדש — כדי שכתיבה שלא נשמרה לא תאבד
+  const saveAll = async (extra={}, msg='נשמר')=>{
+    try{ const f = readFields(); Object.assign(open, f, extra); await ref.update({ ...f, ...extra }); if (msg) toast(msg); }
+    catch(err){ toast('שגיאה בשמירה: ' + (err.code||err.message)); throw err; }
+  };
+  let dirty = false;
+  card.querySelectorAll('.wm-field').forEach(t=> t.addEventListener('input', ()=>{ dirty = true; }));
+  card.querySelectorAll('.wm-field').forEach(t=> t.addEventListener('blur', async ()=>{ if (dirty){ dirty = false; await saveAll({}, '').catch(()=>{}); } }));
+  card.querySelector('.wm-save').addEventListener('click', async ()=>{ dirty = false; await saveAll().catch(()=>{}); });
+
+  card.querySelectorAll('.wm-add-btn').forEach(btn=> btn.addEventListener('click', async ()=>{
+    const kind = btn.dataset.kind, input = card.querySelector(`.wm-add-input[data-kind="${kind}"]`);
+    const text = input.value.trim(); if (!text) return;
+    const arr = [...(open[kind]||[]), { id: wmGenId(), text, done:false }];
+    await saveAll({ [kind]: arr }, '').then(()=> renderWorkMeetings(body)).catch(()=>{});
+  }));
+  card.querySelectorAll('.wm-add-input').forEach(inp=> inp.addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); card.querySelector(`.wm-add-btn[data-kind="${inp.dataset.kind}"]`).click(); } }));
+  card.querySelectorAll('.wm-item-toggle').forEach(cb=> cb.addEventListener('change', async ()=>{
+    const kind = cb.dataset.kind;
+    const arr = (open[kind]||[]).map(i=> i.id===cb.dataset.iid ? { ...i, done: cb.checked } : i);
+    await saveAll({ [kind]: arr }, '').then(()=> renderWorkMeetings(body)).catch(()=>{});
+  }));
+  card.querySelectorAll('.wm-item-del').forEach(btn=> btn.addEventListener('click', async ()=>{
+    const kind = btn.dataset.kind;
+    await saveAll({ [kind]: (open[kind]||[]).filter(i=> i.id!==btn.dataset.iid) }, '').then(()=> renderWorkMeetings(body)).catch(()=>{});
+  }));
+
+  const urgentChip = card.querySelector('.wm-task-urgent-chip');
+  urgentChip.addEventListener('click', ()=> setTimeout(()=> urgentChip.classList.toggle('checked', urgentChip.querySelector('input').checked)));
+  const addTask = async ()=>{
+    const text = card.querySelector('.wm-task-text').value.trim();
+    if (!text){ toast('יש לכתוב את המשימה'); return; }
+    try{
+      await saveAll({}, '');
+      await db.collection('personal_tasks').add({
+        owner_uid: me.uid, text, done:false,
+        group_title: `פגישת עבודה · ${open.hebrew_date || formatGregShort(open.date)}`,
+        due_date: card.querySelector('.wm-task-due').value || null,
+        urgent: card.querySelector('.wm-task-urgent').checked,
+        trip_id:null, trip_title:null,
+        work_meeting_id: open.id, meeting_title: open.title || 'פגישת עבודה',
+        school_year: currentSchoolYear,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      toast('המשימה נוספה גם ל"המשימות שלי"'); renderWorkMeetings(body);
+    }catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+  };
+  card.querySelector('.wm-task-add-btn').addEventListener('click', addTask);
+  card.querySelector('.wm-task-text').addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); addTask(); } });
+  card.querySelectorAll('.wm-task-toggle').forEach(cb=> cb.addEventListener('change', async ()=>{
+    try{ await saveAll({}, ''); await db.collection('personal_tasks').doc(cb.dataset.tid).update({ done: cb.checked }); renderWorkMeetings(body); }
+    catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+  }));
+  card.querySelectorAll('.wm-task-del').forEach(btn=> btn.addEventListener('click', async ()=>{
+    if (!(await confirmDialog('למחוק את המשימה? היא תימחק גם מ"המשימות שלי".'))) return;
+    try{ await saveAll({}, ''); await db.collection('personal_tasks').doc(btn.dataset.tid).delete(); renderWorkMeetings(body); }
+    catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+  }));
+
+  card.querySelector('.wm-edit').addEventListener('click', ()=>{
+    const box = card.querySelector('.wm-edit-box');
+    if (box.style.display !== 'none'){ box.style.display = 'none'; return; }
+    box.style.display = '';
+    box.innerHTML = `
+      <div class="form-grid" style="margin-top:12px;">
+        <div class="field"><label>תאריך לועזי</label><input type="date" class="we-date" value="${esc(open.date||'')}"></div>
+        <div class="field"><label>תאריך עברי</label><input class="we-heb" value="${esc(open.hebrew_date||'')}"></div>
+        <div class="field"><label>שעה</label><input type="time" class="we-time" value="${esc(open.time||'')}"></div>
+        <div class="field"><label>עם</label><input class="we-with" value="${esc(open.with_whom||'')}"></div>
+        <div class="field" style="grid-column:1/-1;"><label>כותרת</label><input class="we-title" value="${esc(open.title||'')}" placeholder="פגישת עבודה שבועית"></div>
+      </div>
+      <button class="btn btn-primary btn-sm we-save" style="margin-top:8px;">${ICON.save} שמירה</button>`;
+    bindHebrewGregSync(box.querySelector('.we-heb'), box.querySelector('.we-date'));
+    box.querySelector('.we-save').addEventListener('click', async ()=>{
+      const g = s=> box.querySelector(s).value.trim();
+      if (!g('.we-date')){ toast('יש לבחור תאריך'); return; }
+      await saveAll({ date: g('.we-date'), hebrew_date: g('.we-heb') || hebrewDateOnly(g('.we-date')), time: g('.we-time'), with_whom: g('.we-with'), title: g('.we-title') })
+        .then(()=> renderWorkMeetings(body)).catch(()=>{});
+    });
+  });
+  card.querySelector('.wm-del').addEventListener('click', async ()=>{
+    const linked = allTasks.filter(t=> t.work_meeting_id === open.id);
+    if (!(await confirmDialog(`למחוק את פגישת העבודה מ-${wmDateLine(open)}?${linked.length ? ` ${linked.length} המשימות שנוצרו בה יישארו ב"המשימות שלי".` : ''}`, { danger:true, confirmText:'מחיקה', cancelText:'ביטול' }))) return;
+    try{ await ref.delete(); workMeetingOpenId = null; toast('הפגישה נמחקה'); renderWorkMeetings(body); }
+    catch(err){ toast('שגיאה: ' + (err.code||err.message)); }
+  });
+}
 
 /* ============================================================
    ANNOUNCEMENTS
