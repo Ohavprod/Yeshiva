@@ -27,6 +27,8 @@
   .sig-pad-wrap canvas{ width:100%; height:160px; display:block; touch-action:none; }
   .perr{ color:var(--danger,#b3261e); font-size:.9rem; margin-top:8px; }
   .sigthumb{ height:56px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-top:8px; }
+  .pw-wrap{ position:relative; } .pw-wrap input{ width:100%; box-sizing:border-box; padding-left:60px; }
+  .pw-eye{ position:absolute; left:8px; top:50%; transform:translateY(-50%); background:none; border:0; font:inherit; font-size:.82rem; font-weight:700; color:var(--navy); cursor:pointer; padding:4px 6px; }
   .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media(max-width:480px){ .row2{ grid-template-columns:1fr; } }
 </style>
 </head>
@@ -116,37 +118,62 @@ const todayIso = ()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n
 const gregShort = s=>{ if(!s) return ''; const d=new Date(s); return isNaN(d)?'':`${d.getDate()}.${d.getMonth()+1}.${String(d.getFullYear()).slice(-2)}`; };
 const tsDate = t=> t && t.toDate ? t.toDate().toLocaleDateString('he-IL') : '';
 
-/* ---------------- כניסה: ת.ז + טלפון + שם התלמיד/ה ---------------- */
+/* ---------------- כניסה: טלפון + ת.ז + סיסמה אישית ----------------
+   כניסה ראשונה: טלפון + ת.ז → בחירת סיסמה (פעמיים). הילד/ים מזוהים אוטומטית לפי הטלפון בכרטיס.
+   מהפעם השנייה: טלפון + ת.ז + סיסמה. */
 const LOGIN_ERRORS = {
-  no_match: 'הפרטים לא תואמים לרישום בישיבה.',
-  phone_not_found: 'הטלפון לא נמצא ברישום. יש להזין את המספר כפי שנמסר לישיבה.',
-  name_mismatch: 'הטלפון נמצא, אך שם התלמיד/ה לא תואם לרישום.',
-  id_mismatch: 'הטלפון והשם נמצאו, אך תעודת הזהות לא תואמת לרישום בכרטיס. יש לפנות למחנך/ת.',
-  invalid_input: 'יש למלא ת.ז, טלפון ושם תלמיד/ה.',
+  phone_not_found: 'מספר הטלפון לא נמצא ברישום. יש להזין את המספר כפי שנמסר לישיבה.',
+  id_mismatch: 'תעודת הזהות לא תואמת לרישום בכרטיס התלמיד/ה. יש לפנות למחנך/ת.',
+  invalid_input: 'יש למלא מספר טלפון ותעודת זהות.',
+  weak_password: 'הסיסמה צריכה להכיל לפחות 4 תווים.',
+  wrong_password: 'הסיסמה שגויה. שכחתם? המחנך/ת יכול/ה לאפס אותה.',
+  already_registered: 'כבר הוגדרה סיסמה לתעודת הזהות הזו. יש להיכנס עם הסיסמה, או לבקש מהמחנך/ת איפוס.',
   too_many_attempts: 'בוצעו יותר מדי ניסיונות. נסו שוב בעוד כרבע שעה.',
 };
-function renderLogin(msg=''){
+let loginMode = 'login';
+function renderLogin(msg='', prefill={}){
+  const reg = loginMode === 'register';
   app.innerHTML = `
     <div class="pcard">
-      <h3 style="margin:0 0 14px;">כניסת הורה</h3>
-      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="off" ></div>
-      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" ></div>
-      <div class="field"><label>שם התלמיד/ה</label><input id="l_name" autocomplete="off"></div>
-      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">כניסה</button>
+      <h3 style="margin:0 0 6px;">${reg ? 'כניסה ראשונה — הגדרת סיסמה' : 'כניסת הורה'}</h3>
+      <p style="margin:0 0 14px;font-size:.88rem;color:var(--ink-soft);">${reg
+        ? 'מזינים את הטלפון ותעודת הזהות כפי שנמסרו לישיבה, ובוחרים סיסמה אישית. הילדים שלכם יזוהו אוטומטית.'
+        : 'טלפון, תעודת זהות והסיסמה שבחרתם.'}</p>
+      <div class="field"><label>טלפון נייד של ההורה</label><input id="l_phone" inputmode="tel" autocomplete="tel" dir="ltr" style="text-align:right;" value="${esc(prefill.phone||'')}"></div>
+      <div class="field"><label>תעודת זהות של ההורה</label><input id="l_id" inputmode="numeric" autocomplete="username" maxlength="9" value="${esc(prefill.id||'')}"></div>
+      <div class="field"><label>${reg ? 'בחירת סיסמה (לפחות 4 תווים)' : 'סיסמה'}</label>
+        <div class="pw-wrap"><input id="l_pw" type="password" autocomplete="${reg?'new-password':'current-password'}"><button type="button" class="pw-eye" data-for="l_pw" aria-label="הצגת סיסמה">הצג</button></div></div>
+      ${reg ? `<div class="field"><label>הקלדת הסיסמה שוב לאימות</label>
+        <div class="pw-wrap"><input id="l_pw2" type="password" autocomplete="new-password"><button type="button" class="pw-eye" data-for="l_pw2" aria-label="הצגת סיסמה">הצג</button></div></div>` : ''}
+      <button class="btn btn-primary" id="l_go" style="width:100%;margin-top:8px;">${reg ? 'שמירת סיסמה וכניסה' : 'כניסה'}</button>
       <div class="perr" id="l_err">${esc(msg)}</div>
+      <div style="text-align:center;margin-top:14px;font-size:.9rem;">
+        <a href="#" id="l_switch">${reg ? 'כבר הגדרתם סיסמה? לכניסה רגילה' : 'כניסה ראשונה? הגדרת סיסמה'}</a>
+      </div>
     </div>`;
+  app.querySelectorAll('.pw-eye').forEach(b=>b.onclick=()=>{ const i=document.getElementById(b.dataset.for); const show=i.type==='password'; i.type=show?'text':'password'; b.textContent=show?'הסתר':'הצג'; });
+  const vals = ()=>({ phone:document.getElementById('l_phone').value.trim(), id:document.getElementById('l_id').value.trim() });
+  document.getElementById('l_switch').onclick = e=>{ e.preventDefault(); loginMode = reg ? 'login' : 'register'; renderLogin('', vals()); };
   const go = async ()=>{
-    const id=document.getElementById('l_id').value.trim(), phone=document.getElementById('l_phone').value.trim(), name=document.getElementById('l_name').value.trim();
+    const { phone, id } = vals();
+    const pw = document.getElementById('l_pw').value, pw2 = reg ? document.getElementById('l_pw2').value : pw;
     const err = m=>document.getElementById('l_err').textContent=m;
-    if (id.replace(/\D/g,'').length<5 || phone.replace(/\D/g,'').length<9 || !name) return err(LOGIN_ERRORS.invalid_input);
-    const btn=document.getElementById('l_go'); btn.disabled=true; btn.textContent='בודק…'; err('');
+    if (id.replace(/\D/g,'').length<5 || phone.replace(/\D/g,'').length<9) return err(LOGIN_ERRORS.invalid_input);
+    if (pw.length < 4) return err(LOGIN_ERRORS.weak_password);
+    if (reg && pw !== pw2) return err('שתי הסיסמאות אינן זהות. יש להקליד שוב.');
+    const btn=document.getElementById('l_go'), label=btn.textContent; btn.disabled=true; btn.textContent='בודק…'; err('');
     try{
-      const res = await fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret:PUSH_WEBHOOK_SECRET, type:'parent_login', id_number:id, phone, student_name:name }) });
+      const res = await fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret:PUSH_WEBHOOK_SECRET, type:'parent_auth', mode: reg?'register':'login', id_number:id, phone, password:pw }) });
       const data = await res.json();
-      if (!data.ok){ btn.disabled=false; btn.textContent='כניסה'; return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.'); }
+      if (!data.ok){
+        btn.disabled=false; btn.textContent=label;
+        if (data.error === 'no_password'){ loginMode='register'; return renderLogin('זו הכניסה הראשונה שלכם — יש לבחור סיסמה אישית ולהקליד אותה פעמיים.', { phone, id }); }
+        return err(LOGIN_ERRORS[data.error] || 'אירעה שגיאה, נסו שוב בעוד רגע.');
+      }
       saveSession({ uid:data.uid, name:data.parent_name||'', id_number:id.replace(/\D/g,''), phone, children:data.children });
+      loginMode = 'login';
       await auth.signInWithCustomToken(data.token);
-    }catch(e){ btn.disabled=false; btn.textContent='כניסה'; err('אירעה שגיאה בחיבור, נסו שוב.'); }
+    }catch(e){ btn.disabled=false; btn.textContent=label; err('אירעה שגיאה בחיבור, נסו שוב.'); }
   };
   document.getElementById('l_go').onclick = go;
   app.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); }));
