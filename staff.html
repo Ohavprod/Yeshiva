@@ -2383,6 +2383,116 @@ async function downloadTripInfoPdf(trip){
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
   }catch(err){ toast('שגיאה ביצירת ה-PDF: ' + (err.message||err)); }
 }
+/* ---------- חתימות נוספות (אופציונליות) בחוזר: רכזת טיולים, מורה לשל"ח, מחנכי הכיתות ----------
+   נשמרות על הטיול כ-trip_coordinator_sig / shelach_teacher_sig (שם) ו-class_teachers_sig
+   ([{class_id, class_name, name}]). ריק = לא מוצג. אותה פונקציית תצוגה קיימת גם ב-trip-notice.html
+   וב-approve.html — כל שינוי כאן צריך להיעשות גם שם. */
+function buildExtraSignaturesHtml(vals){
+  const cols = [];
+  if ((vals.trip_coordinator_sig||'').trim()) cols.push({ name: vals.trip_coordinator_sig, title: 'רכזת טיולים' });
+  if ((vals.shelach_teacher_sig||'').trim()) cols.push({ name: vals.shelach_teacher_sig, title: 'מורה לשל"ח' });
+  (vals.class_teachers_sig || []).forEach(ct=>{
+    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: ct.class_name ? `מחנך/ת ${ct.class_name}` : 'מחנך/ת הכיתה' });
+  });
+  if (!cols.length) return '';
+  return `<div class="signatures-row signatures-extra">${cols.map(c=>`<div class="signature-col"><b>${esc(c.name)}</b><div class="sig-title">${esc(c.title)}</div></div>`).join('')}</div>`;
+}
+
+// שדות הטופס — prefix מבדיל בין טופס יצירה ('t_') לטופס עריכה ('et_<id>_')
+function extraSignaturesFieldsHtml(prefix, trip){
+  trip = trip || {};
+  const tcOn = !!(trip.trip_coordinator_sig||'').trim();
+  const shOn = !!(trip.shelach_teacher_sig||'').trim();
+  const ctOn = (trip.class_teachers_sig||[]).some(c=> (c.name||'').trim());
+  return `
+    <div class="field extra-sigs" style="grid-column:1/-1;">
+      <label>חתימות נוספות בחוזר (אופציונלי)</label>
+      <div style="font-size:.78rem; color:var(--ink-soft); margin-bottom:8px;">מה שמסומן יופיע מתחת לחתימות ראש הישיבה והרכז החברתי.</div>
+      <div class="extra-sig-item">
+        <label class="chip-check ${tcOn?'checked':''}" style="display:inline-flex;"><input type="checkbox" id="${prefix}sig_tc_on" ${tcOn?'checked':''}> רכזת טיולים</label>
+        <input id="${prefix}sig_tc_name" placeholder="שם רכזת הטיולים" value="${esc(trip.trip_coordinator_sig||'')}" style="${tcOn?'':'display:none;'}">
+      </div>
+      <div class="extra-sig-item">
+        <label class="chip-check ${shOn?'checked':''}" style="display:inline-flex;"><input type="checkbox" id="${prefix}sig_sh_on" ${shOn?'checked':''}> מורה לשל"ח</label>
+        <input id="${prefix}sig_sh_name" placeholder="שם המורה לשל&quot;ח" value="${esc(trip.shelach_teacher_sig||'')}" style="${shOn?'':'display:none;'}">
+      </div>
+      <div class="extra-sig-item">
+        <label class="chip-check ${ctOn?'checked':''}" style="display:inline-flex;"><input type="checkbox" id="${prefix}sig_ct_on" ${ctOn?'checked':''}> מחנכי הכיתות</label>
+        <div id="${prefix}sig_ct_rows" class="extra-sig-ct-rows" style="${ctOn?'':'display:none;'}"></div>
+      </div>
+    </div>`;
+}
+
+// שם המחנך/ת של כל כיתה — נשלף פעם אחת לכל כיתה ונשמר בזיכרון
+const classTeacherNameCache = {};
+async function fetchClassTeacherName(classId){
+  if (!classId) return '';
+  if (classId in classTeacherNameCache) return classTeacherNameCache[classId];
+  const snap = await db.collection('users').where('class_id','==', classId).limit(1).get().catch(()=>({docs:[]}));
+  return classTeacherNameCache[classId] = snap.docs?.[0]?.data()?.full_name || '';
+}
+
+/* מחבר את שדות החתימות הנוספות: הצגת/הסתרת שדות לפי הסימון, ובניית שורת שם לכל כיתה
+   שנבחרה לטיול (שם המחנך/ת ממולא אוטומטית וניתן לעריכה). מחזיר { read, refreshClasses }. */
+function bindExtraSignatures(prefix, getClassIds, trip, onChange){
+  trip = trip || {};
+  onChange = onChange || (()=>{});
+  const $ = (s)=> document.getElementById(prefix + s);
+  const savedByClass = {};
+  (trip.class_teachers_sig||[]).forEach(c=>{ if (c.class_id) savedByClass[c.class_id] = c.name || ''; });
+  const rowsEl = $('sig_ct_rows');
+
+  const toggle = (onId, targetEl)=>{
+    const cb = $(onId);
+    cb.addEventListener('change', ()=>{
+      targetEl.style.display = cb.checked ? '' : 'none';
+      cb.closest('.chip-check').classList.toggle('checked', cb.checked);
+      if (cb.checked && targetEl.tagName === 'INPUT') targetEl.focus();
+      if (onId === 'sig_ct_on' && cb.checked) refreshClasses();
+      onChange();
+    });
+  };
+  toggle('sig_tc_on', $('sig_tc_name'));
+  toggle('sig_sh_on', $('sig_sh_name'));
+  toggle('sig_ct_on', rowsEl);
+
+  let buildSeq = 0;
+  async function refreshClasses(){
+    if (!$('sig_ct_on').checked) return;
+    // שומרים מה שכבר הוקלד, כדי שהוספה/הסרה של כיתה לא תמחק שמות שנערכו ידנית
+    rowsEl.querySelectorAll('input[data-class-id]').forEach(i=> savedByClass[i.dataset.classId] = i.value);
+    const ids = getClassIds();
+    const seq = ++buildSeq;
+    if (!ids.length){
+      rowsEl.innerHTML = `<div style="font-size:.8rem; color:var(--ink-soft);">יש לבחור כיתות לטיול כדי להוסיף את המחנכים שלהן.</div>`;
+      onChange(); return;
+    }
+    const rows = await Promise.all(ids.map(async cid=>({
+      cid,
+      className: classesCache.find(c=>c.id===cid)?.name || '',
+      name: (cid in savedByClass) ? savedByClass[cid] : await fetchClassTeacherName(cid),
+    })));
+    if (seq !== buildSeq) return; // נבנתה בינתיים רשימה חדשה יותר
+    rowsEl.innerHTML = rows.map(r=>`
+      <div class="extra-sig-ct-row">
+        <span>${esc(r.className || 'כיתה')}</span>
+        <input data-class-id="${r.cid}" data-class-name="${esc(r.className)}" value="${esc(r.name)}" placeholder="שם המחנך/ת (השאירו ריק כדי לא להציג)">
+      </div>`).join('');
+    onChange();
+  }
+
+  const read = ()=>({
+    trip_coordinator_sig: $('sig_tc_on').checked ? $('sig_tc_name').value.trim() : '',
+    shelach_teacher_sig: $('sig_sh_on').checked ? $('sig_sh_name').value.trim() : '',
+    class_teachers_sig: $('sig_ct_on').checked
+      ? Array.from(rowsEl.querySelectorAll('input[data-class-id]')).map(i=>({ class_id: i.dataset.classId, class_name: i.dataset.className, name: i.value.trim() })).filter(c=> c.name)
+      : [],
+  });
+
+  if ($('sig_ct_on').checked) refreshClasses();
+  return { read, refreshClasses };
+}
+
 function buildTripNoticePreviewHtml(vals){
   const gregDate = formatGregShort(vals.trip_date);
   const isEvent = vals.kind === 'event';
@@ -2439,15 +2549,17 @@ function buildTripNoticePreviewHtml(vals){
       </div>`;
   }
 
-  if (vals.custom_regards || vals.head_name || vals.coordinator_name){
+  const extraSigsHtml = buildExtraSignaturesHtml(vals);
+  if (vals.custom_regards || vals.head_name || vals.coordinator_name || extraSigsHtml){
     html += `
       <div class="notice-rule"></div>
       <div class="notice-section signature-block">
         <div class="regards">${esc(vals.custom_regards || 'בברכה,')}</div>
-        <div class="signatures-row">
+        ${(vals.head_name || vals.coordinator_name) ? `<div class="signatures-row">
           <div class="signature-col">${vals.head_name ? `<b>${esc(vals.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
           <div class="signature-col">${vals.coordinator_name ? `<b>${esc(vals.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
-        </div>
+        </div>` : ''}
+        ${extraSigsHtml}
       </div>`;
   }
   html += `</div>`;
@@ -2561,6 +2673,7 @@ async function renderTrips(body){
           <div class="field" style="grid-column:1/-1;"><label>הערות נוספות</label><textarea id="t_notes"></textarea></div>
           <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="t_head_name" placeholder="הרב חן חניה"></div>
           <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="t_coordinator_name" placeholder="אביב ויצמן"></div>
+          ${extraSignaturesFieldsHtml('t_')}
           <div class="field"><button class="btn btn-primary" type="submit">יצירת טיול</button></div>
         </form>
         <div class="notice-preview">
@@ -2623,12 +2736,21 @@ async function renderTrips(body){
       head_name: document.getElementById('t_head_name').value,
       coordinator_name: document.getElementById('t_coordinator_name').value,
       custom_regards: document.getElementById('t_custom_regards').value,
+      ...newTripExtraSigs.read(),
       itinerary: Array.from(itineraryRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
         time: row.querySelector('.it-time').value,
         activity: row.querySelector('.it-activity').value,
       })),
     });
     const refreshTripPreview = () => { previewBodyEl.innerHTML = buildTripNoticePreviewHtml(readTripFormForPreview()); };
+    const newTripSelectedClassIds = () => p.view_all_classes
+      ? Array.from(document.querySelectorAll('#t_classes_picker input:checked')).map(i=>i.value)
+      : [document.getElementById('t_class_fixed').value].filter(Boolean);
+    const newTripExtraSigs = bindExtraSignatures('t_', newTripSelectedClassIds, null, ()=> refreshTripPreview());
+    if (p.view_all_classes){
+      document.getElementById('t_classes_picker').addEventListener('change', ()=> newTripExtraSigs.refreshClasses());
+      document.getElementById('selectAllClassesBtn').addEventListener('click', ()=> setTimeout(()=> newTripExtraSigs.refreshClasses()));
+    }
 
     const addItineraryRow = (time='', activity='') => {
       const row = document.createElement('div');
@@ -2690,6 +2812,7 @@ async function renderTrips(body){
         head_name: document.getElementById('t_head_name').value.trim(),
         coordinator_name: document.getElementById('t_coordinator_name').value.trim(),
         custom_regards: kind === 'event' ? document.getElementById('t_custom_regards').value.trim() : '',
+        ...newTripExtraSigs.read(),
         show_in_calendar: !!document.getElementById('t_show_in_calendar')?.checked,
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
@@ -3217,6 +3340,7 @@ function renderTripsList(container, trips){
           <div class="field" style="grid-column:1/-1;"><label>הערות</label><textarea id="et_notes_${id}">${esc(trip.notes||'')}</textarea></div>
           <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="et_head_${id}" value="${esc(trip.head_name||'')}"></div>
           <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="et_coordinator_${id}" value="${esc(trip.coordinator_name||'')}"></div>
+          ${extraSignaturesFieldsHtml(`et_${id}_`, trip)}
           ${trip.kind === 'event' ? `<div class="field" style="grid-column:1/-1;"><label>טקסט "בברכה" מותאם אישית (אופציונלי)</label><input id="et_regards_${id}" value="${esc(trip.custom_regards||'')}" placeholder="לדוגמה: בברכת גמר חתימה טובה לכולם"></div>` : ''}
           <div class="field" style="grid-column:1/-1;">
             <label class="chip-check ${trip.show_in_calendar ? 'checked' : ''}" style="display:inline-flex;"><input type="checkbox" id="et_show_cal_${id}" ${trip.show_in_calendar ? 'checked' : ''}> ${ICON.calendar} הצג בלוח האירועים הקרובים (בדף הבית)</label>
@@ -3248,7 +3372,12 @@ function renderTripsList(container, trips){
         chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
       });
 
+      const editExtraSigs = bindExtraSignatures(`et_${id}_`, ()=> p.view_all_classes
+        ? Array.from(box.querySelectorAll(`#et_classes_picker_${id} input:checked`)).map(i=>i.value)
+        : (trip.class_ids || []), trip);
       if (p.view_all_classes){
+        document.getElementById(`et_classes_picker_${id}`).addEventListener('change', ()=> editExtraSigs.refreshClasses());
+        document.getElementById(`et_select_all_${id}`).addEventListener('click', ()=> setTimeout(()=> editExtraSigs.refreshClasses()));
         box.querySelectorAll(`#et_classes_picker_${id} .chip-check`).forEach(chip=>{
           chip.addEventListener('click', ()=> setTimeout(()=>chip.classList.toggle('checked', chip.querySelector('input').checked)));
         });
@@ -3279,6 +3408,7 @@ function renderTripsList(container, trips){
           notes: document.getElementById(`et_notes_${id}`).value.trim(),
           head_name: document.getElementById(`et_head_${id}`).value.trim(),
           coordinator_name: document.getElementById(`et_coordinator_${id}`).value.trim(),
+          ...editExtraSigs.read(),
         };
         if (trip.kind === 'event'){
           payload.custom_regards = document.getElementById(`et_regards_${id}`).value.trim();

@@ -884,6 +884,14 @@ html[data-theme="dark"] .badge-urgent{ background:#3a1e1c; }
 .notice-preview .signatures-row{ position:relative; display:flex; justify-content:space-between; gap:14px; margin-top:6px; }
 .notice-preview .signature-col{ text-align:center; font-size:.85rem; color:var(--navy); line-height:1.6; }
 .notice-preview .signature-col .sig-title{ color:var(--ink-soft); font-size:.72rem; margin-top:2px; }
+.notice-preview .signatures-extra{ flex-wrap:wrap; justify-content:center; gap:10px 26px; margin-top:12px; padding-top:10px; border-top:1px dashed #dde4ee; }
+.notice-preview .signatures-extra .signature-col{ min-width:96px; }
+/* טופס: חתימות נוספות */
+.extra-sigs .extra-sig-item{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-bottom:8px; }
+.extra-sigs .extra-sig-item > input{ flex:1; min-width:160px; }
+.extra-sig-ct-rows{ flex-basis:100%; display:grid; gap:6px; padding-inline-start:4px; }
+.extra-sig-ct-row{ display:grid; grid-template-columns:minmax(70px,auto) 1fr; align-items:center; gap:10px; }
+.extra-sig-ct-row span{ font-size:.85rem; font-weight:600; color:var(--ink-soft); }
 .notice-preview .np-empty{ color:var(--ink-soft); font-size:.88rem; text-align:center; padding:20px 10px; }
 .trip-form-grid{ display:grid; grid-template-columns:1.3fr 1fr; gap:24px; align-items:start; }
 .trip-form-grid > *{ min-width:0; }

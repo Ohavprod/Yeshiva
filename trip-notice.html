@@ -122,6 +122,8 @@
   .signatures-row{ display:flex; justify-content:space-between; gap:16px; margin-top:8px; }
   .signature-col{ text-align:center; font-size:.92rem; color:var(--navy); line-height:1.7; }
   .signature-col .sig-title{ color:var(--ink-soft); font-size:.78rem; margin-top:2px; }
+  .signatures-extra{ flex-wrap:wrap; justify-content:center; gap:12px 30px; margin-top:14px; padding-top:12px; border-top:1px dashed #dde4ee; }
+  .signatures-extra .signature-col{ min-width:100px; }
 
   .section-divider{ height:4px; border-radius:99px; background:linear-gradient(90deg, var(--steel), var(--teal)); margin:30px 0; opacity:.5; }
 
@@ -193,6 +195,17 @@ function notifyPush(type, title, body, classId){
   fetch(PUSH_WEBHOOK_URL, { method:'POST', body: JSON.stringify({ secret: PUSH_WEBHOOK_SECRET, type, title, body, class_id: classId || null }) }).catch(()=>{});
 }
 function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* חתימות נוספות (אופציונליות): רכזת טיולים, מורה לשל"ח, מחנכי הכיתות — זהה ל-buildExtraSignaturesHtml ב-staff.html */
+function buildExtraSignaturesHtml(trip){
+  const cols = [];
+  if ((trip.trip_coordinator_sig||'').trim()) cols.push({ name: trip.trip_coordinator_sig, title: 'רכזת טיולים' });
+  if ((trip.shelach_teacher_sig||'').trim()) cols.push({ name: trip.shelach_teacher_sig, title: 'מורה לשל"ח' });
+  (trip.class_teachers_sig || []).forEach(ct=>{
+    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: ct.class_name ? `מחנך/ת ${ct.class_name}` : 'מחנך/ת הכיתה' });
+  });
+  if (!cols.length) return '';
+  return `<div class="signatures-row signatures-extra">${cols.map(c=>`<div class="signature-col"><b>${esc(c.name)}</b><div class="sig-title">${esc(c.title)}</div></div>`).join('')}</div>`;
+}
 // אייקוני קו עקביים (currentColor, stroke-width אחיד) במקום אימוג'י — זה מה שגרם
 // לתחושת "יצרתי עם AI, זול" בעיקר. כולם באותו סגנון חזותי בכוונה.
 const ICON_PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>';
@@ -375,15 +388,17 @@ async function load(){
       </div>`;
   }
 
-  if (trip.custom_regards || trip.head_name || trip.coordinator_name){
+  const extraSigsHtml = buildExtraSignaturesHtml(trip);
+  if (trip.custom_regards || trip.head_name || trip.coordinator_name || extraSigsHtml){
     mainHtml += `
       <div class="notice-rule"></div>
       <div class="notice-section signature-block">
         <div class="regards">${esc(trip.custom_regards || 'בברכה,')}</div>
-        <div class="signatures-row">
+        ${(trip.head_name || trip.coordinator_name) ? `<div class="signatures-row">
           <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
           <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
-        </div>
+        </div>` : ''}
+        ${extraSigsHtml}
       </div>`;
   }
 
@@ -634,6 +649,7 @@ load();
     }).catch(function(){});
   }catch(e){}
 })();
+
 </script>
 </body>
 </html>
