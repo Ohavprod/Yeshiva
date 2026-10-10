@@ -177,10 +177,10 @@ function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&am
 /* חתימות נוספות (אופציונליות): רכזת טיולים, מורה לשל"ח, מחנכי הכיתות — זהה ל-buildExtraSignaturesHtml ב-staff.html */
 function buildExtraSignaturesHtml(trip){
   const cols = [];
-  if ((trip.trip_coordinator_sig||'').trim()) cols.push({ name: trip.trip_coordinator_sig, title: 'רכזת טיולים' });
+  if ((trip.trip_coordinator_sig||'').trim()) cols.push({ name: trip.trip_coordinator_sig, title: trip.trip_coordinator_title || 'רכזת טיולים' });
   if ((trip.shelach_teacher_sig||'').trim()) cols.push({ name: trip.shelach_teacher_sig, title: 'מורה לשל"ח' });
   (trip.class_teachers_sig || []).forEach(ct=>{
-    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: ct.class_name ? `מחנך/ת ${ct.class_name}` : 'מחנך/ת הכיתה' });
+    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: `${ct.gender === 'female' ? 'מחנכת' : 'מחנך'}${ct.class_name ? ' ' + ct.class_name : ' הכיתה'}` });
   });
   if (!cols.length) return '';
   return `<div class="signatures-row signatures-extra">${cols.map(c=>`<div class="signature-col"><b>${esc(c.name)}</b><div class="sig-title">${esc(c.title)}</div></div>`).join('')}</div>`;
@@ -290,7 +290,7 @@ async function load(){
     return;
   }
   if (!approvalSnap.exists){
-    content.innerHTML = '<p class="center-msg">לא נמצא אישור התואם לקישור זה. יש לפנות למחנך/ת הכיתה.</p>';
+    content.innerHTML = '<p class="center-msg">לא נמצא אישור התואם לקישור זה. יש לפנות לצוות החינוכי של הכיתה.</p>';
     return;
   }
   const trip = tripSnap.data();
@@ -298,7 +298,7 @@ async function load(){
   const studentName = approval.student_name || '';
   const className = approval.class_name || '';
   // class_id של התלמיד/ה — נשלף מ-roster_snapshot של הטיול (לא נשמר על מסמך האישור
-  // עצמו), כדי שאפשר יהיה להעביר אותו ל-notifyPush ולסנן את ההתראה למחנך/ת הכיתה
+  // עצמו), כדי שאפשר יהיה להעביר אותו ל-notifyPush ולסנן את ההתראה לצוות החינוכי של הכיתה
   // הנכונה בלבד, גם בטיול/אירוע כלל-ישיבתי המשותף לכמה כיתות.
   const studentClassId = (trip.roster_snapshot||[]).find(r=>r.id===studentId)?.class_id
     || approval.class_id
@@ -387,7 +387,7 @@ async function load(){
         <div class="regards">${esc(trip.custom_regards || 'בברכה,')}</div>
         ${(trip.head_name || trip.coordinator_name) ? `<div class="signatures-row">
           <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
-          <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+          <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">${esc(trip.coordinator_title || 'רכז חברתי')}</div>` : ''}</div>
         </div>` : ''}
         ${extraSigsHtml}
       </div>`;
@@ -495,16 +495,16 @@ async function load(){
         const refCode = 'ה' + studentId.slice(0,4).toUpperCase();
         let specific;
         if (nameOkSlot && !phoneOkSlot){
-          specific = `השם הפרטי שהוזן תואם ל${relLabel(nameOkSlot.slot)} הרשום/ה, אבל <b>מספר הטלפון שהוזן שגוי</b> — הוא לא תואם למספר שנמסר למחנך/ת עבור ${relLabel(nameOkSlot.slot)}.`;
+          specific = `השם הפרטי שהוזן תואם ל${relLabel(nameOkSlot.slot)} הרשום/ה, אבל <b>מספר הטלפון שהוזן שגוי</b> — הוא לא תואם למספר שנמסר לישיבה עבור ${relLabel(nameOkSlot.slot)}.`;
         } else if (!nameOkSlot && phoneOkSlot){
-          specific = `מספר הטלפון שהוזן תואם למספר של ${relLabel(phoneOkSlot.slot)} הרשום/ה, אבל <b>השם הפרטי שהוזן שגוי</b> — יש להזין את השם הפרטי בלבד (בלי שם משפחה) כפי שנמסר למחנך/ת.`;
+          specific = `מספר הטלפון שהוזן תואם למספר של ${relLabel(phoneOkSlot.slot)} הרשום/ה, אבל <b>השם הפרטי שהוזן שגוי</b> — יש להזין את השם הפרטי בלבד (בלי שם משפחה) כפי שנמסר לישיבה.`;
         } else {
           specific = `גם <b>השם הפרטי</b> וגם <b>מספר הטלפון</b> שהוזנו אינם תואמים לאף הורה הרשום עבור ${esc(studentName)} במערכת.`;
         }
         verifyErrorBox.innerHTML = `<div class="verify-error" style="text-align:right;">
           <b>הפרטים שהוזנו אינם תואמים את מה שרשום במערכת עבור ${esc(studentName)}.</b><br>
           ${specific}<br><br>
-          אם הפרטים נכונים ועדיין מופיעה שגיאה זו — יש לפנות למחנך/ת הכיתה או למנהל המערכת ולמסור את הקוד: <b dir="ltr">${refCode}</b>
+          אם הפרטים נכונים ועדיין מופיעה שגיאה זו — יש לפנות לצוות החינוכי של הכיתה או למנהל המערכת ולמסור את הקוד: <b dir="ltr">${refCode}</b>
         </div>`;
         return;
       }
@@ -519,10 +519,10 @@ async function load(){
           <b>הפרטים שהוזנו אינם תואמים את מה שרשום במערכת עבור ${esc(studentName)}.</b><br>
           כדאי לבדוק שוב:
           <ul style="margin:8px 0 8px 18px; padding:0;">
-            <li>שם פרטי של ההורה בלבד (בלי שם משפחה) — כפי שנמסר למחנך/ת</li>
-            <li>מספר הטלפון בדיוק כפי שנמסר למחנך/ת (למשל אם הוא מתחיל ב-0, לא ב-972+)</li>
+            <li>שם פרטי של ההורה בלבד (בלי שם משפחה) — כפי שנמסר לישיבה</li>
+            <li>מספר הטלפון בדיוק כפי שנמסר לישיבה (למשל אם הוא מתחיל ב-0, לא ב-972+)</li>
           </ul>
-          אם הפרטים נכונים ועדיין מופיעה שגיאה זו — יש לפנות למחנך/ת הכיתה או למנהל המערכת ולמסור את הקוד: <b dir="ltr">${refCode}</b>
+          אם הפרטים נכונים ועדיין מופיעה שגיאה זו — יש לפנות לצוות החינוכי של הכיתה או למנהל המערכת ולמסור את הקוד: <b dir="ltr">${refCode}</b>
         </div>`;
         return;
       }

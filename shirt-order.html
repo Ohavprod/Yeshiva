@@ -144,7 +144,7 @@ function renderGeneralLookup(content){
       const partial = docs.find(d=> nameFits(nameQuery, d.data().full_name));
       const match = exact || partial;
       if (!match){
-        document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">לא נמצא/ה תלמיד/ה בשם ובכיתה שהוזנו. נא לוודא את הפרטים (איות הכיתה כפי שמוכר בישיבה) ולנסות שוב, או לפנות למחנך/ת הכיתה.</div>`;
+        document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">לא נמצא/ה תלמיד/ה בשם ובכיתה שהוזנו. נא לוודא את הפרטים (איות הכיתה כפי שמוכר בישיבה) ולנסות שוב, או לפנות לצוות החינוכי של הכיתה.</div>`;
         btn.disabled = false; btn.textContent = 'חיפוש';
         return;
       }
@@ -152,7 +152,7 @@ function renderGeneralLookup(content){
       history.replaceState(null, '', `${location.pathname}?s=${studentId}`);
       loadForStudent(studentId, content);
     }catch(err){
-      document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">אירעה שגיאה בחיפוש. נא לנסות שוב מאוחר יותר, או לפנות למחנך/ת הכיתה.</div>`;
+      document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">אירעה שגיאה בחיפוש. נא לנסות שוב מאוחר יותר, או לפנות לצוות החינוכי של הכיתה.</div>`;
       btn.disabled = false; btn.textContent = 'חיפוש';
     }
   });
@@ -191,7 +191,7 @@ function renderVerificationGate(content, pub, studentId, onVerified){
       }
       onVerified();
     } else {
-      document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות למחנך/ת הכיתה.</div>`;
+      document.getElementById('verifyErrorBox').innerHTML = `<div class="verify-error">אחד או יותר מהפרטים אינם תואמים את הרישום. נא לבדוק שוב ולנסות שנית, או לפנות לצוות החינוכי של הכיתה.</div>`;
     }
   });
 }
@@ -214,11 +214,11 @@ async function loadForStudent(studentId, content){
   try{
     [pubSnap, catalogSnap, studentSnap] = await Promise.all([pubRef.get(), catalogRef.get(), studentRef.get().catch(()=>null)]);
   }catch(err){
-    content.innerHTML = '<p class="center-msg">אירעה שגיאה בטעינת הדף. נא לנסות שוב מאוחר יותר, או לפנות למחנך/ת הכיתה.</p>';
+    content.innerHTML = '<p class="center-msg">אירעה שגיאה בטעינת הדף. נא לנסות שוב מאוחר יותר, או לפנות לצוות החינוכי של הכיתה.</p>';
     return;
   }
   if (!pubSnap.exists){
-    content.innerHTML = '<p class="center-msg">לא נמצאו פרטי תלמיד/ה התואמים לקישור זה. יש לפנות למחנך/ת הכיתה.</p>';
+    content.innerHTML = '<p class="center-msg">לא נמצאו פרטי תלמיד/ה התואמים לקישור זה. יש לפנות לצוות החינוכי של הכיתה.</p>';
     return;
   }
   const pub = pubSnap.data();
@@ -234,7 +234,7 @@ async function loadForStudent(studentId, content){
           עבור ${esc(pub.full_name)} נרשמה חולצה מסוג "${esc(existingOrder.type_name)}" במידה ${esc(existingOrder.size)}.<br>
           ${existingOrder.ordered_by_name ? 'נרשם ע״י ' + esc(existingOrder.ordered_by_name) : ''}
         </p>
-        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:14px;">לשינוי ההזמנה יש לפנות למחנך/ת הכיתה או למזכירות.</p>
+        <p style="color:var(--ink-soft); font-size:.85rem; margin-top:14px;">לשינוי ההזמנה יש לפנות לצוות החינוכי של הכיתה או למזכירות.</p>
       </div>`;
     return;
   }

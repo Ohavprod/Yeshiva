@@ -47,6 +47,26 @@ const ROLE_PRESETS = {
   'רכזת טיולים': { view_all_classes:true, create_trips:true, edit_trip_details:true, manage_trip_certificates:true },
 };
 
+/* ---------- מגדר אנשי צוות ----------
+   ערכי role נשמרים תמיד בצורה הקבועה שלמעלה (משמשים כמזהים בקוד, למשל 'מנהל מערכת'),
+   ורק התצוגה מותאמת למגדר שנשמר על המשתמש (gender: 'male' | 'female'). */
+const ROLE_FEMININE = { 'מחנך':'מחנכת', 'רכז חברתי':'רכזת חברתית', 'מורה מקצועי':'מורה מקצועית', 'יועץ חינוכי':'יועצת חינוכית', 'מנהל מערכת':'מנהלת מערכת' };
+const ROLE_MASCULINE = { 'מזכירה':'מזכיר', 'רכזת טיולים':'רכז טיולים' };
+function roleDisplay(role, gender){
+  if (!role) return '';
+  if (gender === 'female') return ROLE_FEMININE[role] || role;
+  if (gender === 'male') return ROLE_MASCULINE[role] || role;
+  return role;
+}
+// מילה לפי מגדר: gw(gender, 'מבין', 'מבינה')
+function gw(gender, male, female){ return gender === 'female' ? female : male; }
+function teacherTitle(gender){ return gender === 'female' ? 'מחנכת' : 'מחנך'; }
+// כותרת לקבוצת מחנכים: כולן נשים → מחנכות, כולם גברים → מחנך/מחנכים, מעורב → מחנכים
+function teachersHeader(genders){
+  const g = genders.filter(Boolean);
+  return g.length && g.every(x=>x==='female') ? 'מחנכת' : 'מחנך';
+}
+
 async function createStaffAccountKeepingSession(email, tempPassword){
   const secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary-' + Date.now());
   try{

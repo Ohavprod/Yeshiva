@@ -127,7 +127,7 @@ const tsDate = t=> t && t.toDate ? t.toDate().toLocaleDateString('he-IL') : '';
    שכחתי סיסמה: קוד בן 6 ספרות נשלח למייל השחזור; אין מייל → פנייה למנהל המערכת. */
 const LOGIN_ERRORS = {
   phone_not_found: 'מספר הטלפון לא נמצא ברישום. יש להזין את המספר כפי שנמסר לישיבה.',
-  id_mismatch: 'תעודת הזהות לא תואמת לרישום בכרטיס התלמיד/ה. יש לפנות למחנך/ת.',
+  id_mismatch: 'תעודת הזהות לא תואמת לרישום בכרטיס התלמיד/ה. יש לפנות לצוות החינוכי של הכיתה.',
   invalid_input: 'יש למלא מספר טלפון ותעודת זהות.',
   weak_password: 'הסיסמה צריכה להכיל לפחות 4 תווים.',
   wrong_password: 'הסיסמה שגויה.',
@@ -295,7 +295,7 @@ function renderLogin(msg=''){
       ${idsSummary()}
       <div id="l_help"><p style="color:var(--ink-soft);font-size:.9rem;">טוען…</p></div>
       <button class="btn btn-outline" id="l_back2" style="width:100%;margin-top:10px;">חזרה לכניסה</button>`);
-    loadSupportPhone().then(()=>{ document.getElementById('l_help').innerHTML = adminHelpHtml() || '<p style="font-size:.9rem;">יש לפנות למחנך/ת או למזכירות הישיבה ולבקש איפוס סיסמה לכניסת הורה.</p>'; });
+    loadSupportPhone().then(()=>{ document.getElementById('l_help').innerHTML = adminHelpHtml() || '<p style="font-size:.9rem;">יש לפנות לצוות החינוכי או למזכירות הישיבה ולבקש איפוס סיסמה לכניסת הורה.</p>'; });
     document.getElementById('l_back2').onclick = ()=>{ loginState.step='password'; renderLogin(); };
   }
   if (msg) document.getElementById('l_err').textContent = msg;

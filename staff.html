@@ -896,13 +896,25 @@ function collectPermissions(container, idPrefix){
 }
 
 /* --- תפקידים קבועים / מותאם אישית --- */
-function rolePresetSelectHtml(idPrefix, currentRole){
+function genderFieldHtml(idPrefix, currentGender){
+  return `
+    <div class="field"><label>מגדר</label>
+      <div class="gender-toggle" id="${idPrefix}_gender">
+        <label class="chip-check ${currentGender==='male'?'checked':''}"><input type="radio" name="${idPrefix}_gender" value="male" ${currentGender==='male'?'checked':''}> זכר</label>
+        <label class="chip-check ${currentGender==='female'?'checked':''}"><input type="radio" name="${idPrefix}_gender" value="female" ${currentGender==='female'?'checked':''}> נקבה</label>
+      </div>
+    </div>`;
+}
+function readGender(idPrefix){
+  return document.querySelector(`input[name="${idPrefix}_gender"]:checked`)?.value || null;
+}
+function rolePresetSelectHtml(idPrefix, currentRole, gender){
   const isKnown = Object.prototype.hasOwnProperty.call(ROLE_PRESETS, currentRole || '');
   const selVal = currentRole ? (isKnown ? currentRole : 'custom') : Object.keys(ROLE_PRESETS)[0];
   return `
     <div class="field"><label>תפקיד</label>
       <select id="${idPrefix}_role_preset">
-        ${Object.keys(ROLE_PRESETS).map(r=>`<option value="${esc(r)}" ${r===selVal?'selected':''}>${esc(r)}</option>`).join('')}
+        ${Object.keys(ROLE_PRESETS).map(r=>`<option value="${esc(r)}" ${r===selVal?'selected':''}>${esc(roleDisplay(r, gender))}</option>`).join('')}
         <option value="custom" ${selVal==='custom'?'selected':''}>מותאם אישית…</option>
       </select>
     </div>
@@ -928,6 +940,14 @@ function wireRolePresetSelect(idPrefix, permsContainer){
   }
   selectEl.addEventListener('change', apply);
   apply();
+  // שמות התפקידים ברשימה מתעדכנים לפי המגדר שנבחר (מחנך/מחנכת וכו') — הערך שנשמר לא משתנה
+  document.querySelectorAll(`input[name="${idPrefix}_gender"]`).forEach(rb=>{
+    rb.addEventListener('change', ()=>{
+      const g = readGender(idPrefix);
+      selectEl.querySelectorAll('option').forEach(o=>{ if (o.value !== 'custom') o.textContent = roleDisplay(o.value, g); });
+      document.querySelectorAll(`input[name="${idPrefix}_gender"]`).forEach(x=> x.closest('.chip-check').classList.toggle('checked', x.checked));
+    });
+  });
 }
 function readRoleFromPreset(idPrefix){
   const sel = document.getElementById(`${idPrefix}_role_preset`).value;
@@ -1121,7 +1141,7 @@ async function confirmDeleteSchoolYear(year){
   if (schoolYears.length <= 1){ toast('לא ניתן למחוק את שנת הלימודים היחידה במערכת'); return; }
   const sure = await confirmDialog(
     `פעולה זו תמחק לצמיתות את כל הטיולים, האישורים, התשלומים, המשימות, הישיבות, הכיתות והתלמידים ששייכים לשנת ${year}. הפעולה בלתי הפיכה (מלבד שחזור פרטני מהיסטוריית מחיקות/שחזור, אם קיים). להמשיך?`,
-    { title:`מחיקת שנת לימודים ${year}`, confirmText:'כן, אני מבין/ה — להמשיך', cancelText:'ביטול', danger:true }
+    { title:`מחיקת שנת לימודים ${year}`, confirmText:`כן, ${gw(myProfile.gender,'אני מבין','אני מבינה')} — להמשיך`, cancelText:'ביטול', danger:true }
   );
   if (!sure) return;
   const password = await promptDialog('לאימות הזהות, יש להזין שוב את סיסמת ההתחברות שלך למערכת:', { title:'אימות סיסמה למחיקה', placeholder:'סיסמה', inputType:'password', confirmText:'אימות ומחיקה' });
@@ -1134,7 +1154,7 @@ async function confirmDeleteSchoolYear(year){
     toast('הסיסמה שגויה — המחיקה בוטלה');
     return;
   }
-  toast(`מוחק את שנת ${year}… אנא המתן/י, זה עלול לקחת רגע`);
+  toast(`מוחק את שנת ${year}… ${gw(myProfile.gender,'אנא המתן','אנא המתיני')}, זה עלול לקחת רגע`);
   try{
     await deleteSchoolYearData(year);
     toast(`שנת ${year} נמחקה בהצלחה`);
@@ -1208,7 +1228,8 @@ async function enterApp(){
       myProfile.class_name = clsSnap.exists ? clsSnap.data().name : '';
     }catch(err){ myProfile.class_name = ''; }
   }
-  const roleLine = myProfile.class_name ? `${myProfile.role||''} ${myProfile.class_name}` : (myProfile.role||'');
+  const myRoleText = roleDisplay(myProfile.role||'', myProfile.gender);
+  const roleLine = myProfile.class_name ? `${myRoleText} ${myProfile.class_name}` : myRoleText;
   document.getElementById('userTag').innerHTML =
     `שלום, ${esc(myProfile.full_name)}<br><span style="font-size:.85rem; color:var(--ink-soft);">${esc(roleLine)}</span>`;
   document.getElementById('rolePill').textContent = roleLine;
@@ -1271,6 +1292,7 @@ function buildSideNav(){
     { id:'home', label:'בית', icon:ICON.home, show:true },
     { id:'myclass', label:'הכיתה שלי', icon:ICON.cap, show: !!myProfile.class_id && !!p.manage_class_roster },
     { id:'trips', label:'טיולים ואישורים', icon:ICON.compass, show:true },
+    { id:'calendar', label:'יומן', icon:ICON.calendar, show:true },
     { id:'earlyrelease', label:'בקשות יציאה', icon:ICON.door, show: (!!myProfile.class_id && !!p.manage_class_roster) || !!p.view_all_classes || isSystemAdminUser() },
     { id:'search', label:'חיפוש תלמידים', icon:ICON.search, show: !!p.view_all_classes },
     { id:'payments', label:'ניהול תשלומים', icon:ICON.wallet, show: !!p.manage_payments || !!p.manage_users },
@@ -1321,7 +1343,7 @@ const titles = {
   mytasks:'המשימות שלי', meetings:'פגישות עבודה',
   announcements:'עדכונים באתר', classes:'ניהול כיתות', users:'ניהול משתמשים',
   pushprefs:'הגדרות התראות', restore:'היסטוריית מחיקות ושחזור', search:'חיפוש תלמידים',
-  earlyrelease:'בקשות יציאה מוקדמת', parentpw:'ניהול סיסמאות הורים',
+  earlyrelease:'בקשות יציאה מוקדמת', parentpw:'ניהול סיסמאות הורים', calendar:'יומן הישיבה',
 };
 
 let currentView = 'home';
@@ -1337,6 +1359,7 @@ async function goto(view){
     announcements: renderAnnouncements, classes: renderClasses,
     users: renderUsers, pushprefs: renderPushPrefs, restore: renderRestoreHistory,
     search: renderStudentSearch, earlyrelease: renderEarlyReleases, parentpw: renderParentPasswords,
+    calendar: renderCalendar,
   };
   try{ await renderers[view](body); }
   catch(err){ body.innerHTML = `<p style="color:var(--danger);">שגיאה בטעינה: ${esc(err.message||err)}</p>`; }
@@ -1533,7 +1556,7 @@ async function renderHome(body){
   body.innerHTML = `
     ${statsHtml}
     <div class="card card-pad">
-      <h3 style="margin-top:0;">שלום ${esc(myProfile.full_name)}${myProfile.role ? ', ' + esc(myProfile.role) : ''}${myProfile.class_name ? ' ' + esc(myProfile.class_name) : ''}</h3>
+      <h3 style="margin-top:0;">שלום ${esc(myProfile.full_name)}${myProfile.role ? ', ' + esc(roleDisplay(myProfile.role, myProfile.gender)) : ''}${myProfile.class_name ? ' ' + esc(myProfile.class_name) : ''}</h3>
     </div>
     ${staffAnnHtml}
     ${teacherTripsHtml}
@@ -1975,7 +1998,9 @@ async function renderClassRosterView(container, classId){
   const studentsSnap = await db.collection('students').where('class_id','==', classId).orderBy('full_name').get();
   const students = studentsSnap.docs.map(d=>({ id:d.id, ...d.data() }));
   // שם המחנך/ת המשויך/ת לכיתה — לצורך הצגה לצד הכותרת בייצוא דוח תלמידי הכיתה
-  const classTeacherName = (await db.collection('users').where('class_id','==', classId).limit(1).get().catch(()=>({docs:[]}))).docs?.[0]?.data()?.full_name || '';
+  const classTeacherDoc = (await db.collection('users').where('class_id','==', classId).limit(1).get().catch(()=>({docs:[]}))).docs?.[0]?.data() || {};
+  const classTeacherName = classTeacherDoc.full_name || '';
+  const classTeacherGender = classTeacherDoc.gender || null;
 
   // לתלמידים ישנים בלי שם פרטי/משפחה נפרדים — פיצול זמני של השם המלא, רק לצורך מיון/חיפוש/מילוי טופס עריכה
   const getFirstLast = (s) => {
@@ -2307,7 +2332,7 @@ async function renderClassRosterView(container, classId){
       return [i+1, fl.first, fl.last, s.father_name||'', s.mother_name||'', s.mother_phone||'', s.father_phone||'', s.city||'', s.notes||'', s.extra_notes||''];
     })];
     const format = document.getElementById('classExportFormat').value;
-    const subtitle = `${classTeacherName ? `מחנך/ת: ${classTeacherName} · ` : ''}${students.length} תלמידים`;
+    const subtitle = `${classTeacherName ? `${teacherTitle(classTeacherGender)}: ${classTeacherName} · ` : ''}${students.length} תלמידים`;
     exportTable(rows, `דוח תלמידי כיתה - ${cls.name||''}`, format, subtitle);
   });
 
@@ -2384,18 +2409,34 @@ async function downloadTripInfoPdf(trip){
   }catch(err){ toast('שגיאה ביצירת ה-PDF: ' + (err.message||err)); }
 }
 /* ---------- חתימות נוספות (אופציונליות) בחוזר: רכזת טיולים, מורה לשל"ח, מחנכי הכיתות ----------
-   נשמרות על הטיול כ-trip_coordinator_sig / shelach_teacher_sig (שם) ו-class_teachers_sig
-   ([{class_id, class_name, name}]). ריק = לא מוצג. אותה פונקציית תצוגה קיימת גם ב-trip-notice.html
+   נשמרות על הטיול כ-trip_coordinator_sig (+ trip_coordinator_title), shelach_teacher_sig ו-class_teachers_sig
+   ([{class_id, class_name, name, gender}]). ריק = לא מוצג. אותה פונקציית תצוגה קיימת גם ב-trip-notice.html
    וב-approve.html — כל שינוי כאן צריך להיעשות גם שם. */
 function buildExtraSignaturesHtml(vals){
   const cols = [];
-  if ((vals.trip_coordinator_sig||'').trim()) cols.push({ name: vals.trip_coordinator_sig, title: 'רכזת טיולים' });
+  if ((vals.trip_coordinator_sig||'').trim()) cols.push({ name: vals.trip_coordinator_sig, title: vals.trip_coordinator_title || 'רכזת טיולים' });
   if ((vals.shelach_teacher_sig||'').trim()) cols.push({ name: vals.shelach_teacher_sig, title: 'מורה לשל"ח' });
   (vals.class_teachers_sig || []).forEach(ct=>{
-    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: ct.class_name ? `מחנך/ת ${ct.class_name}` : 'מחנך/ת הכיתה' });
+    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: `${ct.gender === 'female' ? 'מחנכת' : 'מחנך'}${ct.class_name ? ' ' + ct.class_name : ' הכיתה'}` });
   });
   if (!cols.length) return '';
   return `<div class="signatures-row signatures-extra">${cols.map(c=>`<div class="signature-col"><b>${esc(c.name)}</b><div class="sig-title">${esc(c.title)}</div></div>`).join('')}</div>`;
+}
+
+// בחירת תואר החותם/ת (זכר/נקבה) ליד שדה השם
+function sigTitleSelectHtml(id, options, current){
+  return `<select id="${id}" class="sig-title-select">${options.map(o=>`<option value="${esc(o)}" ${o===current?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+}
+// כשמקלידים שם של איש צוות קיים — התואר מתעדכן אוטומטית לפי המגדר שהוגדר לו/ה במערכת
+function autoTitleFromStaffName(inputEl, selectEl, maleTitle, femaleTitle, onChange){
+  if (!inputEl || !selectEl) return;
+  inputEl.addEventListener('change', async ()=>{
+    const name = inputEl.value.trim();
+    if (!name) return;
+    const snap = await db.collection('users').where('full_name','==', name).limit(1).get().catch(()=>null);
+    const g = snap?.docs?.[0]?.data()?.gender;
+    if (g){ selectEl.value = g === 'female' ? femaleTitle : maleTitle; onChange && onChange(); }
+  });
 }
 
 // שדות הטופס — prefix מבדיל בין טופס יצירה ('t_') לטופס עריכה ('et_<id>_')
@@ -2410,11 +2451,16 @@ function extraSignaturesFieldsHtml(prefix, trip){
       <div style="font-size:.78rem; color:var(--ink-soft); margin-bottom:8px;">מה שמסומן יופיע מתחת לחתימות ראש הישיבה והרכז החברתי.</div>
       <div class="extra-sig-item">
         <label class="chip-check ${tcOn?'checked':''}" style="display:inline-flex;"><input type="checkbox" id="${prefix}sig_tc_on" ${tcOn?'checked':''}> רכזת טיולים</label>
-        <input id="${prefix}sig_tc_name" placeholder="שם רכזת הטיולים" value="${esc(trip.trip_coordinator_sig||'')}" style="${tcOn?'':'display:none;'}">
+        <div class="sig-name-row" id="${prefix}sig_tc_wrap" style="${tcOn?'':'display:none;'}">
+          ${sigTitleSelectHtml(`${prefix}sig_tc_title`, ['רכזת טיולים','רכז טיולים'], trip.trip_coordinator_title || 'רכזת טיולים')}
+          <input id="${prefix}sig_tc_name" placeholder="שם" value="${esc(trip.trip_coordinator_sig||'')}">
+        </div>
       </div>
       <div class="extra-sig-item">
         <label class="chip-check ${shOn?'checked':''}" style="display:inline-flex;"><input type="checkbox" id="${prefix}sig_sh_on" ${shOn?'checked':''}> מורה לשל"ח</label>
-        <input id="${prefix}sig_sh_name" placeholder="שם המורה לשל&quot;ח" value="${esc(trip.shelach_teacher_sig||'')}" style="${shOn?'':'display:none;'}">
+        <div class="sig-name-row" id="${prefix}sig_sh_wrap" style="${shOn?'':'display:none;'}">
+          <input id="${prefix}sig_sh_name" placeholder="שם המורה לשל&quot;ח" value="${esc(trip.shelach_teacher_sig||'')}">
+        </div>
       </div>
       <div class="extra-sig-item">
         <label class="chip-check ${ctOn?'checked':''}" style="display:inline-flex;"><input type="checkbox" id="${prefix}sig_ct_on" ${ctOn?'checked':''}> מחנכי הכיתות</label>
@@ -2423,69 +2469,79 @@ function extraSignaturesFieldsHtml(prefix, trip){
     </div>`;
 }
 
-// שם המחנך/ת של כל כיתה — נשלף פעם אחת לכל כיתה ונשמר בזיכרון
-const classTeacherNameCache = {};
-async function fetchClassTeacherName(classId){
-  if (!classId) return '';
-  if (classId in classTeacherNameCache) return classTeacherNameCache[classId];
+// המחנך/ת של כל כיתה (שם + מגדר) — נשלף פעם אחת לכל כיתה ונשמר בזיכרון
+const classTeacherCache = {};
+async function fetchClassTeacher(classId){
+  if (!classId) return { name:'', gender:null };
+  if (classId in classTeacherCache) return classTeacherCache[classId];
   const snap = await db.collection('users').where('class_id','==', classId).limit(1).get().catch(()=>({docs:[]}));
-  return classTeacherNameCache[classId] = snap.docs?.[0]?.data()?.full_name || '';
+  const d = snap.docs?.[0]?.data() || {};
+  return classTeacherCache[classId] = { name: d.full_name || '', gender: d.gender || null };
 }
 
-/* מחבר את שדות החתימות הנוספות: הצגת/הסתרת שדות לפי הסימון, ובניית שורת שם לכל כיתה
-   שנבחרה לטיול (שם המחנך/ת ממולא אוטומטית וניתן לעריכה). מחזיר { read, refreshClasses }. */
+/* מחבר את שדות החתימות הנוספות: הצגת/הסתרת שדות לפי הסימון, ובניית שורה לכל כיתה
+   שנבחרה לטיול (שם ומגדר המחנך ממולאים אוטומטית וניתנים לעריכה). מחזיר { read, refreshClasses }. */
 function bindExtraSignatures(prefix, getClassIds, trip, onChange){
   trip = trip || {};
   onChange = onChange || (()=>{});
   const $ = (s)=> document.getElementById(prefix + s);
   const savedByClass = {};
-  (trip.class_teachers_sig||[]).forEach(c=>{ if (c.class_id) savedByClass[c.class_id] = c.name || ''; });
+  (trip.class_teachers_sig||[]).forEach(c=>{ if (c.class_id) savedByClass[c.class_id] = { name: c.name || '', gender: c.gender || null }; });
   const rowsEl = $('sig_ct_rows');
 
-  const toggle = (onId, targetEl)=>{
+  const toggle = (onId, targetEl, focusEl)=>{
     const cb = $(onId);
     cb.addEventListener('change', ()=>{
       targetEl.style.display = cb.checked ? '' : 'none';
       cb.closest('.chip-check').classList.toggle('checked', cb.checked);
-      if (cb.checked && targetEl.tagName === 'INPUT') targetEl.focus();
+      if (cb.checked && focusEl) focusEl.focus();
       if (onId === 'sig_ct_on' && cb.checked) refreshClasses();
       onChange();
     });
   };
-  toggle('sig_tc_on', $('sig_tc_name'));
-  toggle('sig_sh_on', $('sig_sh_name'));
-  toggle('sig_ct_on', rowsEl);
+  toggle('sig_tc_on', $('sig_tc_wrap'), $('sig_tc_name'));
+  toggle('sig_sh_on', $('sig_sh_wrap'), $('sig_sh_name'));
+  toggle('sig_ct_on', rowsEl, null);
+  $('sig_tc_title').addEventListener('change', onChange);
+  autoTitleFromStaffName($('sig_tc_name'), $('sig_tc_title'), 'רכז טיולים', 'רכזת טיולים', onChange);
+  rowsEl.addEventListener('change', (e)=>{ if (e.target.matches('select')) onChange(); });
 
   let buildSeq = 0;
   async function refreshClasses(){
     if (!$('sig_ct_on').checked) return;
-    // שומרים מה שכבר הוקלד, כדי שהוספה/הסרה של כיתה לא תמחק שמות שנערכו ידנית
-    rowsEl.querySelectorAll('input[data-class-id]').forEach(i=> savedByClass[i.dataset.classId] = i.value);
+    // שומרים מה שכבר הוקלד/נבחר, כדי שהוספה/הסרה של כיתה לא תמחק שינויים ידניים
+    rowsEl.querySelectorAll('.extra-sig-ct-row').forEach(r=>{
+      const i = r.querySelector('input'); savedByClass[i.dataset.classId] = { name: i.value, gender: r.querySelector('select').value };
+    });
     const ids = getClassIds();
     const seq = ++buildSeq;
     if (!ids.length){
       rowsEl.innerHTML = `<div style="font-size:.8rem; color:var(--ink-soft);">יש לבחור כיתות לטיול כדי להוסיף את המחנכים שלהן.</div>`;
       onChange(); return;
     }
-    const rows = await Promise.all(ids.map(async cid=>({
-      cid,
-      className: classesCache.find(c=>c.id===cid)?.name || '',
-      name: (cid in savedByClass) ? savedByClass[cid] : await fetchClassTeacherName(cid),
-    })));
+    const rows = await Promise.all(ids.map(async cid=>{
+      const t = (cid in savedByClass) ? savedByClass[cid] : await fetchClassTeacher(cid);
+      return { cid, className: classesCache.find(c=>c.id===cid)?.name || '', name: t.name, gender: t.gender };
+    }));
     if (seq !== buildSeq) return; // נבנתה בינתיים רשימה חדשה יותר
     rowsEl.innerHTML = rows.map(r=>`
       <div class="extra-sig-ct-row">
         <span>${esc(r.className || 'כיתה')}</span>
-        <input data-class-id="${r.cid}" data-class-name="${esc(r.className)}" value="${esc(r.name)}" placeholder="שם המחנך/ת (השאירו ריק כדי לא להציג)">
+        <select class="sig-title-select"><option value="male" ${r.gender!=='female'?'selected':''}>מחנך</option><option value="female" ${r.gender==='female'?'selected':''}>מחנכת</option></select>
+        <input data-class-id="${r.cid}" data-class-name="${esc(r.className)}" value="${esc(r.name)}" placeholder="שם (ריק = לא יוצג)">
       </div>`).join('');
     onChange();
   }
 
   const read = ()=>({
     trip_coordinator_sig: $('sig_tc_on').checked ? $('sig_tc_name').value.trim() : '',
+    trip_coordinator_title: $('sig_tc_title').value,
     shelach_teacher_sig: $('sig_sh_on').checked ? $('sig_sh_name').value.trim() : '',
     class_teachers_sig: $('sig_ct_on').checked
-      ? Array.from(rowsEl.querySelectorAll('input[data-class-id]')).map(i=>({ class_id: i.dataset.classId, class_name: i.dataset.className, name: i.value.trim() })).filter(c=> c.name)
+      ? Array.from(rowsEl.querySelectorAll('.extra-sig-ct-row')).map(r=>{
+          const i = r.querySelector('input');
+          return { class_id: i.dataset.classId, class_name: i.dataset.className, name: i.value.trim(), gender: r.querySelector('select').value };
+        }).filter(c=> c.name)
       : [],
   });
 
@@ -2557,7 +2613,7 @@ function buildTripNoticePreviewHtml(vals){
         <div class="regards">${esc(vals.custom_regards || 'בברכה,')}</div>
         ${(vals.head_name || vals.coordinator_name) ? `<div class="signatures-row">
           <div class="signature-col">${vals.head_name ? `<b>${esc(vals.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
-          <div class="signature-col">${vals.coordinator_name ? `<b>${esc(vals.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+          <div class="signature-col">${vals.coordinator_name ? `<b>${esc(vals.coordinator_name)}</b><div class="sig-title">${esc(vals.coordinator_title || 'רכז חברתי')}</div>` : ''}</div>
         </div>` : ''}
         ${extraSigsHtml}
       </div>`;
@@ -2672,7 +2728,7 @@ async function renderTrips(body){
           <div class="field" style="grid-column:1/-1;"><label>ציוד נדרש (יופיע בחוזר להורים)</label><textarea id="t_equipment" placeholder="לדוגמה: נעליים סגורות, כובע, בקבוק מים, ארוחת צהריים"></textarea></div>
           <div class="field" style="grid-column:1/-1;"><label>הערות נוספות</label><textarea id="t_notes"></textarea></div>
           <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="t_head_name" placeholder="הרב חן חניה"></div>
-          <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="t_coordinator_name" placeholder="אביב ויצמן"></div>
+          <div class="field"><label>חתימה משמאל</label><div class="sig-name-row">${sigTitleSelectHtml('t_coordinator_title', ['רכז חברתי','רכזת חברתית'], 'רכז חברתי')}<input id="t_coordinator_name" placeholder="אביב ויצמן"></div></div>
           ${extraSignaturesFieldsHtml('t_')}
           <div class="field"><button class="btn btn-primary" type="submit">יצירת טיול</button></div>
         </form>
@@ -2735,6 +2791,7 @@ async function renderTrips(body){
       notes: document.getElementById('t_notes').value,
       head_name: document.getElementById('t_head_name').value,
       coordinator_name: document.getElementById('t_coordinator_name').value,
+      coordinator_title: document.getElementById('t_coordinator_title').value,
       custom_regards: document.getElementById('t_custom_regards').value,
       ...newTripExtraSigs.read(),
       itinerary: Array.from(itineraryRowsEl.querySelectorAll('.itinerary-row')).map(row=>({
@@ -2747,6 +2804,8 @@ async function renderTrips(body){
       ? Array.from(document.querySelectorAll('#t_classes_picker input:checked')).map(i=>i.value)
       : [document.getElementById('t_class_fixed').value].filter(Boolean);
     const newTripExtraSigs = bindExtraSignatures('t_', newTripSelectedClassIds, null, ()=> refreshTripPreview());
+    document.getElementById('t_coordinator_title').addEventListener('change', ()=> refreshTripPreview());
+    autoTitleFromStaffName(document.getElementById('t_coordinator_name'), document.getElementById('t_coordinator_title'), 'רכז חברתי', 'רכזת חברתית', ()=> refreshTripPreview());
     if (p.view_all_classes){
       document.getElementById('t_classes_picker').addEventListener('change', ()=> newTripExtraSigs.refreshClasses());
       document.getElementById('selectAllClassesBtn').addEventListener('click', ()=> setTimeout(()=> newTripExtraSigs.refreshClasses()));
@@ -2768,6 +2827,47 @@ async function renderTrips(body){
 
     document.getElementById('newTripForm').addEventListener('input', refreshTripPreview);
     refreshTripPreview();
+
+    // הגעה מלשונית "יומן": ממלאים את הטופס מפרטי האירוע ביומן הגוגל
+    let tripSourceEventId = null;
+    if (pendingTripPrefill){
+      const pf = pendingTripPrefill; pendingTripPrefill = null;
+      tripSourceEventId = pf.source_calendar_event_id || null;
+      const card = document.getElementById('newTripCard');
+      card.style.display = '';
+      document.getElementById('newTripToggleBtn').classList.add('open');
+      card.querySelector('h3').textContent = pf.kind === 'event' ? 'יצירת אירוע חברתי מהיומן' : 'יצירת טיול מהיומן';
+      const kindEl = document.getElementById('t_kind');
+      kindEl.value = pf.kind === 'event' ? 'event' : 'trip';
+      kindEl.dispatchEvent(new Event('change', { bubbles:true }));
+      const setVal = (id, v)=>{ const el = document.getElementById(id); if (el && v) el.value = v; };
+      setVal('t_title', pf.title);
+      setVal('t_intro', pf.intro_text);
+      setVal('t_location', pf.location);
+      setVal('t_depart', pf.departure_time);
+      setVal('t_return', pf.return_time);
+      if (pf.trip_date){
+        const d = document.getElementById('t_date');
+        d.value = pf.trip_date;
+        d.dispatchEvent(new Event('change', { bubbles:true })); // ממלא גם את התאריך העברי
+      }
+      let guessedCount = 0;
+      if (p.view_all_classes){
+        const guessed = new Set(guessClassIdsFromText(pf.guess_text, currentYearClasses));
+        guessedCount = guessed.size;
+        document.querySelectorAll('#t_classes_picker input').forEach(i=>{
+          i.checked = guessed.has(i.value);
+          i.closest('.chip-check').classList.toggle('checked', i.checked);
+        });
+        if (guessedCount) document.getElementById('t_classes_picker').dispatchEvent(new Event('change', { bubbles:true }));
+      }
+      const note = document.createElement('div');
+      note.className = 'prefill-note';
+      note.innerHTML = `${ICON.calendar}<div><b>הטופס מולא מהאירוע ביומן.</b> ${pf.end_date ? `האירוע ביומן נמשך עד ${esc(new Date(pf.end_date+'T00:00:00').toLocaleDateString('he-IL'))}. ` : ''}${p.view_all_classes ? (guessedCount ? `סומנו ${guessedCount} כיתות לפי הכותרת — כדאי לוודא. ` : 'יש לבחור כיתות. ') : ''}משלימים את שאר הפרטים ויוצרים.</div>`;
+      document.getElementById('newTripForm').before(note);
+      refreshTripPreview();
+      setTimeout(()=> card.scrollIntoView({ behavior:'smooth', block:'start' }), 60);
+    }
 
     document.getElementById('newTripForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
@@ -2811,9 +2911,11 @@ async function renderTrips(body){
         notes: document.getElementById('t_notes').value.trim(),
         head_name: document.getElementById('t_head_name').value.trim(),
         coordinator_name: document.getElementById('t_coordinator_name').value.trim(),
+        coordinator_title: document.getElementById('t_coordinator_title').value,
         custom_regards: kind === 'event' ? document.getElementById('t_custom_regards').value.trim() : '',
         ...newTripExtraSigs.read(),
         show_in_calendar: !!document.getElementById('t_show_in_calendar')?.checked,
+        ...(tripSourceEventId ? { source_calendar_event_id: tripSourceEventId } : {}),
         created_by: myProfile.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
         school_year: currentSchoolYear,
@@ -2862,6 +2964,220 @@ async function renderTrips(body){
   }
 
   renderTripsList(document.getElementById('tripsList'), trips);
+}
+
+/* ============================================================
+   יומן — יומן הגוגל של הישיבה, מסונכרן דרך Apps Script (calendar-feed.gs שב-repo).
+   settings/global: calendar_feed_url, calendar_feed_key, calendar_id (לתצוגה המוטמעת).
+   כל אירוע ביומן אפשר להפוך בלחיצה לטיול/אירוע במערכת: נפתח טופס "יצירת טיול חדש"
+   כשהוא כבר ממולא בפרטי האירוע (pendingTripPrefill → renderTrips).
+   ============================================================ */
+let pendingTripPrefill = null;
+let calendarRangeMonths = 4;
+
+function stripHtmlToText(html){
+  const div = document.createElement('div');
+  div.innerHTML = (html||'').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n');
+  return (div.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+function isoOf(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+/* ניחוש כיתות לפי הטקסט של האירוע — למשל "טיול לכיתות י'" / "שכבת י"א" / "כלל ישיבתי".
+   בוחר את כל הכיתות של אותה שכבה; התוצאה רק ממלאת את הבחירה בטופס, ואפשר לשנות אותה. */
+function guessClassIdsFromText(text, classes){
+  if (!text || !classes?.length) return [];
+  if (/כלל[\s-]*ישיבתי|כל הישיבה|כלל הישיבה/.test(text)) return classes.map(c=>c.id);
+  const grades = new Set();
+  let m;
+  const reShort = /(?:^|[^א-ת])[ולהבמ]?(ט|י)['׳](?![א-ת])/g;          // י'  ט'
+  while ((m = reShort.exec(text))) grades.add(m[1]);
+  const reDouble = /(?:^|[^א-ת])[ולהבמ]?י["״](א|ב)(?![א-ת])/g;          // י"א  י"ב
+  while ((m = reDouble.exec(text))) grades.add('י' + m[1]);
+  const rePlain = /(?:^|[^א-ת])[ולה]?(יא|יב)(?![א-ת])/g;                // יא  יב
+  while ((m = rePlain.exec(text))) grades.add(m[1]);
+  if (!grades.size) return [];
+  const gradeOf = (name)=> (name||'').replace(/["'״׳`]/g,'').trim().split(/[\s\-]+/)[0];
+  return classes.filter(c=> grades.has(gradeOf(c.name))).map(c=>c.id);
+}
+
+async function renderCalendar(body){
+  const p = myProfile.permissions || {};
+  const canCreate = !!p.create_trips;
+  const isAdmin = myProfile.role === 'מנהל מערכת';
+  const g = (await db.collection('settings').doc('global').get().catch(()=>null))?.data() || {};
+  const feedUrl = g.calendar_feed_url || '';
+  const feedKey = g.calendar_feed_key || '';
+  const calId = g.calendar_id || '';
+  const embedSrc = calId ? `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calId)}&ctz=Asia%2FJerusalem&hl=iw&wkst=1&showPrint=0&showTitle=0` : '';
+
+  body.innerHTML = `
+    ${isAdmin ? `
+    <div class="section-toggle" id="calSettingsToggle" style="margin-bottom:14px;">
+      <span>${ICON.gear} הגדרות חיבור ליומן גוגל</span><span class="chev">⌄</span>
+    </div>
+    <div class="card card-pad" id="calSettingsCard" style="margin-bottom:20px; ${feedUrl ? 'display:none;' : ''}">
+      <p style="margin-top:0; font-size:.88rem; color:var(--ink-soft); line-height:1.6;">
+        החיבור נעשה דרך סקריפט קטן ב-Google Apps Script (קובץ <b dir="ltr">calendar-feed.gs</b> ב-repo, עם הוראות מלאות בראשו).
+        אחרי הפריסה מדביקים כאן את הכתובת והמפתח. הסקריפט רק קורא אירועים מהיומן ולא משנה בו כלום.
+      </p>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1;"><label>כתובת הסקריפט (מסתיימת ב-/exec)</label><input id="cal_feed_url" dir="ltr" value="${esc(feedUrl)}" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        <div class="field"><label>מפתח (FEED_KEY)</label><input id="cal_feed_key" dir="ltr" value="${esc(feedKey)}"></div>
+        <div class="field"><label>מזהה היומן (לתצוגת היומן המוטמע)</label><input id="cal_id" dir="ltr" value="${esc(calId)}" placeholder="xxxx@group.calendar.google.com"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="calSaveSettings">${ICON.save} שמירה</button>
+    </div>` : ''}
+
+    <div class="cal-view-tabs" role="tablist">
+      <button type="button" class="cal-tab active" data-cal-view="list">${ICON.notes} אירועים קרובים</button>
+      ${embedSrc ? `<button type="button" class="cal-tab" data-cal-view="embed">${ICON.calendar} תצוגת יומן</button>` : ''}
+    </div>
+    <div id="calListView"></div>
+    ${embedSrc ? `<div id="calEmbedView" style="display:none;">
+      <div class="card cal-embed-card"><iframe src="${embedSrc}" title="יומן הישיבה" loading="lazy"></iframe></div>
+      <div style="font-size:.78rem; color:var(--ink-soft); margin-top:8px;">אם היומן לא מוצג כאן — היומן פרטי ויוצג רק למי שמחובר/ת בדפדפן לחשבון גוגל עם גישה אליו. רשימת "אירועים קרובים" עובדת לכל אנשי הצוות בכל מקרה.</div>
+    </div>` : ''}`;
+
+  if (isAdmin){
+    document.getElementById('calSettingsToggle').addEventListener('click', (e)=>{
+      const card = document.getElementById('calSettingsCard');
+      const opening = card.style.display === 'none';
+      card.style.display = opening ? '' : 'none';
+      e.currentTarget.classList.toggle('open', opening);
+    });
+    document.getElementById('calSaveSettings').addEventListener('click', async ()=>{
+      const data = {
+        calendar_feed_url: document.getElementById('cal_feed_url').value.trim(),
+        calendar_feed_key: document.getElementById('cal_feed_key').value.trim(),
+        calendar_id: document.getElementById('cal_id').value.trim(),
+      };
+      try{ await db.collection('settings').doc('global').set(data, { merge:true }); toast('נשמר'); goto('calendar'); }
+      catch(err){ toast('שגיאה: '+err.message); }
+    });
+  }
+  body.querySelectorAll('.cal-tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      body.querySelectorAll('.cal-tab').forEach(t=> t.classList.toggle('active', t===tab));
+      const v = tab.dataset.calView;
+      document.getElementById('calListView').style.display = v === 'list' ? '' : 'none';
+      const emb = document.getElementById('calEmbedView'); if (emb) emb.style.display = v === 'embed' ? '' : 'none';
+    });
+  });
+
+  const listEl = document.getElementById('calListView');
+  if (!feedUrl){
+    listEl.innerHTML = `<div class="card card-pad cal-empty">${ICON.calendar}<div>יומן הגוגל של הישיבה עדיין לא חובר למערכת.${isAdmin ? ' יש למלא את הגדרות החיבור למעלה.' : ' מנהל המערכת יכול לחבר אותו מהלשונית הזו.'}</div></div>`;
+    return;
+  }
+  await loadCalendarEvents(listEl, { feedUrl, feedKey, canCreate });
+}
+
+async function loadCalendarEvents(listEl, { feedUrl, feedKey, canCreate }){
+  listEl.innerHTML = '<p style="color:var(--ink-soft);">טוען אירועים מהיומן…</p>';
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + calendarRangeMonths, 0);
+  const url = feedUrl + (feedUrl.includes('?') ? '&' : '?') + new URLSearchParams({ key: feedKey, from: isoOf(from), to: isoOf(to) });
+
+  let events = [];
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error === 'unauthorized' ? 'המפתח בהגדרות לא תואם ל-FEED_KEY שבסקריפט' : (data.error === 'calendar_not_found' ? 'מזהה היומן בסקריפט שגוי, או שלחשבון שמפעיל את הסקריפט אין גישה ליומן' : data.error));
+    events = data.events || [];
+  }catch(err){
+    listEl.innerHTML = `<div class="card card-pad cal-empty">${ICON.calendar}<div>לא ניתן לטעון את היומן: ${esc(err.message || 'שגיאת רשת')}</div></div>`;
+    return;
+  }
+
+  // טיולים שכבר נוצרו מאירוע ביומן — כדי לסמן אותם ולא ליצור כפילות בטעות
+  const linked = {};
+  try{
+    const snap = await db.collection('trips').where('source_calendar_event_id','>','').get();
+    snap.docs.forEach(d=>{ const t = d.data(); if (t.source_calendar_event_id) linked[t.source_calendar_event_id] = { id:d.id, title:t.title, kind:t.kind }; });
+  }catch(err){ /* אין הרשאה לקרוא את כל הטיולים — פשוט לא מסמנים */ }
+
+  const todayIso = isoOf(now);
+  events.sort((a,b)=> (a.start_date+a.start_time).localeCompare(b.start_date+b.start_time));
+  const upcoming = events.filter(e=> (e.end_date || e.start_date) >= todayIso);
+  const past = events.filter(e=> (e.end_date || e.start_date) < todayIso);
+
+  const fmtDayNum = (iso)=> String(parseInt(iso.slice(8,10),10));
+  const fmtMonthShort = (iso)=> new Date(iso+'T00:00:00').toLocaleDateString('he-IL', { month:'short' });
+  const weekday = (iso)=> new Date(iso+'T00:00:00').toLocaleDateString('he-IL', { weekday:'long' });
+  const monthKey = (iso)=> new Date(iso+'T00:00:00').toLocaleDateString('he-IL', { month:'long', year:'numeric' });
+
+  const card = (ev)=>{
+    const desc = stripHtmlToText(ev.description);
+    const multiDay = ev.end_date && ev.end_date !== ev.start_date;
+    const timeText = ev.all_day ? (multiDay ? `עד ${new Date(ev.end_date+'T00:00:00').toLocaleDateString('he-IL',{day:'numeric', month:'numeric'})}` : 'כל היום')
+      : `<bdi dir="ltr">${esc(ev.start_time)}${ev.end_time ? '–' + esc(ev.end_time) : ''}</bdi>${multiDay ? ` · עד ${new Date(ev.end_date+'T00:00:00').toLocaleDateString('he-IL',{day:'numeric', month:'numeric'})}` : ''}`;
+    const link = linked[ev.id];
+    return `
+      <div class="cal-event ${ev.start_date === todayIso ? 'is-today' : ''}" data-ev="${esc(ev.id)}">
+        <div class="cal-date">
+          <div class="cal-day">${fmtDayNum(ev.start_date)}</div>
+          <div class="cal-mon">${fmtMonthShort(ev.start_date)}</div>
+        </div>
+        <div class="cal-body">
+          <div class="cal-title">${esc(ev.title || '(ללא כותרת)')}</div>
+          <div class="cal-meta">
+            <span>${esc(weekday(ev.start_date))} · ${esc(hebrewDateOnly(ev.start_date))}</span>
+            <span>${ICON.clock} ${timeText}</span>
+            ${ev.location ? `<span>${ICON.pin} ${esc(ev.location)}</span>` : ''}
+          </div>
+          ${desc ? `<div class="cal-desc">${esc(desc)}</div>` : ''}
+          <div class="cal-actions">
+            ${link ? `<span class="badge badge-ok">${ICON.check} ${link.kind === 'event' ? 'נוצר אירוע במערכת' : 'נוצר טיול במערכת'}</span>
+                      <button type="button" class="btn btn-outline btn-sm cal-open-trip">מעבר לטיולים</button>`
+              : (canCreate ? `<button type="button" class="btn btn-primary btn-sm cal-make" data-kind="trip">${ICON.compass} יצירת טיול מהאירוע</button>
+                              <button type="button" class="btn btn-outline btn-sm cal-make" data-kind="event">${ICON.plus} יצירת אירוע חברתי</button>` : '')}
+          </div>
+        </div>
+      </div>`;
+  };
+  const grouped = (list)=>{
+    let html = '', last = '';
+    list.forEach(ev=>{
+      const k = monthKey(ev.start_date);
+      if (k !== last){ html += `<h4 class="cal-month">${esc(k)}</h4>`; last = k; }
+      html += card(ev);
+    });
+    return html;
+  };
+
+  listEl.innerHTML = `
+    <div class="cal-toolbar">
+      <span style="font-size:.85rem; color:var(--ink-soft);">${upcoming.length} אירועים קרובים</span>
+      <button type="button" class="btn btn-outline btn-sm" id="calRefresh">${ICON.refresh} רענון</button>
+    </div>
+    ${upcoming.length ? grouped(upcoming) : `<div class="card card-pad cal-empty">${ICON.calendar}<div>אין אירועים קרובים ביומן בטווח הזה.</div></div>`}
+    <div style="text-align:center; margin:16px 0;"><button type="button" class="btn btn-outline btn-sm" id="calMore">הצגת חודשים נוספים</button></div>
+    ${past.length ? `<details class="cal-past"><summary>אירועים שעברו החודש (${past.length})</summary>${grouped(past)}</details>` : ''}`;
+
+  const byId = Object.fromEntries(events.map(e=>[e.id, e]));
+  listEl.querySelector('#calRefresh').addEventListener('click', ()=> loadCalendarEvents(listEl, { feedUrl, feedKey, canCreate }));
+  listEl.querySelector('#calMore').addEventListener('click', ()=>{ calendarRangeMonths += 3; loadCalendarEvents(listEl, { feedUrl, feedKey, canCreate }); });
+  listEl.querySelectorAll('.cal-open-trip').forEach(b=> b.addEventListener('click', ()=> goto('trips')));
+  listEl.querySelectorAll('.cal-make').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const ev = byId[btn.closest('.cal-event').dataset.ev];
+      if (!ev) return;
+      pendingTripPrefill = {
+        source_calendar_event_id: ev.id,
+        kind: btn.dataset.kind,
+        title: ev.title || '',
+        trip_date: ev.start_date || '',
+        end_date: ev.end_date && ev.end_date !== ev.start_date ? ev.end_date : '',
+        location: ev.location || '',
+        departure_time: ev.all_day ? '' : (ev.start_time || ''),
+        return_time: ev.all_day ? '' : (ev.end_time || ''),
+        intro_text: stripHtmlToText(ev.description),
+        guess_text: `${ev.title || ''} ${stripHtmlToText(ev.description)}`,
+      };
+      goto('trips');
+    });
+  });
 }
 
 /* חלון לבחירת קבוצה לשליחה, כשלטיול משותף יש כמה קבוצות וואטסאפ מוגדרות (אחת לכל כיתה) */
@@ -2987,7 +3303,8 @@ function renderTripsList(container, trips){
         <div class="trip-card-toggle" data-trip-toggle="${t.id}" style="cursor:pointer; flex:1; min-width:180px; display:flex; align-items:flex-start; gap:8px;">
           <span class="chev" style="flex:none; margin-top:7px; color:var(--ink-soft);">⌄</span>
           <div style="min-width:0; flex:1;">
-            <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span>${t.is_published === false ? ` <span class="badge badge-wait" title="גלוי רק לתפקידי ניהול, עד שמנהל מערכת יפרסם">טיוטה — מוסתר מהצוות</span>` : ''}</h3>
+            <h3 class="c-title" style="margin:0 0 4px;">${esc(t.title)} <span style="font-size:.75rem; color:var(--ink-soft); font-weight:400;">· ${esc(classNamesOf(t))}</span></h3>
+            ${t.is_published === false ? `<div class="draft-badge-row"><span class="badge badge-wait draft-badge" title="גלוי רק לתפקידי ניהול, עד שמנהל מערכת יפרסם">${ICON.eyeOff} טיוטה — מוסתר מהצוות</span></div>` : ''}
             ${t.subtitle ? `<div style="font-size:.82rem; color:var(--ink-soft); font-weight:600; margin:-2px 0 4px;">${esc(t.subtitle)}</div>` : ''}
             <div class="c-meta" style="font-size:.85rem; color:var(--ink-soft);">
               ${formatTripDateLine(t) ? esc(formatTripDateLine(t))+' · ' : ''}
@@ -3339,7 +3656,7 @@ function renderTripsList(container, trips){
           <div class="field" style="grid-column:1/-1;"><label>ציוד נדרש (יופיע בחוזר להורים)</label><textarea id="et_equipment_${id}">${esc(trip.equipment||'')}</textarea></div>
           <div class="field" style="grid-column:1/-1;"><label>הערות</label><textarea id="et_notes_${id}">${esc(trip.notes||'')}</textarea></div>
           <div class="field"><label>שם ראש הישיבה (חתימה מימין)</label><input id="et_head_${id}" value="${esc(trip.head_name||'')}"></div>
-          <div class="field"><label>שם רכז חברתי (חתימה משמאל)</label><input id="et_coordinator_${id}" value="${esc(trip.coordinator_name||'')}"></div>
+          <div class="field"><label>חתימה משמאל</label><div class="sig-name-row">${sigTitleSelectHtml(`et_coordinator_title_${id}`, ['רכז חברתי','רכזת חברתית'], trip.coordinator_title || 'רכז חברתי')}<input id="et_coordinator_${id}" value="${esc(trip.coordinator_name||'')}"></div></div>
           ${extraSignaturesFieldsHtml(`et_${id}_`, trip)}
           ${trip.kind === 'event' ? `<div class="field" style="grid-column:1/-1;"><label>טקסט "בברכה" מותאם אישית (אופציונלי)</label><input id="et_regards_${id}" value="${esc(trip.custom_regards||'')}" placeholder="לדוגמה: בברכת גמר חתימה טובה לכולם"></div>` : ''}
           <div class="field" style="grid-column:1/-1;">
@@ -3375,6 +3692,7 @@ function renderTripsList(container, trips){
       const editExtraSigs = bindExtraSignatures(`et_${id}_`, ()=> p.view_all_classes
         ? Array.from(box.querySelectorAll(`#et_classes_picker_${id} input:checked`)).map(i=>i.value)
         : (trip.class_ids || []), trip);
+      autoTitleFromStaffName(document.getElementById(`et_coordinator_${id}`), document.getElementById(`et_coordinator_title_${id}`), 'רכז חברתי', 'רכזת חברתית');
       if (p.view_all_classes){
         document.getElementById(`et_classes_picker_${id}`).addEventListener('change', ()=> editExtraSigs.refreshClasses());
         document.getElementById(`et_select_all_${id}`).addEventListener('click', ()=> setTimeout(()=> editExtraSigs.refreshClasses()));
@@ -3408,6 +3726,7 @@ function renderTripsList(container, trips){
           notes: document.getElementById(`et_notes_${id}`).value.trim(),
           head_name: document.getElementById(`et_head_${id}`).value.trim(),
           coordinator_name: document.getElementById(`et_coordinator_${id}`).value.trim(),
+          coordinator_title: document.getElementById(`et_coordinator_title_${id}`).value,
           ...editExtraSigs.read(),
         };
         if (trip.kind === 'event'){
@@ -3753,7 +4072,7 @@ function buildClassRosterPageElement(trip, g, gregDate){
       </div>
       <div style="background:#16223d; border-radius:10px; padding:14px 18px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <span style="font-family:'Rubik',Arial,sans-serif; font-weight:800; font-size:19px; color:#fff;">${esc(g.className)}</span>
-        <span style="font-size:14px; color:#cfd9ec; font-weight:600;">מחנך/ת: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
+        <span style="font-size:14px; color:#cfd9ec; font-weight:600;">${teacherTitle(g.teacherGender)}: ${esc(g.teacherName || '—')} · ${g.students.length} תלמידים</span>
       </div>
       <div style="width:100%;">
         <div style="display:flex; border-bottom:2px solid #16223d; padding-bottom:8px;">
@@ -3842,12 +4161,14 @@ async function exportTripRosterPdf(trip, approvedStudents){
       const t = usersSnap.docs?.find?.(d=>d.data().class_id===classId);
       return t ? t.data().full_name : null;
     };
+    const teacherGenderFor = (classId) => usersSnap.docs?.find?.(d=>d.data().class_id===classId)?.data()?.gender || null;
     const byClass = {};
     approvedStudents.forEach(s=>{ (byClass[s.class_id] = byClass[s.class_id] || []).push(s); });
     const grouped = Object.keys(byClass).map(cid => ({
       classId: cid,
       className: classesCache.find(c=>c.id===cid)?.name || 'ללא כיתה',
       teacherName: teacherNameFor(cid),
+      teacherGender: teacherGenderFor(cid),
       students: byClass[cid].sort((a,b)=> (a.full_name||'').localeCompare(b.full_name||'','he')),
     }));
     grouped.sort((a,b)=> hebrewGradeValue(a.className) - hebrewGradeValue(b.className) || a.className.localeCompare(b.className,'he'));
@@ -3935,7 +4256,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const passengerRowHtml = (a, isLast) => {
     const borderStyle = isLast ? '' : 'border-bottom:1px solid #eef1f6;';
     if (a.type==='class'){ const cls = classesCacheRef.find(c=>c.id===a.class_id); const n = approvedCountsByClass[a.class_id]||0; return `<div class="pdf-avoid-break" style="display:flex; justify-content:space-between; padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">🏫 כיתה ${esc(cls?.name||'')}</span><span style="color:#4b566d;">${n} תלמידים מאושרים</span></div>`; }
-    if (a.type==='staff'){ const u = a.uid ? staffListRef.find(u=>u.id===a.uid) : null; const nm = a.name || u?.full_name || 'איש/אשת צוות'; return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(nm)}</span>${a.phone ? ` <span style="color:#4b566d; direction:ltr; unicode-bidi:isolate;">· ${esc(a.phone)}</span>` : ''}</div>`; }
+    if (a.type==='staff'){ const u = a.uid ? staffListRef.find(u=>u.id===a.uid) : null; const nm = a.name || u?.full_name || 'איש צוות'; return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👤 ${esc(nm)}</span>${a.phone ? ` <span style="color:#4b566d; direction:ltr; unicode-bidi:isolate;">· ${esc(a.phone)}</span>` : ''}</div>`; }
     if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">⛑️ ${esc(m?.name||'')}</span>${m?.role?` <span style="color:#4b566d;">· ${esc(m.role)}</span>`:''}</div>`; }
     if (a.type==='parent'){ return `<div class="pdf-avoid-break" style="padding:7px 0; ${borderStyle} font-size:15.5px;"><span style="font-weight:700; color:#16203a;">👪 ${esc(a.name||'')}</span><div style="color:#4b566d; font-size:14px; margin-top:1px;">הורה מלווה — אבא/אמא של ${esc(a.student_name||'')}${a.class_name?`, כיתה ${esc(a.class_name)}`:''}</div></div>`; }
     return '';
@@ -4006,7 +4327,7 @@ function buildTripLogisticsDocElement(trip, buses, medics, generalNotes, approve
   const equipHtml = `
     <div class="pdf-avoid-break" style="display:flex; border-bottom:2px solid #16223d; padding-bottom:7px; font-size:12.5px; color:#4b566d; font-weight:700;">
       <div style="width:44px; text-align:center;">הוכן</div><div style="flex:1; padding:0 8px;">פריט</div>
-      <div style="width:70px; text-align:center;">כמות</div><div style="width:190px; padding:0 8px;">אחראי/ת</div>
+      <div style="width:70px; text-align:center;">כמות</div><div style="width:190px; padding:0 8px;">באחריות</div>
     </div>` + equipmentList.map(it=>`
     <div class="pdf-avoid-break" style="display:flex; align-items:center; border-bottom:1px solid #eef1f6; padding:9px 0; font-size:15px;">
       <div style="width:44px; display:flex; justify-content:center;"><div style="width:18px; height:18px; border:2px solid #16223d; border-radius:4px; text-align:center; line-height:16px; font-size:14px; font-weight:800; color:#1c7a45;">${it.done?'✓':''}</div></div>
@@ -4710,7 +5031,7 @@ async function renderTripLogisticsCard(card, trip){
             const chipHtml = (a, ai) => {
               let label = '';
               if (a.type==='class'){ const cls = classesCache.find(c=>c.id===a.class_id); label = `🏫 ${esc(cls?.name||'כיתה')} — ${approvedCountsByClass[a.class_id]||0} מאושרים`; }
-              else if (a.type==='staff'){ const u = a.uid ? staffList.find(u=>u.id===a.uid) : null; label = `👤 ${esc(a.name || u?.full_name || 'איש/אשת צוות')}${a.phone ? ` · <span dir="ltr">${esc(a.phone)}</span>` : ''} · ${a.custom ? 'צוות (נוסף ידנית)' : 'צוות'}`; }
+              else if (a.type==='staff'){ const u = a.uid ? staffList.find(u=>u.id===a.uid) : null; label = `👤 ${esc(a.name || u?.full_name || 'איש צוות')}${a.phone ? ` · <span dir="ltr">${esc(a.phone)}</span>` : ''} · ${a.custom ? 'צוות (נוסף ידנית)' : 'צוות'}`; }
               else if (a.type==='medic'){ const m = medics.find(m=>m.id===a.medic_id); label = `⛑️ ${esc(m?.name||'חובש/מע"ר')}`; }
               else if (a.type==='parent'){ label = `👪 ${esc(a.name||'הורה מלווה')} — הורה של ${esc(a.student_name||'')}${a.class_name?` (${esc(a.class_name)})`:''}`; }
               return `<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:.85rem;">
@@ -4770,14 +5091,14 @@ async function renderTripLogisticsCard(card, trip){
                       ${availableClasses.map(c=>`<option value="${c.id}">${esc(c.name)} (${approvedCountsByClass[c.id]||0} מאושרים)</option>`).join('')}
                     </select>
                   </div>
-                  <div class="field"><label>שיוך איש/אשת צוות</label>
+                  <div class="field"><label>שיוך איש צוות</label>
                     <select class="assign-staff-select" data-bus-idx="${bi}">
-                      <option value="">בחירת איש/אשת צוות</option>
+                      <option value="">בחירת איש צוות</option>
                       ${availableStaff.map(u=>`<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}
-                      ${remaining >= 1 ? '<option value="__custom__">＋ איש/אשת צוות אחר/ת (הקלדה חופשית)</option>' : ''}
+                      ${remaining >= 1 ? '<option value="__custom__">＋ איש צוות אחר (הקלדה חופשית)</option>' : ''}
                     </select>
                     <div class="custom-staff-wrap" data-bus-idx="${bi}" style="display:none; flex-direction:column; gap:6px; margin-top:6px;">
-                      <input class="custom-staff-name" data-bus-idx="${bi}" placeholder="שם איש/אשת הצוות">
+                      <input class="custom-staff-name" data-bus-idx="${bi}" placeholder="שם איש הצוות">
                       <div style="display:flex; gap:6px;">
                         <input class="custom-staff-phone" data-bus-idx="${bi}" placeholder="טלפון (רשות)" inputmode="tel" dir="ltr" style="text-align:right; flex:1; min-width:0;">
                         <button type="button" class="btn btn-outline btn-sm add-custom-staff-btn" data-bus-idx="${bi}" title="הוספה">${ICON.plus}</button>
@@ -4822,7 +5143,7 @@ async function renderTripLogisticsCard(card, trip){
           <div class="field"><label>שם/מספר אוטובוס</label><input id="bus_name" placeholder="לדוגמה: אוטובוס 1"></div>
           <div class="field"><label>אחראי מהצוות</label>
             <select id="bus_captain">
-              <option value="">בחירת איש/אשת צוות</option>
+              <option value="">בחירת איש צוות</option>
               ${staffList.map(u=>`<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}
               <option value="__custom__">— מותאם אישית (לא מהצוות) —</option>
             </select>
@@ -4908,7 +5229,7 @@ async function renderTripLogisticsCard(card, trip){
               <label class="equip-check"><input type="checkbox" class="equip-done" data-id="${it.id}" ${it.done?'checked':''}><span></span></label>
               <div class="equip-main">
                 <div class="equip-name">${esc(it.item)}${Number(it.qty)>1?` <span class="equip-qty">× ${esc(it.qty)}</span>`:''}</div>
-                ${it.owner ? `<div class="equip-owner">אחראי/ת: ${esc(it.owner)}</div>` : ''}
+                ${it.owner ? `<div class="equip-owner">באחריות: ${esc(it.owner)}</div>` : ''}
               </div>
               <button type="button" class="icon-btn call del-equip" data-id="${it.id}" title="מחיקה">${ICON.trash}</button>
             </div>`).join('') : '<p style="color:var(--ink-soft); font-size:.9rem;">עדיין לא נרשם ציוד לטיול.</p>'}
@@ -4919,7 +5240,7 @@ async function renderTripLogisticsCard(card, trip){
         <div class="form-grid" style="margin-top:12px; border-top:1px dashed var(--line); padding-top:14px;">
           <div class="field" style="grid-column:1/-1;"><label>פריט</label><input id="equip_item" placeholder="לדוגמה: ערכת עזרה ראשונה"></div>
           <div class="field"><label>כמות</label><input id="equip_qty" type="number" min="1" step="1" value="1"></div>
-          <div class="field"><label>אחראי/ת להביא (רשות)</label><input id="equip_owner" list="equipOwnerOptions" placeholder="שם איש/אשת צוות">
+          <div class="field"><label>מי מביא (רשות)</label><input id="equip_owner" list="equipOwnerOptions" placeholder="שם איש הצוות">
             <datalist id="equipOwnerOptions">${staffList.map(u=>`<option value="${esc(u.full_name||'')}">`).join('')}</datalist></div>
           <div class="field"><button type="button" class="btn btn-outline btn-sm" id="addEquipBtn">${ICON.plus} הוספת פריט</button></div>
         </div>
@@ -5964,6 +6285,7 @@ async function renderPayments(body){
   // שם מחנך/ת לכל כיתה — לצורך הצגה ליד הכותרת בדוח תשלומים לפי כיתה ספציפית
   const paymentsUsersSnap = await db.collection('users').get().catch(()=>({docs:[]}));
   const teacherNameForClass = (classId) => paymentsUsersSnap.docs?.find?.(d=>d.data().class_id===classId)?.data()?.full_name || '';
+  const teacherGenderForClass = (classId) => paymentsUsersSnap.docs?.find?.(d=>d.data().class_id===classId)?.data()?.gender || null;
 
   body.innerHTML = `
     <div id="paymentsTripsList"></div>
@@ -6118,7 +6440,7 @@ async function renderPayments(body){
     });
     if (rows.length === 1){ toast('אין תלמידים בכיתה זו'); return; }
     const teacherName = teacherNameForClass(classId);
-    exportTable(rows, `דוח תשלומים - ${trip.title} - כיתה ${className}`, exportFormat(), teacherName ? `מחנך/ת: ${teacherName}` : '');
+    exportTable(rows, `דוח תשלומים - ${trip.title} - כיתה ${className}`, exportFormat(), teacherName ? `${teacherTitle(teacherGenderForClass(classId))}: ${teacherName}` : '');
   });
 
   document.getElementById('exportStudentTripBtn').addEventListener('click', async ()=>{
@@ -8111,6 +8433,7 @@ async function renderClasses(body){
     const t = usersSnap.docs?.find?.(d=>d.data().class_id===classId);
     return t ? t.data().full_name : null;
   };
+  const classTeachersHeader = teachersHeader(classes.map(c=> usersSnap.docs?.find?.(d=>d.data().class_id===c.id)?.data()?.gender));
   const showTeacherGroupCard = !!(p.manage_users || p.view_all_classes);
   let teacherGroupLink = '';
   if (showTeacherGroupCard){
@@ -8141,12 +8464,12 @@ async function renderClasses(body){
     </div>` : ''}
     <div class="card card-pad">
       <table class="data">
-        <thead><tr><th>שם הכיתה</th><th>מחנך/ת</th><th>קבוצת וואטסאפ</th><th></th></tr></thead>
+        <thead><tr><th>שם הכיתה</th><th>${classTeachersHeader}</th><th>קבוצת וואטסאפ</th><th></th></tr></thead>
         <tbody>
           ${classes.map(c=>`
             <tr data-id="${c.id}">
               <td class="c-name" data-label="שם הכיתה">${esc(c.name)}</td>
-              <td data-label="מחנך/ת">${esc(teacherNameFor(c.id) || '— לא שויך —')}</td>
+              <td data-label="${teacherTitle(usersSnap.docs?.find?.(d=>d.data().class_id===c.id)?.data()?.gender)}">${esc(teacherNameFor(c.id) || '— לא שויך —')}</td>
               <td data-label="קבוצת וואטסאפ">${c.whatsapp_group_link ? `<a href="${esc(c.whatsapp_group_link)}" target="_blank" class="wa-link">🔗 פתיחה</a>` : '<span style="color:var(--ink-soft);">לא הוגדר</span>'}</td>
               <td style="display:flex; gap:6px; flex-wrap:wrap;">
                 <button class="btn btn-outline btn-sm open-class-settings" data-id="${c.id}" title="הגדרות ורשימת תלמידים">${ICON.gear} הגדרות</button>
@@ -8462,11 +8785,12 @@ async function renderUsers(body){
 
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:24px;">
-      <h3 style="margin-top:0;">הוספת איש/אשת צוות</h3>
+      <h3 style="margin-top:0;">הוספת איש צוות</h3>
       <form id="newUserForm" class="form-grid">
         <div class="field"><label>שם מלא</label><input required id="u_name"></div>
         <div class="field"><label>דוא״ל</label><input type="email" required id="u_email"></div>
-        ${rolePresetSelectHtml('new', '')}
+        ${genderFieldHtml('new', null)}
+        ${rolePresetSelectHtml('new', '', null)}
         <div class="field"><label>כיתה (רשות — רלוונטי בעיקר למחנכים)</label>
           <select id="u_class"><option value="">— ללא —</option>${classesCache.filter(inCurrentYear).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
         </div>
@@ -8486,7 +8810,7 @@ async function renderUsers(body){
           ${profiles.map(p=>`
             <tr data-id="${p.id}">
               <td class="c-name" data-label="שם">${esc(p.full_name)}</td>
-              <td class="c-role" data-label="תפקיד">${esc(p.role||'')}</td>
+              <td class="c-role" data-label="תפקיד"><span>${esc(roleDisplay(p.role||'', p.gender))}${p.role && !p.gender ? ' <span class="gender-missing" title="לא הוגדר מגדר — ערכו את איש הצוות כדי שהתפקיד יוצג בהתאם">?</span>' : ''}</span></td>
               <td class="c-class" data-label="כיתה">${esc(classesCache.find(c=>c.id===p.class_id)?.name||'—')}</td>
               <td><button class="btn btn-outline btn-sm edit-user" title="עריכה">✏️</button></td>
             </tr>
@@ -8506,6 +8830,8 @@ async function renderUsers(body){
     const full_name = document.getElementById('u_name').value.trim();
     const email = document.getElementById('u_email').value.trim();
     const role = readRoleFromPreset('new');
+    const gender = readGender('new');
+    if (!gender){ resultEl.innerHTML = `<div class="login-msg err">יש לבחור מגדר (זכר / נקבה)</div>`; return; }
     const class_id = document.getElementById('u_class').value || null;
     const phone = document.getElementById('u_phone').value.trim();
     const permissions = collectPermissions(document.getElementById('newUserForm'), 'new');
@@ -8513,11 +8839,11 @@ async function renderUsers(body){
     try{
       const uid = await createStaffAccountKeepingSession(email, tempPassword);
       await db.collection('users').doc(uid).set({
-        full_name, email, role, class_id, phone, permissions,
+        full_name, email, role, gender, class_id, phone, permissions,
         needs_password_change: true,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
-      const waText = encodeURIComponent(`שלום ${full_name},\nנוצר עבורך חשבון במערכת ישיבה תיכונית עפולה.\nלהתחברות: ${location.origin}${location.pathname}\nדוא״ל: ${email}\nסיסמה זמנית: ${tempPassword}\n(במסך ההתחברות הראשון תתבקש/י להגדיר סיסמה אישית)`);
+      const waText = encodeURIComponent(`שלום ${full_name},\nנוצר עבורך חשבון במערכת ישיבה תיכונית עפולה.\nלהתחברות: ${location.origin}${location.pathname}\nדוא״ל: ${email}\nסיסמה זמנית: ${tempPassword}\n(במסך ההתחברות הראשון ${gw(gender,'תתבקש','תתבקשי')} להגדיר סיסמה אישית)`);
       const waHref = phone ? `https://wa.me/${waPhone(phone)}?text=${waText}` : null;
       resultEl.innerHTML = `
         <div class="login-msg ok">
@@ -8545,7 +8871,8 @@ async function renderUsers(body){
           <h3 style="margin-top:0;">עריכת ${esc(p.full_name)}</h3>
           <div class="form-grid">
             <div class="field"><label>שם מלא</label><input id="eu_name" value="${esc(p.full_name)}"></div>
-            ${rolePresetSelectHtml('eu', p.role||'')}
+            ${genderFieldHtml('eu', p.gender||null)}
+            ${rolePresetSelectHtml('eu', p.role||'', p.gender||null)}
             <div class="field"><label>כיתה</label>
               <select id="eu_class"><option value="">— ללא —</option>${classesCache.filter(c=> inCurrentYear(c) || c.id===p.class_id).map(c=>`<option value="${c.id}" ${c.id===p.class_id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
             </div>
@@ -8567,11 +8894,13 @@ async function renderUsers(body){
       box.querySelector('#saveUserBtn').addEventListener('click', async ()=>{
         const full_name = document.getElementById('eu_name').value.trim();
         const role = readRoleFromPreset('eu');
+        const gender = readGender('eu');
+        if (!gender){ toast('יש לבחור מגדר (זכר / נקבה)'); return; }
         const class_id = document.getElementById('eu_class').value || null;
         const phone = document.getElementById('eu_phone').value.trim();
         const permissions = collectPermissions(box, 'eu');
         try{
-          await db.collection('users').doc(p.id).update({ full_name, role, class_id, phone, permissions });
+          await db.collection('users').doc(p.id).update({ full_name, role, gender, class_id, phone, permissions });
           toast('נשמר'); box.innerHTML=''; goto('users');
         }catch(err){ toast('שגיאה: '+err.message); }
       });
@@ -8628,7 +8957,7 @@ async function renderRestoreHistory(body){
   document.getElementById('clearAuditLogBtn')?.addEventListener('click', async ()=>{
     const sure = await confirmDialog(
       'פעולה זו תמחק לצמיתות את כל היסטוריית המחיקות — לא יהיה ניתן לשחזר פעולות מחיקה ישנות יותר לאחר מכן. הפעולה עצמה (מחיקת ההיסטוריה) בלתי הפיכה. להמשיך?',
-      { title:'מחיקת כל היסטוריית המחיקות', confirmText:'כן, אני מבין/ה — להמשיך', cancelText:'ביטול', danger:true }
+      { title:'מחיקת כל היסטוריית המחיקות', confirmText:`כן, ${gw(myProfile.gender,'אני מבין','אני מבינה')} — להמשיך`, cancelText:'ביטול', danger:true }
     );
     if (!sure) return;
     const password = await promptDialog('לאימות הזהות, יש להזין שוב את סיסמת ההתחברות שלך למערכת:', { title:'אימות סיסמה למחיקה', placeholder:'סיסמה', inputType:'password', confirmText:'אימות ומחיקה' });

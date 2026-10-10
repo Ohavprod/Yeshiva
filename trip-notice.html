@@ -198,10 +198,10 @@ function esc(s){ return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&am
 /* חתימות נוספות (אופציונליות): רכזת טיולים, מורה לשל"ח, מחנכי הכיתות — זהה ל-buildExtraSignaturesHtml ב-staff.html */
 function buildExtraSignaturesHtml(trip){
   const cols = [];
-  if ((trip.trip_coordinator_sig||'').trim()) cols.push({ name: trip.trip_coordinator_sig, title: 'רכזת טיולים' });
+  if ((trip.trip_coordinator_sig||'').trim()) cols.push({ name: trip.trip_coordinator_sig, title: trip.trip_coordinator_title || 'רכזת טיולים' });
   if ((trip.shelach_teacher_sig||'').trim()) cols.push({ name: trip.shelach_teacher_sig, title: 'מורה לשל"ח' });
   (trip.class_teachers_sig || []).forEach(ct=>{
-    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: ct.class_name ? `מחנך/ת ${ct.class_name}` : 'מחנך/ת הכיתה' });
+    if ((ct.name||'').trim()) cols.push({ name: ct.name, title: `${ct.gender === 'female' ? 'מחנכת' : 'מחנך'}${ct.class_name ? ' ' + ct.class_name : ' הכיתה'}` });
   });
   if (!cols.length) return '';
   return `<div class="signatures-row signatures-extra">${cols.map(c=>`<div class="signature-col"><b>${esc(c.name)}</b><div class="sig-title">${esc(c.title)}</div></div>`).join('')}</div>`;
@@ -396,7 +396,7 @@ async function load(){
         <div class="regards">${esc(trip.custom_regards || 'בברכה,')}</div>
         ${(trip.head_name || trip.coordinator_name) ? `<div class="signatures-row">
           <div class="signature-col">${trip.head_name ? `<b>${esc(trip.head_name)}</b><div class="sig-title">ראש הישיבה</div>` : ''}</div>
-          <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">רכז חברתי</div>` : ''}</div>
+          <div class="signature-col">${trip.coordinator_name ? `<b>${esc(trip.coordinator_name)}</b><div class="sig-title">${esc(trip.coordinator_title || 'רכז חברתי')}</div>` : ''}</div>
         </div>` : ''}
         ${extraSigsHtml}
       </div>`;
@@ -412,7 +412,7 @@ async function load(){
   }
 
   if (roster.length === 0 || classOptions.length === 0){
-    content.innerHTML = mainHtml + `<p class="center-msg">לא ניתן לטעון אישור עצמאי ${isEvent ? 'לאירוע' : 'לטיול'} זה. יש לפנות למחנך/ת לקבלת קישור אישי.</p>`;
+    content.innerHTML = mainHtml + `<p class="center-msg">לא ניתן לטעון אישור עצמאי ${isEvent ? 'לאירוע' : 'לטיול'} זה. יש לפנות לצוות החינוכי של הכיתה לקבלת קישור אישי.</p>`;
     return;
   }
 
@@ -515,7 +515,7 @@ async function load(){
     const nameMatches = roster.filter(r => r.class_id === classId && (typedStartsWithFirstName(typedNorm, candFirstName(r)) || typedMatchesStudent(typedNorm, r)));
 
     if (nameMatches.length === 0){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא תלמיד בשם זה בכיתה שנבחרה. יש לוודא שהכיתה ושם התלמיד נכונים, או לפנות למחנך/ת.</p>`;
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא תלמיד בשם זה בכיתה שנבחרה. יש לוודא שהכיתה ושם התלמיד נכונים, או לפנות לצוות החינוכי של הכיתה.</p>`;
       return;
     }
 
@@ -565,7 +565,7 @@ async function load(){
     const approvalRef = tripRef.collection('approvals').doc(studentId);
     const approvalSnap = await approvalRef.get();
     if (!approvalSnap.exists){
-      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא רישום אישור עבור תלמיד זה. יש לפנות למחנך/ת.</p>`;
+      matchMsg.innerHTML = `<p style="color:var(--danger); font-size:.88rem;">לא נמצא רישום אישור עבור תלמיד זה. יש לפנות לצוות החינוכי של הכיתה.</p>`;
       return;
     }
     if (approvalSnap.data().status === 'approved'){
