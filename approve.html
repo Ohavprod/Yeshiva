@@ -297,7 +297,7 @@ async function load(){
   const approval = approvalSnap.data();
   const studentName = approval.student_name || '';
   const className = approval.class_name || '';
-  // class_id של התלמיד/ה — נשלף מ-roster_snapshot של הטיול (לא נשמר על מסמך האישור
+  // class_id של התלמיד — נשלף מ-roster_snapshot של הטיול (לא נשמר על מסמך האישור
   // עצמו), כדי שאפשר יהיה להעביר אותו ל-notifyPush ולסנן את ההתראה לצוות החינוכי של הכיתה
   // הנכונה בלבד, גם בטיול/אירוע כלל-ישיבתי המשותף לכמה כיתות.
   const studentClassId = (trip.roster_snapshot||[]).find(r=>r.id===studentId)?.class_id
@@ -316,7 +316,7 @@ async function load(){
         <div class="big-check">✅</div>
         <h2 style="margin:0 0 6px;">האישור נקלט, תודה!</h2>
         <p style="color:var(--ink-soft); margin:0;">
-          ${esc(studentName)} אושר/ה לטיול "${esc(trip.title)}"<br>
+          ${esc(studentName)} אושר לטיול "${esc(trip.title)}"<br>
           ע״י ${esc(approval.approved_by_name||'')}${approval.approved_by_relation ? ' (' + esc(approval.approved_by_relation) + ')' : ''} ${approvedDate ? '· ' + approvedDate.toLocaleDateString('he-IL') : ''}
         </p>
       </div>`;
@@ -534,7 +534,7 @@ async function load(){
     try{
       const extraPayload = {};
       if (isEvent){
-        // התלמיד/ה שעבורו/ה מאשרים נספר/ת אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
+        // התלמיד שעבורו מאשרים נספר אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
         // רק את מספר ההורים המגיעים (כמו בטופס הכללי, trip-notice.html).
         const nParents = parseInt(document.getElementById('participantsParents').value, 10);
         extraPayload.participants_students = 1;
@@ -553,13 +553,13 @@ async function load(){
         approved_at: firebase.firestore.FieldValue.serverTimestamp(),
         ...extraPayload,
       }, { merge: true });
-      // שמירת הת.ז שהוזנה לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה באימות (אמא/אבא), ורק אם
+      // שמירת הת.ז שהוזנה לכרטיס התלמיד — רק לשדה ההורה שזוהה באימות (אמא/אבא), ורק אם
       // עדיין ריק שם (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
       if (matchedSlot){
         const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
         db.collection('students').doc(studentId).update({ [field]: idDigits }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
       }
-      notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר/ה לטיול "${trip.title}"`, studentClassId, className);
+      notifyPush('trip_approved', 'אישור טיול חדש', `${studentName}${className ? ' (' + className + ')' : ''} אושר לטיול "${trip.title}"`, studentClassId, className);
       load();
     }catch(err){
       // שגיאה כללית של המערכת (לא אי-התאמת פרטים) — למשל בעיית הרשאות/רשת מול

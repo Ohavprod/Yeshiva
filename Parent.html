@@ -127,7 +127,7 @@ const tsDate = t=> t && t.toDate ? t.toDate().toLocaleDateString('he-IL') : '';
    שכחתי סיסמה: קוד בן 6 ספרות נשלח למייל השחזור; אין מייל → פנייה למנהל המערכת. */
 const LOGIN_ERRORS = {
   phone_not_found: 'מספר הטלפון לא נמצא ברישום. יש להזין את המספר כפי שנמסר לישיבה.',
-  id_mismatch: 'תעודת הזהות לא תואמת לרישום בכרטיס התלמיד/ה. יש לפנות לצוות החינוכי של הכיתה.',
+  id_mismatch: 'תעודת הזהות לא תואמת לרישום בכרטיס התלמיד. יש לפנות לצוות החינוכי של הכיתה.',
   invalid_input: 'יש למלא מספר טלפון ותעודת זהות.',
   weak_password: 'הסיסמה צריכה להכיל לפחות 4 תווים.',
   wrong_password: 'הסיסמה שגויה.',
@@ -356,7 +356,7 @@ function renderNewRequest(body, user, sess){
   body.innerHTML = `
     <div class="pcard">
       <h3 style="margin:0 0 12px;">בקשת יציאה מוקדמת</h3>
-      <div class="field"><label>עבור איזה תלמיד/ה</label>
+      <div class="field"><label>עבור איזה תלמיד</label>
         <select id="r_student">${kids.map(k=>`<option value="${esc(k.student_id)}">${esc(k.student_name)}${k.class_name?' — '+esc(k.class_name):''}</option>`).join('')}</select></div>
       <div class="field"><label>סיבת היציאה</label>
         <select id="r_reason">${REASONS.map(r=>`<option value="${r.v}">${esc(r.label)}</option>`).join('')}</select></div>
@@ -369,10 +369,10 @@ function renderNewRequest(body, user, sess){
         <div class="field"><label>שעת חזרה משוערת</label><input id="r_return" type="time"></div>
         <div class="field"><label>מי אוסף/ת</label><input id="r_pickup" value="${esc(sess.name||'')}"></div>
       </div>
-      <label class="chip-check" style="display:inline-flex;margin:6px 0;"><input type="checkbox" id="r_noreturn"> התלמיד/ה לא חוזר/ת היום</label>
+      <label class="chip-check" style="display:inline-flex;margin:6px 0;"><input type="checkbox" id="r_noreturn"> התלמיד לא חוזר היום</label>
       <div class="field"><label>חתימת ההורה</label><div class="sig-pad-wrap"><canvas id="sig"></canvas></div>
         <button type="button" class="btn btn-outline btn-sm" id="sigClear" style="margin-top:6px;">ניקוי חתימה</button></div>
-      <label class="chip-check" style="display:flex;margin:8px 0;"><input type="checkbox" id="r_consent"> אני מאשר/ת את יציאת בני/בתי מהישיבה בזמן המצוין ולוקח/ת אחריות על היציאה</label>
+      <label class="chip-check" style="display:flex;margin:8px 0;"><input type="checkbox" id="r_consent"> אני מאשר/ת את יציאת בני מהישיבה בזמן המצוין ולוקח/ת אחריות על היציאה</label>
       <button class="btn btn-primary" id="r_send" style="width:100%;">שליחה למורה</button>
       <div class="perr" id="r_err"></div>
     </div>`;
@@ -419,7 +419,7 @@ async function renderReleases(body, user){
     : '<div class="pcard" style="color:var(--ink-soft);">עוד לא נשלחו בקשות יציאה.</div>';
 }
 
-/* תיעוד: הטיולים/האירועים של הכיתה של הילד/ה, והאישורים שנחתמו עליהם */
+/* תיעוד: הטיולים/האירועים של הכיתה של הילד, והאישורים שנחתמו עליהם */
 async function renderTripsHistory(body, sess){
   body.innerHTML = '<p style="color:var(--ink-soft);text-align:center;">טוען…</p>';
   const kids = sess.children || [];

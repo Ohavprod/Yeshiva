@@ -416,7 +416,7 @@ async function buildVerifyHashes(student, className){
 /* גיבוב עבור roster_snapshot (חוזר טיול כללי) — בלי רכיב כיתה, כי שם הכיתה שם נבחר מרשימה
    נגישה (class_options) ולא מוקלד חופשי; הכיתה כבר מסננת את המועמדים לפני ההשוואה. */
 /* גיבוב ת.ז של ההורים (כשהיא כבר שמורה בכרטיס) — מאפשר לטופס הציבורי להצליב ת.ז בלי לחשוף אותה.
-   מלח לפי מזהה התלמיד/ה, כך שאותו מספר לא נראה אותו דבר אצל תלמידים שונים. */
+   מלח לפי מזהה התלמיד, כך שאותו מספר לא נראה אותו דבר אצל תלמידים שונים. */
 function normIdDigits(s){ return (s||'').toString().replace(/\D/g,'').replace(/^0+/,''); }
 async function buildRosterIdHashes(student, studentId){
   const out = [];
@@ -459,7 +459,7 @@ async function refreshTripVerifyHashes(tripId){
   const tripSnap = await db.collection('trips').doc(tripId).get();
   const trip = tripSnap.exists ? tripSnap.data() : null;
   if (!(await confirmDialog(
-    `הפעולה מעדכנת את גיבובי האימות עבור "${trip?.title || 'הטיול'}" לפי הנתונים העדכניים בכרטיסי התלמידים, ומוסיפה אישור (ממתין) לכל תלמיד/ה בכיתות הטיול שעדיין אין לו/ה — למשל מי שנכנס/ה לכיתה אחרי יצירת הטיול/האירוע. סטטוסי אישור קיימים (מאושר/ממתין) לא ישתנו.`,
+    `הפעולה מעדכנת את גיבובי האימות עבור "${trip?.title || 'הטיול'}" לפי הנתונים העדכניים בכרטיסי התלמידים, ומוסיפה אישור (ממתין) לכל תלמיד בכיתות הטיול שעדיין אין לו/ה — למשל מי שנכנס/ה לכיתה אחרי יצירת הטיול/האירוע. סטטוסי אישור קיימים (מאושר/ממתין) לא ישתנו.`,
     { title:'רענון אימות', confirmText:'כן, רענון', cancelText:'ביטול', danger:false }
   ))) return;
   try{
@@ -482,19 +482,19 @@ async function refreshTripVerifyHashes(tripId){
     const batch = db.batch();
     let updated = 0, added = 0, skipped = 0;
 
-    // 1) מעדכן את גיבוב האימות של כל אישור קיים, לפי הנתונים העדכניים בכרטיס התלמיד/ה.
+    // 1) מעדכן את גיבוב האימות של כל אישור קיים, לפי הנתונים העדכניים בכרטיס התלמיד.
     for (const doc of approvalsSnap.docs){
       const sd = studentById[doc.id];
-      if (!sd){ skipped++; continue; } // תלמיד/ה שכבר לא קיים/ת בכרטיסיה (למשל נמחק/ה) — לא נוגעים
+      if (!sd){ skipped++; continue; } // תלמיד שכבר לא קיים בכרטיסיה (למשל נמחק) — לא נוגעים
       const approval = doc.data();
       const verify_hashes = await buildVerifyHashes(sd, approval.class_name || '');
       batch.update(doc.ref, { verify_hashes });
       updated++;
     }
 
-    // 2) מוסיף אישור "ממתין" חדש לכל תלמיד/ה בכיתות הטיול שעדיין אין לו/ה מסמך אישור —
+    // 2) מוסיף אישור "ממתין" חדש לכל תלמיד בכיתות הטיול שעדיין אין לו מסמך אישור —
     //    זו הסיבה השכיחה לפער בין "כמה תלמידים יש בפועל בכיתות" לבין "כמה אישורים יש
-    //    בטיול": תלמיד/ה שנכנס/ה לכיתה אחרי יצירת הטיול/האירוע לא מקבל/ת אישור אוטומטית.
+    //    בטיול": תלמיד שנכנס/ה לכיתה אחרי יצירת הטיול/האירוע לא מקבל/ת אישור אוטומטית.
     for (const d of studentDocs){
       if (existingApprovalIds.has(d.id)) continue;
       const sd = d.data();
@@ -510,9 +510,9 @@ async function refreshTripVerifyHashes(tripId){
 
     await batch.commit();
 
-    // 3) בונה מחדש גם את roster_snapshot של הטיול עצמו (שם/גיבוב לכל תלמיד/ה) מהנתונים
+    // 3) בונה מחדש גם את roster_snapshot של הטיול עצמו (שם/גיבוב לכל תלמיד) מהנתונים
     //    העדכניים בכרטיסיה — זה מה ש-trip-notice.html (קישור כללי ללא כניסה אישית) משתמש
-    //    בו כדי לזהות תלמיד לפי שם+כיתה. בלי זה, תיקון בכרטיס תלמיד/ה (למשל סדר שם הפוך,
+    //    בו כדי לזהות תלמיד לפי שם+כיתה. בלי זה, תיקון בכרטיס תלמיד (למשל סדר שם הפוך,
     //    שם הורה שגוי) לא היה משפיע על הזיהוי בקישור הכללי, כי roster_snapshot הוא תמונת
     //    מצב קפואה מרגע יצירת הטיול. מדלגים על טיולים/אירועים בלי הרשמה (requires_registration === false).
     let rosterRebuilt = false;
@@ -525,10 +525,10 @@ async function refreshTripVerifyHashes(tripId){
       rosterRebuilt = true;
     }
 
-    toast(`רענון הושלם: ${updated} אישורים עודכנו${added ? `, ${added} תלמידים חדשים נוספו` : ''}${skipped ? `, ${skipped} דולגו (לא נמצא כרטיס תלמיד/ה)` : ''}${rosterRebuilt ? ', רשימת התלמידים בקישור הכללי עודכנה' : ''}`);
+    toast(`רענון הושלם: ${updated} אישורים עודכנו${added ? `, ${added} תלמידים חדשים נוספו` : ''}${skipped ? `, ${skipped} דולגו (לא נמצא כרטיס תלמיד)` : ''}${rosterRebuilt ? ', רשימת התלמידים בקישור הכללי עודכנה' : ''}`);
   }catch(err){ toast('שגיאה: '+err.message); }
 }
-/* שומר/מעדכן רשומה ציבורית-בטוחה על תלמיד/ה — נגישה ללא התחברות (approve.html / shirt-order.html),
+/* שומר/מעדכן רשומה ציבורית-בטוחה על תלמיד — נגישה ללא התחברות (approve.html / shirt-order.html),
    ומכילה רק שם + כיתה + גיבוב אימות. לעולם לא ת.ז/טלפון/רגישויות/כתובת גולמיים. */
 async function syncStudentPublicRecord(studentId, student){
   try{
@@ -605,8 +605,8 @@ async function countStudentsForClassIds(classIds){
 /* כמו לעיל, אבל סופרת מסמכי אישור עם status=='approved' בתת-האוסף approvals של טיול —
    קריאה אחת בודדת בלי קשר לכמה תלמידים יש בטיול. הערה חשובה: בניגוד ל"ניהול אישורים"
    (שמצליב כל אישור מול הרשימה החיה של הכיתה, ולכן תמיד מדויק), הספירה הזו לא בודקת
-   שהתלמיד/ה עדיין נמצא/ת בפועל בכיתה המשויכת לטיול — כך שבמקרה נדיר של תלמיד/ה שאושר/ה
-   ואז עבר/ה כיתה או נמחק/ה, המספר כאן עלול לכלול אותו/ה עוד רגע. לא בשימוש כרגע (תקציר
+   שהתלמיד עדיין נמצא בפועל בכיתה המשויכת לטיול — כך שבמקרה נדיר של תלמיד שאושר
+   ואז עבר כיתה או נמחק, המספר כאן עלול לכלול אותו עוד רגע. לא בשימוש כרגע (תקציר
    דף הבית עבר להשתמש ב-loadTripAttendanceContextCached, שנותן ספירה מדויקת וגם משותפת
    עם שאר המסכים) — נשארת כאן כי היא עדיין עשויה להיות שימושית במסך אחר שבאמת רק צריך
    מספר גס ומהיר, בלי צורך בדיוק. */
@@ -1119,7 +1119,7 @@ async function deleteSchoolYearData(year){
     const studentsSnap = await db.collection('students').where('class_id','==', classDoc.id).get();
     for (const s of studentsSnap.docs){
       await logDeletion('students', s.id, s.data());
-      await safeDelete(`תלמיד/ה ${s.data().full_name||s.id}`, s.ref);
+      await safeDelete(`תלמיד ${s.data().full_name||s.id}`, s.ref);
     }
     await logDeletion('classes', classDoc.id, classDoc.data());
     await safeDelete(`כיתה ${classDoc.data().name||classDoc.id}`, classDoc.ref);
@@ -1639,7 +1639,7 @@ function renderAdminTripBreakdown(el, byClassMap, classesList){
     return `<div class="atb-student-list">${sorted.map(s=>`
       <div class="atb-student-row">
         <span>${s.approved ? '✅' : '⏳'} ${esc(s.full_name)}</span>
-        <span style="color:${s.approved ? 'var(--ok)' : 'var(--wait)'}; font-size:.78rem; font-weight:600;">${s.approved ? 'אישר/ה' : 'ממתין/ה'}</span>
+        <span style="color:${s.approved ? 'var(--ok)' : 'var(--wait)'}; font-size:.78rem; font-weight:600;">${s.approved ? 'אושר' : 'ממתין'}</span>
       </div>`).join('') || '<div style="color:var(--ink-soft); font-size:.85rem; padding:8px 0;">אין תלמידים בכיתה זו.</div>'}</div>`;
   };
   const rowHtml = (e, i) => {
@@ -2183,7 +2183,7 @@ async function renderClassRosterView(container, classId){
         if (!(await confirmDialog(`לאפס את סיסמת כניסת ההורה של ${student.full_name}? בכניסה הבאה ההורה יזין טלפון ות.ז ויבחר סיסמה חדשה.`))) return;
         try{
           const results = await Promise.all(ids.map(id=> resetParentPassword('p' + ('000000000' + id).slice(-9)).then(()=>true).catch(()=>false)));
-          toast(results.some(Boolean) ? 'הסיסמה אופסה' : 'לא נמצא חשבון כניסה פעיל להורים של התלמיד/ה (אולי עוד לא נכנסו)');
+          toast(results.some(Boolean) ? 'הסיסמה אופסה' : 'לא נמצא חשבון כניסה פעיל להורים של התלמיד (אולי עוד לא נכנסו)');
         }catch(err){ toast('שגיאה באיפוס: ' + (err.code||err.message)); }
       });
     });
@@ -2936,7 +2936,7 @@ async function renderTrips(body){
         const rosterDocs = await fetchStudentDocsForClassIds(class_ids);
         // roster_snapshot: נשמר על הטיול עצמו (מסמך שקריא לכולם ללא התחברות!) ומשמש להצלבה
         // אוטומטית מול מה שההורה מקליד ב-trip-notice.html. משום כך אסור לשמור כאן ת.ז/שם הורה
-        // גולמיים — רק שם התלמיד/ה (חשוף ממילא דרך מסמכי האישור הציבוריים) וגיבוב חד-כיווני
+        // גולמיים — רק שם התלמיד (חשוף ממילא דרך מסמכי האישור הציבוריים) וגיבוב חד-כיווני
         // של שם ההורה+ת.ז, כדי שאי אפשר יהיה לשחזר מהמסמך הזה את פרטי ההורים.
         const roster_snapshot = await Promise.all(rosterDocs.map(async d=>{
           const sd = d.data();
@@ -3765,7 +3765,7 @@ function renderTripsList(container, trips){
   });
 }
 
-/* יוצר את מסמך האישור לתלמיד/ה עבור טיול זה, רק אם עוד לא קיים (מונע כפילויות) */
+/* יוצר את מסמך האישור לתלמיד עבור טיול זה, רק אם עוד לא קיים (מונע כפילויות) */
 async function ensureApprovalDoc(tripId, student){
   const ref = db.collection('trips').doc(tripId).collection('approvals').doc(student.id);
   const snap = await ref.get();
@@ -3784,7 +3784,7 @@ async function ensureApprovalDoc(tripId, student){
   return ref;
 }
 /* חלון קטן לצפייה בפרטי אישור הורה (שם + תאריך + חתימה) */
-/* מודאל פרטים על תלמיד/ה בתוך ניהול אישורים — נפתח בלחיצה על כל המשבצת (גם ממתינים, לא רק מאושרים) */
+/* מודאל פרטים על תלמיד בתוך ניהול אישורים — נפתח בלחיצה על כל המשבצת (גם ממתינים, לא רק מאושרים) */
 function showStudentApprovalDetailModal(trip, student, approval, canManage){
   const isApproved = approval?.status === 'approved';
   if (isApproved){
@@ -3854,7 +3854,7 @@ function showApprovalViewModal(trip, studentName, approval){
 }
 
 /* בונה אלמנט DOM מעוצב של אישור הורה — כולל לוגו הישיבה, תאריך עברי לצד הלועזי,
-   וה-ת.ז שהוזן בעת החתימה. מוצג רק לכיתת התלמיד/ה הספציפי/ת (לא כל כיתות הטיול).
+   וה-ת.ז שהוזן בעת החתימה. מוצג רק לכיתת התלמיד הספציפי (לא כל כיתות הטיול).
    האלמנט מצולם ל-PDF אמיתי (לא HTML) דרך html2canvas+jsPDF, כדי שהעברית תיראה נכון בלי צורך בהטמעת גופן. */
 function buildApprovalDocElement(trip, studentName, studentClassName, approval){
   const approvedDate = approval.approved_at?.toDate ? approval.approved_at.toDate() : null;
@@ -3873,7 +3873,7 @@ function buildApprovalDocElement(trip, studentName, studentClassName, approval){
       <h1 style="font-size:23px; margin:0 0 22px; color:#16223d; font-family:'Rubik',Arial,sans-serif;">${esc(trip.title||'')}</h1>
       <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
         <tr><td style="padding:10px 0; color:#4b566d; width:160px; border-bottom:1px solid #dde4ee; font-size:14px;">כיתה</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-weight:700; font-size:15px;">${esc(studentClassName||'')}</td></tr>
-        <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תלמיד/ה</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-weight:700; font-size:15px;">${esc(studentName||'')}</td></tr>
+        <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תלמיד</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-weight:700; font-size:15px;">${esc(studentName||'')}</td></tr>
         ${formatTripDateLine(trip) ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">תאריך הטיול</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(formatTripDateLine(trip))}</td></tr>` : ''}
         ${trip.location ? `<tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">יעד</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(trip.location)}</td></tr>` : ''}
         <tr><td style="padding:10px 0; color:#4b566d; border-bottom:1px solid #dde4ee; font-size:14px;">אושר על ידי</td><td style="padding:10px 0; border-bottom:1px solid #dde4ee; font-size:15px;">${esc(approval.approved_by_name||'')}</td></tr>
@@ -4010,7 +4010,7 @@ async function renderNodeToPdfBlob(node){
     node.remove();
   }
 }
-/* מוריד PDF בודד עבור תלמיד/ה אחד/ת — מציג רק את הכיתה הרלוונטית לו/ה */
+/* מוריד PDF בודד עבור תלמיד אחד — מציג רק את הכיתה הרלוונטית לו */
 async function downloadApprovalPdf(trip, studentName, studentClassName, approval){
   toast('מכין PDF…');
   try{
@@ -4022,7 +4022,7 @@ async function downloadApprovalPdf(trip, studentName, studentClassName, approval
     setTimeout(()=> URL.revokeObjectURL(url), 3000);
   }catch(err){ toast('שגיאה ביצירת PDF: '+err.message); }
 }
-/* מייצא לקובץ ZIP אחד את כל האישורים המאושרים של הטיול — כל תלמיד/ה כקובץ PDF אמיתי נפרד,
+/* מייצא לקובץ ZIP אחד את כל האישורים המאושרים של הטיול — כל תלמיד כקובץ PDF אמיתי נפרד,
    מחולק לתיקיות משנה לפי כיתה בתוך ה-ZIP (כל כיתה בתיקייה נפרדת עם קבצי ה-PDF המאושרים שלה) */
 async function exportApprovalsZip(trip, students, approvalsById){
   const approvedList = students.filter(s => approvalsById[s.id]?.status === 'approved');
@@ -4086,7 +4086,7 @@ function buildClassRosterPageElement(trip, g, gregDate){
         </div>
         ${g.students.map((s,i)=>{
           // כמו ב"דוח תלמידי הכיתה" (getFirstLast): קודם כל שם פרטי/משפחה השמורים בכרטיס
-          // התלמיד/ה, אם קיימים בכלל — ורק לתלמידים ישנים בלי פיצול שמור עושים ניחוש זמני
+          // התלמיד, אם קיימים בכלל — ורק לתלמידים ישנים בלי פיצול שמור עושים ניחוש זמני
           // מהשם המלא (מילה ראשונה = שם פרטי, השאר = שם משפחה). בלי זה, שם פרטי או משפחה
           // עם שתי מילים (למשל "בן דוד") היה מתפצל לא נכון גם כשהיה פיצול תקין שמור בכרטיס.
           const nameParts = (s.full_name||'').trim().split(/\s+/);
@@ -4772,7 +4772,7 @@ function showBulkSendModal(trip, students, approvalsById){
   overlay.addEventListener('click', (e)=>{ if (e.target === overlay) overlay.remove(); });
 }
 
-/* מפתחות רגישויות שכיחות שמזוהות בתוך שדה "רגישויות" החופשי של התלמיד/ה */
+/* מפתחות רגישויות שכיחות שמזוהות בתוך שדה "רגישויות" החופשי של התלמיד */
 const KNOWN_SENSITIVITY_KEYWORDS = ['גלוטן','צליאק','חלב','לקטוז','ביצים','בוטנים','אגוזים','סויה','דגים','צמחוני','טבעוני'];
 function matchedSensitivities(notes){
   const n = (notes||'').toString();
@@ -4790,7 +4790,7 @@ function matchedCity(city){
 }
 /* מחזיר true רק לתפקידים שרשאים לראות ריכוז/סטטיסטיקת רגישויות של תלמידים בטיול —
    מנהל מערכת, רכז חברתי וראש הישיבה. מחנך/ת רגיל/ה לא רואה את הריכוז הזה כלל; הם
-   רואים במקום זאת הדגשה על כרטיס כל תלמיד/ה שלהם עם רגישות, ישירות ברשימת האישורים. */
+   רואים במקום זאת הדגשה על כרטיס כל תלמיד שלהם עם רגישות, ישירות ברשימת האישורים. */
 function canViewTripSensitivityStats(){
   return myProfile.role === 'מנהל מערכת' || myProfile.role === 'רכז חברתי' || myProfile.role === 'ראש הישיבה';
 }
@@ -5126,7 +5126,7 @@ async function renderTripLogisticsCard(card, trip){
                           <button type="button" class="btn btn-outline btn-sm add-parent-btn" data-bus-idx="${bi}" ${remaining<1?'disabled':''}>${ICON.plus}</button>
                         </div>
                       </div>
-                    ` : `<div style="font-size:.8rem; color:var(--ink-soft);">יש לשייך קודם כיתה לאוטובוס זה, כדי לבחור של איזה תלמיד/ה ההורה המלווה.</div>`}
+                    ` : `<div style="font-size:.8rem; color:var(--ink-soft);">יש לשייך קודם כיתה לאוטובוס זה, כדי לבחור של איזה תלמיד ההורה המלווה.</div>`}
                   </div>
                 </div>
               </div>
@@ -5456,7 +5456,7 @@ async function renderTripLogisticsCard(card, trip){
           studentSel.disabled = true;
           return;
         }
-        studentSel.innerHTML = '<option value="">בחירת תלמיד/ה</option>' + students.map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
+        studentSel.innerHTML = '<option value="">בחירת תלמיד</option>' + students.map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
         studentSel.disabled = false;
       });
     });
@@ -5469,7 +5469,7 @@ async function renderTripLogisticsCard(card, trip){
         const classId = classSel?.value || '';
         const studentId = studentSel?.value || '';
         if (!name){ toast('יש להזין שם ההורה המלווה'); return; }
-        if (!classId || !studentId){ toast('יש לבחור כיתה ותלמיד/ה — כדי שההורה יישב עם כיתת הבן/הבת שלו/ה'); return; }
+        if (!classId || !studentId){ toast('יש לבחור כיתה ותלמיד — כדי שההורה יישב עם כיתת הבן שלו'); return; }
         const cls = classesCache.find(c=>c.id===classId);
         const student = (approvedStudentsByClass[classId]||[]).find(s=>s.id===studentId);
         buses[bi].assigned = buses[bi].assigned || [];
@@ -5673,8 +5673,8 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
       <div class="approval-row" data-student="${s.id}" style="cursor:default;">
         <div><strong>${esc(s.full_name)}</strong></div>
         <div class="a-actions" style="gap:8px;">
-          <button type="button" class="btn btn-sm att-btn ${val===true?'btn-primary':'btn-outline'}" data-id="${s.id}" data-val="true">${ICON.check} נכח/ה</button>
-          <button type="button" class="btn btn-sm att-btn ${val===false?'btn-primary':'btn-outline'}" data-id="${s.id}" data-val="false" style="${val===false?'background:var(--danger); border-color:var(--danger); color:#fff;':''}">✕ חסר/ה</button>
+          <button type="button" class="btn btn-sm att-btn ${val===true?'btn-primary':'btn-outline'}" data-id="${s.id}" data-val="true">${ICON.check} נכח</button>
+          <button type="button" class="btn btn-sm att-btn ${val===false?'btn-primary':'btn-outline'}" data-id="${s.id}" data-val="false" style="${val===false?'background:var(--danger); border-color:var(--danger); color:#fff;':''}">✕ חסר</button>
         </div>
       </div>`;
     }).join('');
@@ -5726,7 +5726,7 @@ async function renderTripAttendanceCard(card, trip, students, approvedStudents, 
 }
 
 /* מחשבת עבור טיול נתון: אילו כיתות המשתמש/ת הנוכחי/ת רואה, אילו תלמידים בהן,
-   ומי מהם מאושר/ת ליציאה. משותפת לפאנל "ניהול אישורים" ולפאנל "נוכחות ביום
+   ומי מהם מאושר ליציאה. משותפת לפאנל "ניהול אישורים" ולפאנל "נוכחות ביום
    הטיול" העצמאי, כך שההרשאות (מי רואה איזו כיתה) מחושבות באותו מקום אחד. */
 async function loadTripAttendanceContext(trip){
   const p = myProfile.permissions || {};
@@ -5837,7 +5837,7 @@ async function renderTripDetail(panel, trip){
 
 /* מחשב מחדש את סך כל המשתתפים באירוע (תלמידים+הורים, לפי participants_students/
    participants_parents שנשמרו על כל מסמך אישור מאושר) ומעדכן רק את הספרה בכרטיס —
-   נקרא הן ברינדור הראשוני והן אחרי כל שינוי בתיבות העריכה ליד תלמיד/ה, בלי לרנדר
+   נקרא הן ברינדור הראשוני והן אחרי כל שינוי בתיבות העריכה ליד תלמיד, בלי לרנדר
    מחדש את כל פאנל ניהול האישורים (שהיה סוגר תפריטים/קיפולים פתוחים). */
 function updateEventParticipantsTotal(panel, students, approvalsById){
   const el = panel.querySelector('#eventParticipantsTotal');
@@ -5932,7 +5932,7 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     if (s.father_phone) parents.push({ label:'אבא', icon:'👨', phone:s.father_phone });
     const classTag = ''; // כפול מיותר כעת שכל כיתה מקובצת תחת כותרת קיפול משלה
     const hasSensitivity = !!(s.notes && s.notes.trim());
-    // באירוע חברתי בלבד: לצד תלמיד/ה מאושר/ת, מציגים כמה משתתפים סה"כ נרשמו איתו/ה
+    // באירוע חברתי בלבד: לצד תלמיד מאושר, מציגים כמה משתתפים סה"כ נרשמו איתו
     // (תלמידים/הורים) — ברירת המחדל 1 תלמיד ו-0 הורים אם ההורה לא מילא בטופס, וניתן
     // לערוך את המספרים ישירות כאן (למשל הרשמה טלפונית/ידנית שלא עברה דרך הטופס).
     const isEventTrip = trip.kind === 'event';
@@ -5964,7 +5964,7 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
           <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
             ${isApproved ? '<span class="badge badge-ok">✓ אושר</span>' : '<span class="badge badge-wait">ממתין לאישור</span>'}
             ${hasSensitivity ? `<span class="badge badge-urgent" title="${esc(s.notes)}">${ICON.bell} רגישות</span>` : ''}
-            ${(canManage && isApproved) ? `<button class="btn btn-outline btn-sm manual-unapprove" data-id="${s.id}" title="ביטול רישום — למשל אם ההורה אישר/ה אבל בסוף התלמיד/ה לא מגיע/ה. אישור עצמו תמיד ורק בחתימת הורה בטופס.">↺ ביטול רישום</button>` : ''}
+            ${(canManage && isApproved) ? `<button class="btn btn-outline btn-sm manual-unapprove" data-id="${s.id}" title="ביטול רישום — למשל אם ההורה אישר/ה אבל בסוף התלמיד לא מגיע. אישור עצמו תמיד ורק בחתימת הורה בטופס.">↺ ביטול רישום</button>` : ''}
           </div>
           ${participantsEditHtml}
         </div>
@@ -6016,7 +6016,7 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
   rowsEl.querySelectorAll('.manual-unapprove').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const student = students.find(x=>x.id===btn.dataset.id);
-      if (!confirm(`לבטל את הרישום של ${student.full_name} ולהחזיר לסטטוס ממתין? (למשל אם בסוף התלמיד/ה לא מגיע/ה)`)) return;
+      if (!confirm(`לבטל את הרישום של ${student.full_name} ולהחזיר לסטטוס ממתין? (למשל אם בסוף התלמיד לא מגיע)`)) return;
       btn.disabled = true;
       try{
         await db.collection('trips').doc(trip.id).collection('approvals').doc(student.id)
@@ -6043,7 +6043,7 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     });
   });
 
-  // עריכת מספר משתתפים (תלמידים/הורים) לצד תלמיד/ה מאושר/ת באירוע חברתי — נשמר
+  // עריכת מספר משתתפים (תלמידים/הורים) לצד תלמיד מאושר באירוע חברתי — נשמר
   // אוטומטית בשינוי, כמו יתר תיבות ההגדרות בלוח הבקרה; מעדכן גם את סך כל המשתתפים
   // שמוצג למעלה (אם מוצג) בלי לרענן את כל הפאנל.
   rowsEl.querySelectorAll('.participants-edit[data-student]').forEach(wrap=>{
@@ -6063,7 +6063,7 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
     studentsInput.addEventListener('change', ()=> saveField('participants_students', studentsInput, 1));
     parentsInput.addEventListener('change', ()=> saveField('participants_parents', parentsInput, 0));
     // כפתורי +/- ליד כל שדה: הכפתור המקיף (participants-edit) עוצר את בעבוע הקליק
-    // כדי שלא תיפתח כרטיסיית התלמיד/ה, ולכן ה"מאזין הכללי" ל-.ns-btn (שרשום על
+    // כדי שלא תיפתח כרטיסיית התלמיד, ולכן ה"מאזין הכללי" ל-.ns-btn (שרשום על
     // document) לעולם לא מגיע לכפתורים האלה — מטפלים בהם ישירות כאן במקום.
     wrap.querySelectorAll('.ns-btn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
@@ -6084,7 +6084,7 @@ function updateEventParticipantsTotal(panel, students, approvalsById){
   panel.querySelector('#exportTripFullPdfBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportTripFullPdf(trip); });
   panel.querySelector('#exportApprovalsZipBtn')?.addEventListener('click', ()=>{ moreMenu.classList.remove('open'); exportApprovalsZip(trip, students, approvalsById); });
 
-  /* לחיצה על כל המשבצת (לא רק על תגית הסטטוס) פותחת את פרטי התלמיד/ה — גם למאושרים וגם לממתינים */
+  /* לחיצה על כל המשבצת (לא רק על תגית הסטטוס) פותחת את פרטי התלמיד — גם למאושרים וגם לממתינים */
   rowsEl.querySelectorAll('.approval-row').forEach(row=>{
     row.addEventListener('click', (e)=>{
       if (e.target.closest('.a-actions')) return;
@@ -6120,7 +6120,7 @@ function wireClassGroupToggles(container){
     });
   });
 }
-/* מקבץ תלמידים לפי כיתה עם אפשרות קיפול — כדי שהמזכירה תדע תמיד לאיזו כיתה שייך כל תלמיד/ה */
+/* מקבץ תלמידים לפי כיתה עם אפשרות קיפול — כדי שהמזכירה תדע תמיד לאיזו כיתה שייך כל תלמיד */
 function shirtOrderRowHtml(s){
   const o = s.shirt_order;
   return `
@@ -6142,7 +6142,7 @@ function shirtOrderRowHtml(s){
   </div>`;
 }
 /* מקבץ את הזמנות החולצות לפי כיתה, עם כותרת מתקפלת (ז'1, ז'2 וכו') — כך שהמזכירה
-   רואה מיד לאיזו כיתה שייך כל תלמיד/ה בלי לגלול ברשימה שטוחה ארוכה. */
+   רואה מיד לאיזו כיתה שייך כל תלמיד בלי לגלול ברשימה שטוחה ארוכה. */
 function renderShirtRowsGrouped(ordered){
   if (!ordered.length) return '<p style="color:var(--ink-soft); font-size:.9rem;">עדיין לא התקבלו הזמנות.</p>';
   const byClass = {};
@@ -6310,12 +6310,12 @@ async function renderPayments(body){
         <div class="form-grid" style="margin-top:6px; border-top:1px dashed var(--line); padding-top:18px;">
           <div class="field"><label>טיול</label><select id="exp_trip">${tripsWithCost.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('') || '<option value="">אין עדיין טיולים עם מחיר</option>'}</select></div>
           <div class="field"><label>כיתה (לדוח לפי כיתה)</label><select id="exp_class"><option value="">כל הכיתות</option></select></div>
-          <div class="field"><label>תלמיד/ה</label><select id="exp_student"><option value="">טוען…</option></select></div>
+          <div class="field"><label>תלמיד</label><select id="exp_student"><option value="">טוען…</option></select></div>
           <div class="field" style="display:flex; gap:10px; grid-column:1/-1; flex-wrap:wrap;">
             <button class="btn btn-outline btn-sm" id="exportTripFullBtn">${ICON.download} ייצוא דוח מלא לטיול זה (כל התלמידים)</button>
             <button class="btn btn-outline btn-sm" id="exportTripClassBtn">${ICON.download} ייצוא דוח לפי כיתה</button>
-            <button class="btn btn-outline btn-sm" id="exportStudentTripBtn">${ICON.download} תשלום התלמיד/ה בטיול זה</button>
-            <button class="btn btn-outline btn-sm" id="exportStudentHistoryBtn">${ICON.download} היסטוריית תשלומים של התלמיד/ה (כל הטיולים)</button>
+            <button class="btn btn-outline btn-sm" id="exportStudentTripBtn">${ICON.download} תשלום התלמיד בטיול זה</button>
+            <button class="btn btn-outline btn-sm" id="exportStudentHistoryBtn">${ICON.download} היסטוריית תשלומים של התלמיד (כל הטיולים)</button>
           </div>
         </div>
       </div>
@@ -6384,7 +6384,7 @@ async function renderPayments(body){
     const from = document.getElementById('exp_from').value;
     const to = document.getElementById('exp_to').value;
     if (!from || !to){ toast('יש לבחור טווח תאריכים'); return; }
-    const rows = [['טיול','תלמיד/ה','כיתה','סכום','תאריך תשלום','אופן תשלום']];
+    const rows = [['טיול','תלמיד','כיתה','סכום','תאריך תשלום','אופן תשלום']];
     for (const trip of tripsWithCost){
       const paySnap = await db.collection('trips').doc(trip.id).collection('payments').get();
       paySnap.docs.forEach(d=>{
@@ -6410,7 +6410,7 @@ async function renderPayments(body){
     const studs = studentDocs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> a.full_name.localeCompare(b.full_name,'he'));
     const paymentsById = {};
     paymentsSnap.docs.forEach(d=> paymentsById[d.id] = { id:d.id, ...d.data() });
-    const rows = [['תלמיד/ה','כיתה','סטטוס','סכום','תאריך תשלום','אופן תשלום']];
+    const rows = [['תלמיד','כיתה','סטטוס','סכום','תאריך תשלום','אופן תשלום']];
     studs.forEach(s=>{
       const pay = paymentsById[s.id];
       const className = classesCache.find(c=>c.id===s.class_id)?.name || '';
@@ -6433,7 +6433,7 @@ async function renderPayments(body){
     const studs = studentDocs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> a.full_name.localeCompare(b.full_name,'he'));
     const paymentsById = {};
     paymentsSnap.docs.forEach(d=> paymentsById[d.id] = { id:d.id, ...d.data() });
-    const rows = [['תלמיד/ה','סטטוס','סכום','תאריך תשלום','אופן תשלום']];
+    const rows = [['תלמיד','סטטוס','סכום','תאריך תשלום','אופן תשלום']];
     studs.forEach(s=>{
       const pay = paymentsById[s.id];
       rows.push([s.full_name, pay?'שולם':'טרם שולם', pay?.amount||'', pay?.payment_date||'', pay?methodLabel(pay.payment_method, pay.payment_method_other):'']);
@@ -6446,9 +6446,9 @@ async function renderPayments(body){
   document.getElementById('exportStudentTripBtn').addEventListener('click', async ()=>{
     const trip = tripsWithCost.find(t=>t.id===tripSelect.value);
     const studentId = studentSelect.value;
-    if (!trip || !studentId){ toast('יש לבחור טיול ותלמיד/ה'); return; }
+    if (!trip || !studentId){ toast('יש לבחור טיול ותלמיד'); return; }
     const paySnap = await db.collection('trips').doc(trip.id).collection('payments').doc(studentId).get();
-    const rows = [['טיול','תלמיד/ה','סכום','תאריך תשלום','אופן תשלום']];
+    const rows = [['טיול','תלמיד','סכום','תאריך תשלום','אופן תשלום']];
     const studentName = studentSelect.options[studentSelect.selectedIndex]?.text || '';
     if (paySnap.exists){
       const pay = paySnap.data();
@@ -6461,7 +6461,7 @@ async function renderPayments(body){
 
   document.getElementById('exportStudentHistoryBtn').addEventListener('click', async ()=>{
     const studentId = studentSelect.value;
-    if (!studentId){ toast('יש לבחור תלמיד/ה'); return; }
+    if (!studentId){ toast('יש לבחור תלמיד'); return; }
     const studentName = studentSelect.options[studentSelect.selectedIndex]?.text || '';
     const rows = [['טיול','סכום','תאריך תשלום','אופן תשלום']];
     const paySnap = await db.collectionGroup('payments').where('student_id','==', studentId).get().catch(()=>({docs:[]}));
@@ -6471,7 +6471,7 @@ async function renderPayments(body){
       const trip = allTrips.find(t=>t.id===tripId);
       rows.push([trip?.title || tripId, pay.amount, pay.payment_date, methodLabel(pay.payment_method, pay.payment_method_other)]);
     });
-    if (rows.length === 1){ toast('לא נמצאו תשלומים עבור תלמיד/ה זו'); return; }
+    if (rows.length === 1){ toast('לא נמצאו תשלומים עבור תלמיד זו'); return; }
     exportTable(rows, `היסטוריית תשלומים - ${studentName}`, exportFormat());
   });
 
@@ -6519,7 +6519,7 @@ async function renderPayments(body){
       listEl.querySelectorAll('.more-actions-menu').forEach(m=> m.classList.remove('open'));
       const trip = tripsWithCost.find(t=>t.id===btn.dataset.id);
       const paySnap = await db.collection('trips').doc(trip.id).collection('payments').get();
-      const rows = [['תלמיד/ה','כיתה','סכום','תאריך תשלום','אופן תשלום']];
+      const rows = [['תלמיד','כיתה','סכום','תאריך תשלום','אופן תשלום']];
       paySnap.docs.forEach(d=>{
         const pay = d.data();
         const className = classesCache.find(c=>c.id===pay.class_id)?.name || '';
@@ -6587,14 +6587,14 @@ async function renderShirtsPanel(panel){
   const renderSendSection = () => `
     <div class="card card-pad" style="margin-bottom:16px;">
       <h3 style="margin-top:0;">שליחת קישור כללי להזמנת חולצות</h3>
-      <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">קישור אחד המתאים לכלל הורי הישיבה — כל הורה מזין בעצמו את כיתת הבן/בת ושם מלא כדי לאתר את הכרטיס ולהמשיך בהזמנה. אין צורך לשלוח קישור נפרד לכל כיתה.</p>
+      <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">קישור אחד המתאים לכלל הורי הישיבה — כל הורה מזין בעצמו את כיתת הבן ושם מלא כדי לאתר את הכרטיס ולהמשיך בהזמנה. אין צורך לשלוח קישור נפרד לכל כיתה.</p>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <input readonly id="generalShirtLinkInput" value="${esc(generalShirtLink)}" style="flex:1; min-width:220px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; background:var(--surface-2); color:var(--ink); direction:ltr; text-align:left;">
         <button class="btn btn-outline btn-sm" type="button" id="copyShirtLinkBtn">${ICON.link} העתקת קישור</button>
         <button class="btn btn-primary btn-sm" type="button" id="shareShirtLinkBtn">${ICON.send} שיתוף בוואטסאפ</button>
       </div>
       <p style="color:var(--ink-soft); font-size:.8rem; margin-bottom:0; margin-top:12px;">
-        תלמיד/ה שכרטיס/ה טרם עודכן מעולם לא יימצא/תימצא בחיפוש בקישור הכללי. אם ההזמנות לא מסתדרות לתלמידים ותיקים, אפשר לסנכרן את כל הכרטיסים פעם אחת:
+        תלמיד שכרטיסו טרם עודכן מעולם לא יימצא בחיפוש בקישור הכללי. אם ההזמנות לא מסתדרות לתלמידים ותיקים, אפשר לסנכרן את כל הכרטיסים פעם אחת:
         <button class="btn btn-outline btn-sm" type="button" id="syncAllShirtPublicBtn" style="margin-inline-start:8px;">סנכרון כל התלמידים</button>
       </p>
     </div>`;
@@ -6643,7 +6643,7 @@ async function renderShirtsPanel(panel){
     }
   });
   panel.querySelector('#shareShirtLinkBtn').addEventListener('click', ()=>{
-    const text = encodeURIComponent(`שלום, לקראת מבצע החולצות "מעלין בקודש" נא למלא את פרטי ההזמנה עבור ילדכם/ילדתכם בקישור הבא: ${generalShirtLink}`);
+    const text = encodeURIComponent(`שלום, לקראת מבצע החולצות "מעלין בקודש" נא למלא את פרטי ההזמנה עבור ילדכם בקישור הבא: ${generalShirtLink}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   });
   panel.querySelector('#syncAllShirtPublicBtn').addEventListener('click', async (e)=>{
@@ -6810,7 +6810,7 @@ async function renderTripPaymentsPanel(panel, trip){
   rowsEl.querySelectorAll('.cancel-payment').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const sid = btn.dataset.id;
-      if (!(await confirmDialog('לבטל את רישום התשלום עבור תלמיד/ה זו?'))) return;
+      if (!(await confirmDialog('לבטל את רישום התשלום עבור תלמיד זו?'))) return;
       try{
         await db.collection('trips').doc(trip.id).collection('payments').doc(sid).delete();
         toast('התשלום בוטל');
@@ -8316,7 +8316,7 @@ async function renderAnnouncements(body){
 /* ============================================================
    חיפוש תלמידים — למנהל מערכת/ראש הישיבה בלבד (view_all_classes). חיפוש חופשי
    בכל הכיתות בבת אחת לפי שם תלמיד, שם הורה, טלפון, ת.ז הורה או עיר מגורים —
-   כדי שלא יהיה צריך לעבור כיתה-כיתה כדי למצוא תלמיד/ה ספציפי/ת.
+   כדי שלא יהיה צריך לעבור כיתה-כיתה כדי למצוא תלמיד ספציפי.
    כל התלמידים נטענים פעם אחת בלבד (בעצלנות, בהקלדה הראשונה) ומסוננים בצד
    הלקוח — Firestore לא תומך בחיפוש טקסט חופשי/הכלה, וזה בסדר בגודל של בית ספר.
    ============================================================ */
@@ -8324,7 +8324,7 @@ async function renderStudentSearch(body){
   body.innerHTML = `
     <div class="card card-pad" style="margin-bottom:20px;">
       <div class="field" style="margin:0;">
-        <label>חיפוש תלמיד/ה — לפי שם תלמיד/ה, שם הורה, טלפון, ת.ז או עיר מגורים</label>
+        <label>חיפוש תלמיד — לפי שם תלמיד, שם הורה, טלפון, ת.ז או עיר מגורים</label>
         <input type="text" id="studentSearchInput" placeholder="הקלידו לפחות 2 תווים…" autocomplete="off">
       </div>
     </div>
@@ -8363,9 +8363,9 @@ async function renderStudentSearch(body){
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
               <div>
                 <strong>${esc(s.full_name)}</strong>
-                <div style="font-size:.82rem; color:var(--ink-soft);">כיתה: ${esc(classesById[s.class_id] || 'לא משויך/ת')}</div>
+                <div style="font-size:.82rem; color:var(--ink-soft);">כיתה: ${esc(classesById[s.class_id] || 'לא משויך')}</div>
               </div>
-              ${s.class_id ? `<button class="btn btn-outline btn-sm goto-class-btn" data-class="${esc(s.class_id)}" data-student="${esc(s.id)}">מעבר לכרטיס התלמיד/ה בכיתה</button>` : ''}
+              ${s.class_id ? `<button class="btn btn-outline btn-sm goto-class-btn" data-class="${esc(s.class_id)}" data-student="${esc(s.id)}">מעבר לכרטיס התלמיד בכיתה</button>` : ''}
             </div>
             <div style="margin-top:10px; display:flex; flex-direction:column; gap:4px; font-size:.86rem; color:var(--ink);">
               ${s.mother_name ? `<div>👩 אמא: ${esc(s.mother_name)}${s.mother_phone ? ' · <span dir="ltr">'+esc(s.mother_phone)+'</span>' : ''}${s.mother_id ? ' · ת.ז ' + esc(s.mother_id) : ''}</div>` : ''}
@@ -8578,12 +8578,12 @@ function buildEarlyReleaseDocElement(r){
           <div style="font-size:14px; color:#4b566d; margin-top:2px;">אישור יציאה מהישיבה</div>
         </div>
       </div>
-      ${row('תלמיד/ה:', `<b>${esc(r.student_name||'')}</b>${r.class_name ? ' — ' + esc(r.class_name) : ''}`)}
+      ${row('תלמיד:', `<b>${esc(r.student_name||'')}</b>${r.class_name ? ' — ' + esc(r.class_name) : ''}`)}
       ${row('סיבה:', esc(reason))}
       ${r.reason_details ? row('פירוט:', esc(r.reason_details)) : ''}
       ${row('תאריך יציאה:', `${esc(hebDate)}${hebDate && gregDate ? ' ' : ''}${gregDate ? '(' + esc(gregDate) + ')' : ''}`)}
       ${row('שעת יציאה:', esc(r.release_time||''))}
-      ${row('חזרה:', r.no_return ? 'לא חוזר/ת היום' : (r.return_time ? esc(r.return_time) : 'לא צוין'))}
+      ${row('חזרה:', r.no_return ? 'לא חוזר היום' : (r.return_time ? esc(r.return_time) : 'לא צוין'))}
       ${row('מי אוסף/ת:', esc(r.pickup_name||''))}
       ${row('הורה מאשר:', `${esc(r.parent_name||'')} · ת.ז ${esc(r.parent_id||'')} · ${esc(r.parent_phone||'')}`)}
       <div class="pdf-avoid-break" style="padding:12px 0;">
@@ -8678,7 +8678,7 @@ async function renderEarlyReleases(body){
 }
 
 const PUSH_NOTIFICATION_TYPES = [
-  { key:'trip_approved', label:'הורה אישר טיול עבור תלמיד/ה' },
+  { key:'trip_approved', label:'הורה אישר טיול עבור תלמיד' },
   { key:'trip_certificate_uploaded', label:'רכזת הטיולים העלתה אישור טיול (קובץ)' },
   { key:'shirt_order_submitted', label:'הורה מילא הזמנת חולצה' },
   { key:'new_trip', label:'נוצר טיול חדש' },
@@ -8925,7 +8925,7 @@ async function renderUsers(body){
    ============================================================ */
 async function renderRestoreHistory(body){
   const collectionLabels = {
-    trips:'טיול', students:'תלמיד/ה', classes:'כיתה', users:'משתמש',
+    trips:'טיול', students:'תלמיד', classes:'כיתה', users:'משתמש',
     personal_tasks:'משימה אישית', meetings:'ישיבת צוות', assigned_tasks:'משימה משויכת',
   };
   const titleOf = (data) => data?.full_name || data?.title || data?.name || data?.text || '(ללא שם)';
@@ -8934,7 +8934,7 @@ async function renderRestoreHistory(body){
 
   body.innerHTML = `
     <p style="color:var(--ink-soft); font-size:.88rem; margin-top:-6px;">
-      כל מחיקה של טיול, תלמיד/ה, כיתה או משתמש נשמרת כאן (100 הפעולות האחרונות) וניתן לשחזר אותה בלחיצה.
+      כל מחיקה של טיול, תלמיד, כיתה או משתמש נשמרת כאן (100 הפעולות האחרונות) וניתן לשחזר אותה בלחיצה.
       שחזור טיול משחזר את פרטי הטיול עצמו בלבד — לא את האישורים/התשלומים/הנוכחות שהיו רשומים תחתיו.
     </p>
     ${entries.length ? `<div style="display:flex; justify-content:flex-end; margin-bottom:10px;">

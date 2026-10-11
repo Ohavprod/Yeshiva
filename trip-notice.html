@@ -186,7 +186,7 @@ function toast(msg){
 }
 /* --- שליחת התראת פוש (best-effort — לא חוסמת ולא נכשלת אם השרת לא מוגדר עדיין) ---
    ה-Content-Type נשאר ברירת המחדל (text/plain) בכוונה כדי למנוע preflight/CORS מול Apps Script.
-   classId (אופציונלי): class_id של התלמיד/ה, כדי שהשרת יוכל לסנן את ההתראה למחנך/ת
+   classId (אופציונלי): class_id של התלמיד, כדי שהשרת יוכל לסנן את ההתראה למחנך/ת
    הכיתה הנכונה בלבד (ולא לכל מחנכי הכיתות בטיול/אירוע כלל-ישיבתי). */
 const PUSH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyyFdMIyybL6S5tW0mXij3BB_6_M42g1gZtBub6ob2V40x4jYuFtnlk7su_EqbWklgQfw/exec';
 const PUSH_WEBHOOK_SECRET = '88888888888888888888888888888888';
@@ -224,8 +224,8 @@ function formatGregShort(dateStr){
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
 function lastNameOf(s){ return norm(s).split(' ').slice(1).join(' '); }
-// שם פרטי/משפחה "אמיתיים" של תלמיד/ה ברשימה: אם roster_snapshot כולל first_name/last_name
-// נפרדים (כך שנשמר בכרטיס התלמיד/ה) — משתמשים בהם ישירות, כי הם לא תלויים בניחוש לפי
+// שם פרטי/משפחה "אמיתיים" של תלמיד ברשימה: אם roster_snapshot כולל first_name/last_name
+// נפרדים (כך שנשמר בכרטיס התלמיד) — משתמשים בהם ישירות, כי הם לא תלויים בניחוש לפי
 // מיקום מילה ולכן עובדים נכון גם לשמות פרטיים מכמה מילים (למשל "בת אל", "מרים חנה").
 // רק לרשומות ישנות בלי השדות הנפרדים נופלים חזרה על הניחוש הישן (מילה ראשונה = שם פרטי).
 function candFirstName(r){ return r.first_name ? norm(r.first_name) : firstNameOf(r.full_name); }
@@ -579,7 +579,7 @@ async function load(){
     try{
       const extraPayload = {};
       if (isEvent){
-        // התלמיד/ה שעבורו/ה מאשרים נספר/ת אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
+        // התלמיד שעבורו מאשרים נספר אוטומטית כאחד — לא מבקשים מההורה למלא את זה,
         // רק את מספר ההורים המגיעים.
         const nParents = parseInt(document.getElementById('participantsParents').value, 10);
         extraPayload.participants_students = 1;
@@ -595,7 +595,7 @@ async function load(){
         identity_verified: identityVerified,
         ...extraPayload,
       });
-      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
+      // שמירת הת.ז לכרטיס התלמיד — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
       // (הכלל ב-Firestore חוסם דריסה של ת.ז קיימת, ומאפשר רק מילוי ראשוני).
       if (matchedSlot){
         const field = matchedSlot === 'mother' ? 'mother_id' : 'father_id';
@@ -605,7 +605,7 @@ async function load(){
       notifyPush(
         'trip_approved',
         isEvent ? 'אישור הגעה חדש' : 'אישור טיול חדש',
-        `${matchedStudent.full_name}${matchedClassName ? ' (' + matchedClassName + ')' : ''} אושר/ה ${isEvent ? 'להגעה ל' : 'לטיול'} "${trip.title}"`,
+        `${matchedStudent.full_name}${matchedClassName ? ' (' + matchedClassName + ')' : ''} אושר ${isEvent ? 'להגעה ל' : 'לטיול'} "${trip.title}"`,
         matchedStudent.class_id
       );
       document.getElementById('formArea').style.display = 'none';

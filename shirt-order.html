@@ -88,7 +88,7 @@ function fmtCost(v){ if (!v) return ''; const s = v.toString().trim(); return s.
 function cleanText(s){ return (s||'').toString().trim().replace(/\s+/g,' '); }
 function norm(s){ return (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
 function firstNameOf(s){ return norm(s).split(' ')[0] || ''; }
-// התאמת שם סובלנית (כמו באישורי טיולים): מספיק שכל המילים שהוקלדו קיימות בשם התלמיד/ה, בכל סדר —
+// התאמת שם סובלנית (כמו באישורי טיולים): מספיק שכל המילים שהוקלדו קיימות בשם התלמיד, בכל סדר —
 // למשל "שילה נבו" מתאים גם ל"שילה נבו כהן" וגם ל"כהן שילה נבו".
 function nameTokens(s){
   return String(s || '').toLowerCase().replace(/[\u05da]/g,'\u05db').replace(/[\u05dd]/g,'\u05de').replace(/[\u05df]/g,'\u05e0').replace(/[\u05e3]/g,'\u05e4').replace(/[\u05e5]/g,'\u05e6').replace(/[^\u05d0-\u05eaa-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
@@ -114,19 +114,19 @@ async function sha256Hex(str){
 const params = new URLSearchParams(location.search);
 let studentId = params.get('s');
 
-/* --- שער איתור לקישור הכללי (ללא s בכתובת): מאתר את התלמיד/ה לפי כיתה + שם מלא
+/* --- שער איתור לקישור הכללי (ללא s בכתובת): מאתר את התלמיד לפי כיתה + שם מלא
    מול הרשומה הציבורית-הבטוחה (student_public — שם+כיתה+גיבוב בלבד), ואז ממשיך
    באותו זרם בדיוק כמו קישור פרטני. --- */
 function renderGeneralLookup(content){
   content.innerHTML = `
     <div class="trip-card">
-      <div class="section-eyebrow">איתור תלמיד/ה</div>
+      <div class="section-eyebrow">איתור תלמיד</div>
       <h2 class="trip-title" style="font-size:1.25rem;">הזמנת חולצה — מעלין בקודש</h2>
-      <p class="verify-hint">קישור זה משותף לכלל הורי הישיבה. נא להזין את כיתת וילדכם/ילדתכם ואת שמו/ה המלא כדי לאתר את הכרטיס ולהמשיך בהזמנה.</p>
+      <p class="verify-hint">קישור זה משותף לכלל הורי הישיבה. נא להזין את כיתת וילדכם ואת שמו המלא כדי לאתר את הכרטיס ולהמשיך בהזמנה.</p>
       <div id="lookupErrorBox"></div>
       <form id="lookupForm" class="verify-box">
         <div class="field"><label>כיתה</label><input id="lk_class" required placeholder="לדוגמה: י2"></div>
-        <div class="field"><label>שם התלמיד/ה המלא</label><input id="lk_name" required></div>
+        <div class="field"><label>שם התלמיד המלא</label><input id="lk_name" required></div>
         <button class="btn btn-primary" style="width:100%;" type="submit">חיפוש</button>
       </form>
     </div>`;
@@ -144,7 +144,7 @@ function renderGeneralLookup(content){
       const partial = docs.find(d=> nameFits(nameQuery, d.data().full_name));
       const match = exact || partial;
       if (!match){
-        document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">לא נמצא/ה תלמיד/ה בשם ובכיתה שהוזנו. נא לוודא את הפרטים (איות הכיתה כפי שמוכר בישיבה) ולנסות שוב, או לפנות לצוות החינוכי של הכיתה.</div>`;
+        document.getElementById('lookupErrorBox').innerHTML = `<div class="verify-error">לא נמצא תלמיד בשם ובכיתה שהוזנו. נא לוודא את הפרטים (איות הכיתה כפי שמוכר בישיבה) ולנסות שוב, או לפנות לצוות החינוכי של הכיתה.</div>`;
         btn.disabled = false; btn.textContent = 'חיפוש';
         return;
       }
@@ -158,18 +158,18 @@ function renderGeneralLookup(content){
   });
 }
 
-/* אותו שער אימות רך שקיים באישורי טיולים — שם תלמיד/ה (מספיק שם פרטי), שם ההורה (מספיק שם
-   פרטי), כיתה וטלפון ההורה, מול גיבוב שנשמר מראש על הרשומה הציבורית-הבטוחה של התלמיד/ה
+/* אותו שער אימות רך שקיים באישורי טיולים — שם תלמיד (מספיק שם פרטי), שם ההורה (מספיק שם
+   פרטי), כיתה וטלפון ההורה, מול גיבוב שנשמר מראש על הרשומה הציבורית-הבטוחה של התלמיד
    (student_public), ללא חשיפת נתונים גולמיים. ת.ז חובה בטופס אך אינה חלק מההצלבה. */
 function renderVerificationGate(content, pub, studentId, onVerified){
   content.innerHTML = `
     <div class="trip-card">
       <div class="section-eyebrow">אימות זהות</div>
       <h2 class="trip-title" style="font-size:1.25rem;">לפני שממשיכים — נא לאמת את הפרטים</h2>
-      <p class="verify-hint">כדי לוודא שההזמנה מתבצעת עבור התלמיד/ה הנכון/ה, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
+      <p class="verify-hint">כדי לוודא שההזמנה מתבצעת עבור התלמיד הנכון, נא למלא את הפרטים הבאים כפי שנמסרו לישיבה (מספיק שם פרטי).</p>
       <div id="verifyErrorBox"></div>
       <form id="verifyForm" class="verify-box">
-        <div class="field"><label>שם התלמיד/ה</label><input id="v_name" required></div>
+        <div class="field"><label>שם התלמיד</label><input id="v_name" required></div>
         <div class="field"><label>שם ההורה/ת</label><input id="v_parent" required></div>
         <div class="field"><label>כיתה</label><input id="v_class" required></div>
         <div class="field"><label>טלפון ההורה/ת</label><input id="v_phone" type="tel" inputmode="tel" required></div>
@@ -184,7 +184,7 @@ function renderVerificationGate(content, pub, studentId, onVerified){
     const candidate = await sha256Hex(`${firstNameOf(document.getElementById('v_parent').value)}|${normPhoneDigits(document.getElementById('v_phone').value)}|${norm(document.getElementById('v_class').value)}`);
     const match = (pub.verify_hashes||[]).find(h => h.hash === candidate);
     if (nameOk && match){
-      // שמירת הת.ז לכרטיס התלמיד/ה — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
+      // שמירת הת.ז לכרטיס התלמיד — רק לשדה ההורה שזוהה בהצלבה, ורק אם עדיין ריק
       if (match.slot){
         const field = match.slot === 'mother' ? 'mother_id' : 'father_id';
         db.collection('students').doc(studentId).update({ [field]: enteredId }).catch(()=>{ /* כבר קיימת ת.ז, או שאין הרשאה — לא קריטי */ });
@@ -218,7 +218,7 @@ async function loadForStudent(studentId, content){
     return;
   }
   if (!pubSnap.exists){
-    content.innerHTML = '<p class="center-msg">לא נמצאו פרטי תלמיד/ה התואמים לקישור זה. יש לפנות לצוות החינוכי של הכיתה.</p>';
+    content.innerHTML = '<p class="center-msg">לא נמצאו פרטי תלמיד התואמים לקישור זה. יש לפנות לצוות החינוכי של הכיתה.</p>';
     return;
   }
   const pub = pubSnap.data();
